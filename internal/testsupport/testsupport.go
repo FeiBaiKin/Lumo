@@ -106,7 +106,8 @@ func Open(t *testing.T, opts Options) *database.DB {
 	}
 
 	if opts.Migrate {
-		migrator, migErr := migrate.New(db.SQLDB(), migrations.FS, nil)
+		sources := []migrate.Source{{Name: migrate.CoreName, FS: migrations.FS}}
+		migrator, migErr := migrate.New(db.SQLDB(), sources, nil)
 		if migErr != nil {
 			t.Fatalf("构造 Migrator 失败: %v", migErr)
 		}

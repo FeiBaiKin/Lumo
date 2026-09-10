@@ -9,32 +9,18 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/api"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 )
 
-// 三平面路由前缀（agent.md §6）。
+// 三平面路由前缀（agent.md §6），定义在 api 包，这里保留别名便于引用与测试。
 const (
-	// PrefixConsole 需会话或 PAT + 权限校验。
-	PrefixConsole = "/api/v1/console"
-	// PrefixPublic 匿名只读已发布内容 + 发评论 + 搜索。
-	PrefixPublic = "/api/v1/public"
-	// PrefixExtension 是 Extension 通用 CRUD，v1 内部使用。
-	PrefixExtension = "/apis"
+	PrefixConsole   = api.PrefixConsole
+	PrefixPublic    = api.PrefixPublic
+	PrefixExtension = api.PrefixExtension
 )
-
-// planeRouter 实现 app.Router，把模块的路由注册收敛到三个平面内。
-type planeRouter struct {
-	console   chi.Router
-	public    chi.Router
-	extension chi.Router
-}
-
-func (p *planeRouter) Console(fn func(r chi.Router))   { fn(p.console) }
-func (p *planeRouter) Public(fn func(r chi.Router))    { fn(p.public) }
-func (p *planeRouter) Extension(fn func(r chi.Router)) { fn(p.extension) }
 
 // Authenticator 是路由层所需的鉴权能力。
 //
@@ -54,24 +40,20 @@ type Options struct {
 	Authenticator Authenticator
 	// ClientIP 为 nil 时不解析转发头，一律使用直连地址。
 	ClientIP *httpx.ClientIPResolver
-	// PublicConsoleRoutes 注册 Console 平面下**无需认证**的端点（如登录）。
-	//
-	// 必须经此入口注册：直接注册到 Console 平面的路由一律要求已认证，
-	// 这是刻意的默认值，避免新增接口时漏加鉴权中间件。
-	PublicConsoleRoutes func(r chi.Router)
+	// Version 写入 OpenAPI 文档的 info.version。
+	Version string
 }
 
 // NewRouter 构造根路由并返回供模块注册用的三平面注册面。
 //
-// 三平面的鉴权策略（agent.md §6）：
-//   - Console：解析凭据 + CSRF + **强制已认证**；细粒度权限由各处理器声明
+// 三平面的鉴权策略（agent.md §6）由 api.NewPlanes 落实：
+//   - Console：解析凭据 + CSRF + **强制已认证**；细粒度权限由各操作声明
 //   - Public：解析凭据但不强制，匿名可读已发布内容
 //   - Extension：解析凭据 + CSRF + 强制已认证
 //
-// 注意：中间件只对**匹配到的路由**生效。未注册的路径由根路由的 NotFound
-// 处理并返回 404，不会先经过各平面的鉴权中间件——这是正确行为，
-// 但排查时容易误以为鉴权没生效。
-func NewRouter(opts *Options) (root chi.Router, planes app.Router) {
+// 注意：未注册的路径由根路由的 NotFound 处理并返回 404，不会先经过各平面的
+// 鉴权中间件——这是正确行为，但排查时容易误以为鉴权没生效。
+func NewRouter(opts *Options) (root chi.Router, planes *api.Planes) {
 	logger := opts.Logger
 	mux := chi.NewRouter()
 	root = mux
@@ -96,46 +78,15 @@ func NewRouter(opts *Options) (root chi.Router, planes app.Router) {
 		httpx.Error(w, r, http.StatusMethodNotAllowed, "该资源不支持此请求方法")
 	})
 
-	registry := &planeRouter{
-		console:   chi.NewRouter(),
-		public:    chi.NewRouter(),
-		extension: chi.NewRouter(),
-	}
-	planes = registry
-
+	// huma 在此挂上根路由：必须晚于全部 Use、早于任何路由注册。
+	planeOpts := &api.Options{Title: "Lumo API", Version: opts.Version}
 	if opts.Authenticator != nil {
-		// Console 平面**默认要求已认证**。免认证端点在挂载时被排除在外（见下），
-		// 而不是反过来让每个注册者自己记得加中间件——后者只要漏一次，
-		// 就会暴露一个无鉴权的后台接口（agent.md §6）。
-		//
-		// CSRF 置于 RequireAuth 之前：匿名写请求应得到 401（未登录）
-		// 而非 403（CSRF 失败），否则客户端不知道该去重新登录。
-		registry.console.Use(opts.Authenticator.CSRF)
-		registry.console.Use(auth.RequireAuth)
-
-		// Public：解析凭据但不强制，匿名可读已发布内容；
-		// 已登录用户可额外获得未发布内容的预览等能力。
-		registry.public.Use(opts.Authenticator.Middleware)
-
-		// Extension：v1 内部使用，一律要求已认证。
-		registry.extension.Use(opts.Authenticator.CSRF)
-		registry.extension.Use(auth.RequireAuth)
+		planeOpts.Resolve = opts.Authenticator.Middleware
+		planeOpts.CSRF = opts.Authenticator.CSRF
+		planeOpts.RequireAuth = auth.RequireAuth
 	}
-
-	// 组装 Console 平面：外层只解析凭据，内层才是受保护的模块注册面。
-	consoleRoot := chi.NewRouter()
-	if opts.Authenticator != nil {
-		consoleRoot.Use(opts.Authenticator.Middleware)
-	}
-	// 免认证端点挂在外层，因此不受 CSRF 与 RequireAuth 约束。
-	if opts.PublicConsoleRoutes != nil {
-		opts.PublicConsoleRoutes(consoleRoot)
-	}
-	consoleRoot.Mount("/", registry.console)
-
-	root.Mount(PrefixConsole, consoleRoot)
-	root.Mount(PrefixPublic, registry.public)
-	root.Mount(PrefixExtension, registry.extension)
+	api.SetErrorLogger(logger)
+	planes = api.NewPlanes(root, planeOpts)
 
 	// Console SPA 与根路径重定向。
 	root.Mount(console.MountPath, console.Handler())

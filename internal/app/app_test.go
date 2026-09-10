@@ -140,6 +140,71 @@ func TestRegisterRejectsBadModules(t *testing.T) {
 	})
 }
 
+// recordingModule 记录 Start 与 Close 的调用顺序。
+type recordingModule struct {
+	name     string
+	order    *[]string
+	startErr error
+	closeErr error
+}
+
+func (m *recordingModule) Name() string        { return m.name }
+func (m *recordingModule) Register(*App) error { return nil }
+func (m *recordingModule) Start(context.Context) error {
+	*m.order = append(*m.order, "start:"+m.name)
+	return m.startErr
+}
+
+func (m *recordingModule) Close(context.Context) error {
+	*m.order = append(*m.order, "close:"+m.name)
+	return m.closeErr
+}
+
+// TestStartInRegistrationOrder 验证 Start 按注册顺序执行，且跳过未实现 Starter 的模块。
+func TestStartInRegistrationOrder(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	a := newApp()
+	if err := a.Register(
+		&recordingModule{name: "first", order: &order},
+		&stubModule{name: "plain"},
+		&recordingModule{name: "second", order: &order},
+	); err != nil {
+		t.Fatalf("注册失败: %v", err)
+	}
+
+	if err := a.Start(context.Background()); err != nil {
+		t.Fatalf("Start 返回错误: %v", err)
+	}
+	if len(order) != 2 || order[0] != "start:first" || order[1] != "start:second" {
+		t.Errorf("启动顺序 = %v", order)
+	}
+}
+
+// TestStartStopsAtFirstFailure 验证任一模块启动失败即整体失败，后续模块不再启动。
+func TestStartStopsAtFirstFailure(t *testing.T) {
+	t.Parallel()
+
+	var order []string
+	want := errors.New("seed failed")
+	a := newApp()
+	if err := a.Register(
+		&recordingModule{name: "first", order: &order, startErr: want},
+		&recordingModule{name: "second", order: &order},
+	); err != nil {
+		t.Fatalf("注册失败: %v", err)
+	}
+
+	err := a.Start(context.Background())
+	if !errors.Is(err, want) {
+		t.Fatalf("错误未被包装传出: %v", err)
+	}
+	if len(order) != 1 {
+		t.Errorf("失败后不应继续启动其余模块: %v", order)
+	}
+}
+
 // TestCloseReverseOrder 验证按注册逆序关闭，且单个失败不影响其余模块清理。
 func TestCloseReverseOrder(t *testing.T) {
 	t.Parallel()
@@ -148,7 +213,7 @@ func TestCloseReverseOrder(t *testing.T) {
 	a := newApp()
 
 	first := &recordingModule{name: "first", order: &order}
-	second := &recordingModule{name: "second", order: &order, err: errors.New("close failed")}
+	second := &recordingModule{name: "second", order: &order, closeErr: errors.New("close failed")}
 	third := &recordingModule{name: "third", order: &order}
 
 	if err := a.Register(first, second, third); err != nil {
@@ -162,22 +227,9 @@ func TestCloseReverseOrder(t *testing.T) {
 	if len(order) != 3 {
 		t.Fatalf("关闭顺序记录 = %v", order)
 	}
-	if order[0] != "third" || order[2] != "first" {
+	if order[0] != "close:third" || order[2] != "close:first" {
 		t.Errorf("未按逆序关闭: %v", order)
 	}
-}
-
-type recordingModule struct {
-	name  string
-	order *[]string
-	err   error
-}
-
-func (m *recordingModule) Name() string        { return m.name }
-func (m *recordingModule) Register(*App) error { return nil }
-func (m *recordingModule) Close(context.Context) error {
-	*m.order = append(*m.order, m.name)
-	return m.err
 }
 
 func TestAppAccessors(t *testing.T) {

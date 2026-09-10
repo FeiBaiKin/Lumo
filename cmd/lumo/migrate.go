@@ -5,24 +5,27 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/database"
 	"github.com/FeiBaiKin/lumo/internal/logging"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
-	"github.com/FeiBaiKin/lumo/migrations"
 )
 
 const migrateUsage = `管理数据库迁移。
 
 用法：
-  lumo migrate [up|status|version|down]
+  lumo migrate [up|status|version|down [来源]]
 
 子命令：
-  up        应用所有待执行的迁移（缺省）
-  status    显示各迁移的应用状态
-  version   显示当前 schema 版本
-  down      回滚最后一个迁移（仅开发排错）
+  up             应用核心与全部模块的待执行迁移（缺省）
+  status         显示各来源每个迁移的应用状态
+  version        显示各来源当前的 schema 版本
+  down [来源]    回滚指定来源（缺省 core）的最后一个迁移，仅开发排错
+
+核心与每个模块是独立的迁移来源，各有自己的版本表。
 `
 
 // runMigrate 执行迁移相关子命令。
@@ -65,7 +68,12 @@ func runMigrate(args []string) error {
 	// 迁移是破坏性操作，先确认连到了哪个库——库名相近极易误连（agent.md §13.2）。
 	db.LogInfo(ctx, logger)
 
-	migrator, err := migrate.New(db.SQLDB(), migrations.FS, logger)
+	// 走与 serve 相同的模块注册链，以收集各模块的迁移来源；不注册接口。
+	application := app.New(&app.Options{Config: cfg, DB: db, Logger: logger})
+	if regErr := application.Register(modules()...); regErr != nil {
+		return regErr
+	}
+	migrator, err := migrate.New(db.SQLDB(), migrationSources(application), logger)
 	if err != nil {
 		return err
 	}
@@ -74,18 +82,42 @@ func runMigrate(args []string) error {
 	case cmdUp:
 		return migrator.Up(ctx)
 	case cmdDown:
-		return migrator.Down(ctx)
-	case keyStatus:
-		return migrator.Status(ctx)
-	case keyVersion:
-		v, verErr := migrator.Version(ctx)
-		if verErr != nil {
-			return verErr
+		source := ""
+		if fs.NArg() > 1 {
+			source = fs.Arg(1)
 		}
-		fmt.Printf("当前 schema 版本：%d\n", v)
+		return migrator.Down(ctx, source)
+	case keyStatus:
+		return printMigrationStatus(ctx, migrator)
+	case keyVersion:
+		for _, source := range migrator.Sources() {
+			v, verErr := migrator.Version(ctx, source)
+			if verErr != nil {
+				return verErr
+			}
+			fmt.Printf("%-16s schema 版本：%d\n", source, v)
+		}
 		return nil
 	default:
 		fmt.Fprint(os.Stderr, migrateUsage)
 		return fmt.Errorf("未知子命令 %q", action)
 	}
+}
+
+// printMigrationStatus 以表格打印各来源每个迁移的应用状态。
+func printMigrationStatus(ctx context.Context, migrator *migrate.Migrator) error {
+	statuses, err := migrator.Status(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%-12s %-8s %-8s %-25s %s\n", "来源", "版本", "状态", "应用时间", "文件")
+	for _, st := range statuses {
+		state, appliedAt := "pending", "-"
+		if st.Applied {
+			state = "applied"
+			appliedAt = st.AppliedAt.Local().Format(time.RFC3339)
+		}
+		fmt.Printf("%-12s %-8d %-8s %-25s %s\n", st.Source, st.Version, state, appliedAt, st.Path)
+	}
+	return nil
 }

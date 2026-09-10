@@ -109,6 +109,14 @@ func (s *Service) Logout(ctx context.Context, sessionToken string) error {
 	return s.sessions.Delete(ctx, sessionToken)
 }
 
+// LogoutSession 销毁已解析的会话；session 为 nil（如令牌调用）时不做任何事。
+func (s *Service) LogoutSession(ctx context.Context, session *Session) error {
+	if session == nil {
+		return nil
+	}
+	return s.sessions.DeleteByHash(ctx, session.TokenHash)
+}
+
 // ChangePassword 校验旧密码后设置新密码。
 //
 // 成功后销毁该用户的全部会话与令牌：改密码必须使所有既有凭据失效，

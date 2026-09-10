@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/FeiBaiKin/lumo/internal/auth/perm"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 )
 
@@ -78,6 +77,7 @@ func (a *Authenticator) Resolve(r *http.Request) (*Principal, error) {
 	}
 
 	principal := NewSessionPrincipal(user)
+	principal.Session = session
 	return principal, nil
 }
 
@@ -110,27 +110,6 @@ func RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
-// RequirePermission 要求调用者直接持有指定权限之一。
-//
-// 适用于与所有权无关的权限（如 users:manage）。涉及所有权的检查
-// 必须在处理器内用 Principal.Allows 完成——中间件此时还不知道目标对象归属谁。
-func RequirePermission(permissions ...perm.Permission) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			principal, ok := FromContext(r.Context())
-			if !ok {
-				unauthorized(w, r, "需要登录")
-				return
-			}
-			if !principal.Permissions().HasAny(permissions...) {
-				forbidden(w, r, permissions)
-				return
-			}
-			next.ServeHTTP(w, r)
-		})
-	}
-}
-
 // CSRF 校验非安全方法的 CSRF 令牌（双提交模式）。
 //
 // 仅对会话认证生效：PAT 调用不带 Cookie，天然无 CSRF 风险，
@@ -148,11 +127,16 @@ func (a *Authenticator) CSRF(next http.Handler) http.Handler {
 			return
 		}
 
-		sessionToken := a.sessions.TokenFromRequest(r)
-		session, err := a.sessions.Lookup(r.Context(), sessionToken)
-		if err != nil {
-			a.writeUnauthorized(w, r, err)
-			return
+		// 鉴权中间件已把会话随 Principal 带来，免去再查一次库；
+		// 调用方直接构造 Principal（如测试）时回退到按 Cookie 查库。
+		session := principal.Session
+		if session == nil {
+			looked, err := a.sessions.Lookup(r.Context(), a.sessions.TokenFromRequest(r))
+			if err != nil {
+				a.writeUnauthorized(w, r, err)
+				return
+			}
+			session = looked
 		}
 
 		// 双提交：请求头中的令牌必须与会话绑定的令牌一致。
@@ -193,25 +177,7 @@ func (a *Authenticator) clearAndUnauthorized(w http.ResponseWriter, r *http.Requ
 
 // unauthorized 输出 401。
 func unauthorized(w http.ResponseWriter, r *http.Request, detail string) {
-	httpx.WriteProblem(w, r, &httpx.Problem{
-		Status: http.StatusUnauthorized,
-		Title:  "Unauthorized",
-		Detail: detail,
-	}, nil)
-}
-
-// forbidden 输出 403，并在扩展成员中列出所需权限，便于前端提示与排错。
-func forbidden(w http.ResponseWriter, r *http.Request, required []perm.Permission) {
-	names := make([]string, 0, len(required))
-	for _, p := range required {
-		names = append(names, p.String())
-	}
-	httpx.WriteProblem(w, r, &httpx.Problem{
-		Status:     http.StatusForbidden,
-		Title:      "Forbidden",
-		Detail:     "权限不足",
-		Extensions: map[string]any{"requiredPermissions": names},
-	}, nil)
+	httpx.WriteProblem(w, r, unauthorizedProblem(detail), nil)
 }
 
 // isSafeMethod 报告方法是否为不改变状态的安全方法。

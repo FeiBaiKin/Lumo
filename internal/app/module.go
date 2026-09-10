@@ -6,17 +6,22 @@
 package app
 
 import (
+	"context"
 	"io/fs"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 // Module 是每个功能模块必须实现的最小接口。
 type Module interface {
-	// Name 返回模块的唯一标识，用于日志与依赖诊断。
+	// Name 返回模块的唯一标识，用于日志、迁移版本表名与依赖诊断。
+	// 须为小写字母开头的短标识（字母、数字、下划线、连字符）。
 	Name() string
 	// Register 把模块的能力挂载到应用上。
+	//
+	// 只做装配，不得访问数据库：migrate 命令也会走同一条注册链，而那时业务表
+	// 可能尚不存在。需要读写库的启动逻辑放到 Starter.Start。
 	Register(app *App) error
 }
 
@@ -26,6 +31,9 @@ type Module interface {
 // 加新模块不必写一堆空方法，模块能力仍可被静态检查。
 
 // Migrator 声明模块自带数据库迁移。
+//
+// 返回的文件系统根目录直接包含 goose SQL 文件；每个模块拥有独立的版本表，
+// 迁移编号只需在模块内递增（见 internal/migrate）。
 type Migrator interface {
 	Migrations() fs.FS
 }
@@ -45,24 +53,39 @@ type HookProvider interface {
 	Hooks() []Hook
 }
 
-// RouteProvider 声明模块挂载 HTTP 路由。
+// RouteProvider 声明模块挂载 HTTP 接口。
 //
-// 路由注册通过三平面注册器进行，模块不能直接接触根路由，
+// 接口注册通过三平面注册面进行，模块不能直接接触根路由，
 // 以保证鉴权与前缀约定不被绕过（agent.md §6）。
 type RouteProvider interface {
 	Routes(r Router)
 }
 
-// Router 是暴露给模块的路由注册面。
+// Starter 声明模块需要在迁移完成之后、对外服务之前执行启动逻辑，
+// 如播种内置数据、启动后台任务。ctx 在应用关闭时取消，后台 goroutine 应据此退出。
+type Starter interface {
+	Start(ctx context.Context) error
+}
+
+// Closer 是需要在应用关闭时释放资源的模块可选能力。
+type Closer interface {
+	Close(ctx context.Context) error
+}
+
+// Router 是暴露给模块的接口注册面（agent.md §6）。
 //
-// 三个平面各自对应 agent.md §6 的鉴权策略，模块只能在这三者之内挂载路由。
+// 四个注册面都是 huma.API：模块用 huma.Register 声明操作，请求校验、错误格式与
+// OpenAPI 文档随之自动生成。前缀与鉴权中间件挂在各平面的分组上，模块无需也不能自行处理。
 type Router interface {
-	// Console 挂载 /api/v1/console/** ，需会话或 PAT + 权限校验。
-	Console(fn func(r chi.Router))
-	// Public 挂载 /api/v1/public/** ，匿名只读。
-	Public(fn func(r chi.Router))
-	// Extension 挂载 /apis/{group}/{version}/{kind} 。
-	Extension(fn func(r chi.Router))
+	// Console 挂载 /api/v1/console/** ：已解析凭据、CSRF 校验、强制已认证；
+	// 细粒度权限由各操作用 auth.RequirePermission 或 Principal.Allows 声明。
+	Console() huma.API
+	// ConsolePublic 挂载 Console 平面下**免认证**的端点，仅供登录一类极少数场景。
+	ConsolePublic() huma.API
+	// Public 挂载 /api/v1/public/** ：解析凭据但不强制，匿名可读已发布内容。
+	Public() huma.API
+	// Extension 挂载 /apis/{group}/{version}/{kind} ：强制已认证。
+	Extension() huma.API
 }
 
 // SettingGroup 是一组设置项声明，字段随阶段 3 的表单 Schema 落地后细化。

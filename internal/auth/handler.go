@@ -1,19 +1,20 @@
 package auth
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/FeiBaiKin/lumo/internal/auth/password"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 )
 
-// maxBodyBytes 是认证类请求体的上限，防止超大 JSON 消耗内存。
-const maxBodyBytes = 64 << 10
+// tagAuth 是认证操作在 OpenAPI 中的分组标签。
+var tagAuth = []string{"auth"}
 
 // Handler 提供 Console 认证端点。
 type Handler struct {
@@ -28,77 +29,165 @@ func NewHandler(service *Service, sessions *SessionStore, tokens *TokenStore, lo
 	return &Handler{service: service, sessions: sessions, tokens: tokens, logger: logger}
 }
 
-// RegisterPublic 挂载无需认证的端点（登录）。
-func (h *Handler) RegisterPublic(r chi.Router) {
-	r.Post("/auth/login", h.login)
+// Register 把认证端点挂到 Console 平面：登录走免认证注册面，其余走强制认证注册面。
+func (h *Handler) Register(consolePublic, console huma.API) {
+	huma.Register(consolePublic, huma.Operation{
+		OperationID: "auth-login",
+		Method:      http.MethodPost,
+		Path:        "/auth/login",
+		Summary:     "登录",
+		Description: "校验用户名或邮箱与密码，签发服务端会话并经 Set-Cookie 下发。" +
+			"响应体中的 csrfToken 须在后续非安全方法请求的 X-CSRF-Token 头中回传。",
+		Tags:   tagAuth,
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden},
+	}, h.login)
+
+	huma.Register(console, huma.Operation{
+		OperationID:   "auth-logout",
+		Method:        http.MethodPost,
+		Path:          "/auth/logout",
+		Summary:       "登出",
+		Description:   "销毁当前会话并清除 Cookie。令牌调用时只清除 Cookie，令牌本身需经撤销接口作废。",
+		Tags:          tagAuth,
+		DefaultStatus: http.StatusNoContent,
+	}, h.logout)
+
+	huma.Register(console, huma.Operation{
+		OperationID: "auth-me",
+		Method:      http.MethodGet,
+		Path:        "/auth/me",
+		Summary:     "当前用户",
+		Description: "返回当前调用者及其本次调用的有效权限。",
+		Tags:        tagAuth,
+	}, h.me)
+
+	huma.Register(console, huma.Operation{
+		OperationID:   "auth-change-password",
+		Method:        http.MethodPost,
+		Path:          "/auth/change-password",
+		Summary:       "修改密码",
+		Description:   "校验原密码后设置新密码；成功后该用户全部会话与令牌立即失效，需重新登录。",
+		Tags:          tagAuth,
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusBadRequest, http.StatusUnauthorized},
+	}, h.changePassword)
+
+	huma.Register(console, huma.Operation{
+		OperationID: "auth-list-tokens",
+		Method:      http.MethodGet,
+		Path:        "/auth/tokens",
+		Summary:     "列出访问令牌",
+		Description: "列出当前用户的全部 Personal Access Token，不含令牌明文或哈希。",
+		Tags:        tagAuth,
+	}, h.listTokens)
+
+	huma.Register(console, huma.Operation{
+		OperationID: "auth-create-token",
+		Method:      http.MethodPost,
+		Path:        "/auth/tokens",
+		Summary:     "创建访问令牌",
+		Description: "签发 Personal Access Token。明文只在本响应中返回一次；" +
+			"scope 与用户权限取交集，只能收窄不能放大。",
+		Tags:          tagAuth,
+		DefaultStatus: http.StatusCreated,
+		Errors:        []int{http.StatusBadRequest},
+	}, h.createToken)
+
+	huma.Register(console, huma.Operation{
+		OperationID:   "auth-revoke-token",
+		Method:        http.MethodDelete,
+		Path:          "/auth/tokens/{id}",
+		Summary:       "撤销访问令牌",
+		Description:   "只能撤销自己的令牌。",
+		Tags:          tagAuth,
+		DefaultStatus: http.StatusNoContent,
+		Errors:        []int{http.StatusNotFound},
+	}, h.revokeToken)
 }
 
-// RegisterAuthenticated 挂载需要认证的端点。
-func (h *Handler) RegisterAuthenticated(r chi.Router) {
-	r.Post("/auth/logout", h.logout)
-	r.Get("/auth/me", h.me)
-	r.Post("/auth/change-password", h.changePassword)
+// ---------- 登录 / 登出 ----------
 
-	r.Get("/auth/tokens", h.listTokens)
-	r.Post("/auth/tokens", h.createToken)
-	r.Delete("/auth/tokens/{id}", h.revokeToken)
-}
-
-// loginRequest 是登录入参。
-type loginRequest struct {
-	// Login 可以是用户名或邮箱。
-	Login    string `json:"login"`
-	Password string `json:"password"`
-}
-
-func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
-	var req loginRequest
-	if !decodeJSON(w, r, &req) {
-		return
+// loginInput 是登录入参。
+type loginInput struct {
+	// UserAgent 记入会话用于审计，不进文档。
+	UserAgent string `header:"User-Agent" hidden:"true"`
+	Body      struct {
+		Login    string `json:"login" minLength:"1" maxLength:"254" doc:"用户名或邮箱"`
+		Password string `json:"password" minLength:"1" maxLength:"128" doc:"密码"`
 	}
+}
 
-	issued, user, err := h.service.Login(r.Context(), LoginParams{
-		Login:     req.Login,
-		Password:  req.Password,
-		UserAgent: r.UserAgent(),
-		IP:        httpx.ClientIPFrom(r),
+// sessionView 是登录成功的响应体。
+type sessionView struct {
+	User      userView  `json:"user"`
+	CSRFToken string    `json:"csrfToken" doc:"后续非安全方法请求须放在 X-CSRF-Token 头中回传"`
+	ExpiresAt time.Time `json:"expiresAt" doc:"会话过期时间；每次活跃会滑动延长"`
+}
+
+// loginOutput 是登录响应：Cookie 经响应头下发。
+type loginOutput struct {
+	SetCookie []string `header:"Set-Cookie"`
+	Body      sessionView
+}
+
+func (h *Handler) login(ctx context.Context, in *loginInput) (*loginOutput, error) {
+	issued, user, err := h.service.Login(ctx, LoginParams{
+		Login:     in.Body.Login,
+		Password:  in.Body.Password,
+		UserAgent: in.UserAgent,
+		IP:        httpx.ClientIPFromContext(ctx),
 	})
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInvalidCredentials):
 			// 统一提示，不区分账号不存在与密码错误。
-			httpx.Unauthorized(w, r, "用户名或密码错误")
+			return nil, huma.Error401Unauthorized("用户名或密码错误")
 		case errors.Is(err, ErrAccountDisabled):
-			httpx.Forbidden(w, r, "账号已被停用")
+			return nil, huma.Error403Forbidden("账号已被停用")
 		default:
-			httpx.WriteError(w, r, err, h.logger)
+			return nil, err
 		}
-		return
 	}
 
-	h.sessions.SetCookies(w, issued)
-	httpx.WriteJSON(w, r, http.StatusOK, map[string]any{
-		"user":      newUserView(user),
-		"csrfToken": issued.CSRFToken,
-		"expiresAt": issued.Session.ExpiresAt,
-	})
+	return &loginOutput{
+		SetCookie: h.sessions.Cookies(issued),
+		Body: sessionView{
+			User:      newUserView(user),
+			CSRFToken: issued.CSRFToken,
+			ExpiresAt: issued.Session.ExpiresAt,
+		},
+	}, nil
 }
 
-func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
-	token := h.sessions.TokenFromRequest(r)
-	if err := h.service.Logout(r.Context(), token); err != nil {
-		httpx.WriteError(w, r, err, h.logger)
-		return
+// clearCookiesOutput 是只清除 Cookie、无响应体的输出。
+type clearCookiesOutput struct {
+	SetCookie []string `header:"Set-Cookie"`
+}
+
+func (h *Handler) logout(ctx context.Context, _ *struct{}) (*clearCookiesOutput, error) {
+	if err := h.service.LogoutSession(ctx, MustFromContext(ctx).Session); err != nil {
+		return nil, err
 	}
-	h.sessions.ClearCookies(w)
-	w.WriteHeader(http.StatusNoContent)
+	return &clearCookiesOutput{SetCookie: h.sessions.ClearedCookies()}, nil
 }
 
-func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
-	principal := MustFromContext(r.Context())
+// ---------- 当前用户 ----------
+
+// meView 是当前用户的响应体。
+type meView struct {
+	User        userView   `json:"user"`
+	Permissions []string   `json:"permissions" doc:"本次调用的有效权限；令牌调用时已按 scope 收窄"`
+	AuthMethod  AuthMethod `json:"authMethod" enum:"session,token" doc:"认证方式"`
+}
+
+type meOutput struct {
+	Body meView
+}
+
+func (h *Handler) me(ctx context.Context, _ *struct{}) (*meOutput, error) {
+	principal := MustFromContext(ctx)
 	if principal.User == nil {
-		httpx.Error(w, r, http.StatusUnauthorized, "需要登录")
-		return
+		return nil, huma.Error401Unauthorized("需要登录")
 	}
 
 	// 返回有效权限而非角色权限并集：令牌调用时前者已按 scope 收窄，
@@ -109,113 +198,135 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 		names = append(names, p.String())
 	}
 
-	httpx.WriteJSON(w, r, http.StatusOK, map[string]any{
-		"user":        newUserView(principal.User),
-		"permissions": names,
-		"authMethod":  principal.Method,
-	})
+	return &meOutput{Body: meView{
+		User:        newUserView(principal.User),
+		Permissions: names,
+		AuthMethod:  principal.Method,
+	}}, nil
 }
 
-// changePasswordRequest 是修改密码入参。
-type changePasswordRequest struct {
-	OldPassword string `json:"oldPassword"`
-	NewPassword string `json:"newPassword"`
+// ---------- 修改密码 ----------
+
+type changePasswordInput struct {
+	Body struct {
+		OldPassword string `json:"oldPassword" minLength:"1" maxLength:"128" doc:"原密码"`
+		NewPassword string `json:"newPassword" minLength:"8" maxLength:"128" doc:"新密码，8–128 字节"`
+	}
 }
 
-func (h *Handler) changePassword(w http.ResponseWriter, r *http.Request) {
-	principal := MustFromContext(r.Context())
+func (h *Handler) changePassword(ctx context.Context, in *changePasswordInput) (*clearCookiesOutput, error) {
+	principal := MustFromContext(ctx)
 	if principal.UserID() == 0 {
-		httpx.Error(w, r, http.StatusUnauthorized, "需要登录")
-		return
+		return nil, huma.Error401Unauthorized("需要登录")
+	}
+	// 口令策略先于任何数据库访问校验：其错误文本面向用户，可以直接回传。
+	if err := password.Validate(in.Body.NewPassword); err != nil {
+		return nil, huma.Error400BadRequest(err.Error())
 	}
 
-	var req changePasswordRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-
-	err := h.service.ChangePassword(r.Context(), principal.UserID(), req.OldPassword, req.NewPassword)
-	if err != nil {
-		if errors.Is(err, ErrInvalidCredentials) {
-			httpx.Unauthorized(w, r, "原密码错误")
-			return
-		}
-		// 密码强度不足属于客户端错误，回传具体原因以便用户修正。
-		httpx.BadRequest(w, r, err.Error())
-		return
+	err := h.service.ChangePassword(ctx, principal.UserID(), in.Body.OldPassword, in.Body.NewPassword)
+	switch {
+	case err == nil:
+	case errors.Is(err, ErrInvalidCredentials):
+		return nil, huma.Error401Unauthorized("原密码错误")
+	case errors.Is(err, ErrNotFound):
+		return nil, huma.Error401Unauthorized("需要登录")
+	default:
+		return nil, err
 	}
 
 	// 全部会话已失效，清除当前 Cookie 并要求重新登录。
-	h.sessions.ClearCookies(w)
-	w.WriteHeader(http.StatusNoContent)
+	return &clearCookiesOutput{SetCookie: h.sessions.ClearedCookies()}, nil
 }
 
-func (h *Handler) listTokens(w http.ResponseWriter, r *http.Request) {
-	principal := MustFromContext(r.Context())
-	tokens, err := h.tokens.ListForUser(r.Context(), principal.UserID())
+// ---------- 访问令牌 ----------
+
+// tokenList 是令牌列表响应体。
+type tokenList struct {
+	Items []AccessToken `json:"items"`
+}
+
+type tokenListOutput struct {
+	Body tokenList
+}
+
+func (h *Handler) listTokens(ctx context.Context, _ *struct{}) (*tokenListOutput, error) {
+	principal := MustFromContext(ctx)
+	tokens, err := h.tokens.ListForUser(ctx, principal.UserID())
 	if err != nil {
-		httpx.WriteError(w, r, err, h.logger)
-		return
+		return nil, err
 	}
-	httpx.WriteJSON(w, r, http.StatusOK, map[string]any{"items": tokens})
+	if tokens == nil {
+		tokens = []AccessToken{}
+	}
+	return &tokenListOutput{Body: tokenList{Items: tokens}}, nil
 }
 
-// createTokenRequest 是创建 PAT 的入参。
-type createTokenRequest struct {
-	Name   string   `json:"name"`
-	Scopes []string `json:"scopes"`
+// tokenRequest 是创建令牌的入参。
+type tokenRequest struct {
+	Name      string     `json:"name" minLength:"1" maxLength:"128" doc:"令牌名称，仅用于区分"`
+	Scopes    []string   `json:"scopes,omitempty" doc:"权限串子集；留空表示继承用户全部权限"`
+	ExpiresAt *time.Time `json:"expiresAt,omitempty" doc:"过期时间；留空表示永不过期"`
 }
 
-func (h *Handler) createToken(w http.ResponseWriter, r *http.Request) {
-	principal := MustFromContext(r.Context())
+type createTokenInput struct {
+	Body tokenRequest
+}
 
-	var req createTokenRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
+// issuedTokenView 是创建令牌的响应体。
+type issuedTokenView struct {
+	Token     AccessToken `json:"token"`
+	Plaintext string      `json:"plaintext" doc:"令牌明文，只在此刻返回一次，此后无法找回"`
+}
 
-	scopes, err := parseScopes(req.Scopes)
+type createTokenOutput struct {
+	Body issuedTokenView
+}
+
+func (h *Handler) createToken(ctx context.Context, in *createTokenInput) (*createTokenOutput, error) {
+	principal := MustFromContext(ctx)
+
+	scopes, err := parseScopes(in.Body.Scopes)
 	if err != nil {
-		httpx.BadRequest(w, r, err.Error())
-		return
+		return nil, huma.Error400BadRequest(err.Error())
+	}
+	if in.Body.ExpiresAt != nil && !in.Body.ExpiresAt.After(time.Now()) {
+		return nil, huma.Error400BadRequest("过期时间必须晚于当前时间")
 	}
 
-	issued, err := h.tokens.Create(r.Context(), &CreateTokenParams{
-		UserID: principal.UserID(),
-		Name:   req.Name,
-		Scopes: scopes,
+	issued, err := h.tokens.Create(ctx, &CreateTokenParams{
+		UserID:    principal.UserID(),
+		Name:      in.Body.Name,
+		Scopes:    scopes,
+		ExpiresAt: in.Body.ExpiresAt,
 	})
 	if err != nil {
-		httpx.BadRequest(w, r, err.Error())
-		return
+		return nil, err
 	}
 
 	// 明文只在此刻返回一次，之后无法找回。
-	httpx.WriteJSON(w, r, http.StatusCreated, map[string]any{
-		"token":     issued.Token,
-		"plaintext": issued.Plaintext,
-	})
+	return &createTokenOutput{Body: issuedTokenView{
+		Token:     *issued.Token,
+		Plaintext: issued.Plaintext,
+	}}, nil
 }
 
-func (h *Handler) revokeToken(w http.ResponseWriter, r *http.Request) {
-	principal := MustFromContext(r.Context())
+type tokenIDInput struct {
+	ID int64 `path:"id" minimum:"1" doc:"令牌 ID"`
+}
 
-	id, err := parseInt64(chi.URLParam(r, "id"))
-	if err != nil {
-		httpx.BadRequest(w, r, "令牌 ID 非法")
-		return
-	}
-
-	if err := h.tokens.Revoke(r.Context(), principal.UserID(), id); err != nil {
+func (h *Handler) revokeToken(ctx context.Context, in *tokenIDInput) (*struct{}, error) {
+	principal := MustFromContext(ctx)
+	if err := h.tokens.Revoke(ctx, principal.UserID(), in.ID); err != nil {
 		if errors.Is(err, ErrNotFound) {
-			httpx.NotFound(w, r, "令牌不存在")
-			return
+			return nil, huma.Error404NotFound("令牌不存在")
 		}
-		httpx.WriteError(w, r, err, h.logger)
-		return
+		return nil, err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return nil, nil //nolint:nilnil // 无响应体，huma 按 DefaultStatus 返回 204
 }
+
+// ---------- 视图 ----------
 
 // userView 是对外暴露的用户视图，显式列出字段以避免误传敏感数据。
 type userView struct {
@@ -236,16 +347,4 @@ func newUserView(u *User) userView {
 		AvatarURL:   u.AvatarURL,
 		Roles:       u.RoleNames(),
 	}
-}
-
-// decodeJSON 解析请求体；失败时已写出 400，返回 false。
-func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes))
-	// 拒绝未知字段：拼错的字段名应当报错，而不是被静默忽略。
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(dst); err != nil {
-		httpx.BadRequest(w, r, "请求体不是合法的 JSON 或包含未知字段")
-		return false
-	}
-	return true
 }

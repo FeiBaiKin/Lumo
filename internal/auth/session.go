@@ -142,9 +142,14 @@ func (s *SessionStore) Touch(ctx context.Context, session *Session) error {
 
 // Delete 按令牌明文删除会话（登出）。
 func (s *SessionStore) Delete(ctx context.Context, token string) error {
+	return s.DeleteByHash(ctx, HashToken(token))
+}
+
+// DeleteByHash 按令牌哈希删除会话，供已持有会话记录的调用方（如登出）使用。
+func (s *SessionStore) DeleteByHash(ctx context.Context, tokenHash string) error {
 	_, err := s.db.NewDelete().
 		Model((*Session)(nil)).
-		Where("token_hash = ?", HashToken(token)).
+		Where("token_hash = ?", tokenHash).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("删除会话: %w", err)

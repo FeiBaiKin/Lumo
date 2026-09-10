@@ -1,6 +1,7 @@
 package httpx
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -122,6 +123,8 @@ func (r *ClientIPResolver) Middleware(next http.Handler) http.Handler {
 		req.Header.Del(ClientIPHeader)
 		if ip := r.ClientIP(req); ip != "" {
 			req.Header.Set(ClientIPHeader, ip)
+			// 同时放进 context：huma 处理器只拿得到 context.Context，拿不到 *http.Request。
+			req = req.WithContext(context.WithValue(req.Context(), clientIPKey{}, ip))
 		}
 		next.ServeHTTP(w, req)
 	})
@@ -129,6 +132,15 @@ func (r *ClientIPResolver) Middleware(next http.Handler) http.Handler {
 
 // ClientIPHeader 是内部传递客户端 IP 的请求头名。
 const ClientIPHeader = "X-Lumo-Client-IP"
+
+// clientIPKey 是 context 中客户端 IP 的键。
+type clientIPKey struct{}
+
+// ClientIPFromContext 读取中间件注入 context 的客户端 IP；未经过中间件时返回空串。
+func ClientIPFromContext(ctx context.Context) string {
+	ip, _ := ctx.Value(clientIPKey{}).(string)
+	return ip
+}
 
 // ClientIPFrom 读取中间件注入的客户端 IP，缺失时回退到直连对端。
 func ClientIPFrom(req *http.Request) string {

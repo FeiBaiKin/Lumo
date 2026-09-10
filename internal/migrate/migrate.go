@@ -1,9 +1,15 @@
 // Package migrate 封装 goose 迁移的执行与并发保护。
 //
-// 关键设计：启动自动迁移必须带锁（agent.md §9）。多实例同时启动时，
-// 无锁会让两个进程并发执行同一批 DDL，轻则报错、重则留下半成品 schema。
-// 这里用 PostgreSQL 的会话级 advisory lock 做互斥：拿不到锁的实例等待，
-// 而不是跳过迁移（跳过会让实例在旧 schema 上运行，问题更隐蔽）。
+// 两条关键设计：
+//
+//  1. 启动自动迁移必须带锁（agent.md §9）。多实例同时启动时，无锁会让两个进程
+//     并发执行同一批 DDL，轻则报错、重则留下半成品 schema。这里用 PostgreSQL 的
+//     会话级 advisory lock 做互斥：拿不到锁的实例等待，而不是跳过迁移（跳过会让
+//     实例在旧 schema 上运行，问题更隐蔽）。
+//  2. 核心与每个模块是独立的迁移来源，各有自己的版本表。插件生态里不可能协调
+//     全局唯一的迁移编号，模块只需在自己的序列内递增。
+//
+// 实现基于 goose 的 Provider（实例级、无包级全局状态），并发构造多个 Migrator 也安全。
 package migrate
 
 import (
@@ -13,6 +19,8 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/pressly/goose/v3"
@@ -22,106 +30,235 @@ import (
 // 同一实例内所有 Lumo 进程共用它，故不可与其他项目冲突——取值刻意选得足够特异。
 const advisoryLockID int64 = 0x4C554D4F4D4947 // "LUMOMIG"
 
-// dialect 固定为 postgres：agent.md §2 明确只支持 PostgreSQL。
-const dialect = "postgres"
+// CoreName 是核心迁移来源的名称。
+//
+// 它的版本表沿用 goose 默认名 goose_db_version，以兼容阶段 1、2 已迁移过的库。
+const CoreName = "core"
 
-// Migrator 执行迁移。
-type Migrator struct {
-	db     *sql.DB
-	fsys   fs.FS
-	logger *slog.Logger
+const (
+	coreTable         = "goose_db_version"
+	moduleTablePrefix = "goose_db_version_"
+)
+
+// sourceNamePattern 限定来源名形态：它会拼进版本表名，必须是安全的标识符。
+var sourceNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,40}$`)
+
+// Source 是一个迁移来源：核心或某个模块。
+//
+// FS 的根目录直接包含 goose SQL 文件（goose 不递归子目录，需要时用 fs.Sub 定位）。
+type Source struct {
+	Name string
+	FS   fs.FS
 }
 
-// New 构造 Migrator。fsys 为携带 SQL 文件的文件系统，logger 可为 nil。
-func New(db *sql.DB, fsys fs.FS, logger *slog.Logger) (*Migrator, error) {
+// Status 是一条迁移的应用状态。
+type Status struct {
+	Source    string
+	Version   int64
+	Path      string
+	Applied   bool
+	AppliedAt time.Time
+}
+
+// Migrator 按来源顺序执行迁移。
+type Migrator struct {
+	db      *sql.DB
+	sources []Source
+	logger  *slog.Logger
+}
+
+// New 构造 Migrator。sources 按给定顺序执行，核心应放在最前；logger 可为 nil。
+func New(db *sql.DB, sources []Source, logger *slog.Logger) (*Migrator, error) {
 	if db == nil {
 		return nil, errors.New("migrate: db 不能为 nil")
 	}
-	if fsys == nil {
-		return nil, errors.New("migrate: fsys 不能为 nil")
+	if len(sources) == 0 {
+		return nil, errors.New("migrate: 至少需要一个迁移来源")
 	}
-	if err := goose.SetDialect(dialect); err != nil {
-		return nil, fmt.Errorf("设置 goose 方言: %w", err)
+	seen := make(map[string]bool, len(sources))
+	for _, src := range sources {
+		if !sourceNamePattern.MatchString(src.Name) {
+			return nil, fmt.Errorf("migrate: 非法的迁移来源名 %q", src.Name)
+		}
+		if src.FS == nil {
+			return nil, fmt.Errorf("migrate: 来源 %q 的文件系统为 nil", src.Name)
+		}
+		if seen[src.Name] {
+			return nil, fmt.Errorf("migrate: 迁移来源 %q 重复", src.Name)
+		}
+		seen[src.Name] = true
 	}
-	return &Migrator{db: db, fsys: fsys, logger: logger}, nil
+	return &Migrator{db: db, sources: sources, logger: logger}, nil
 }
 
-// Up 执行所有待应用的迁移，全程持有互斥锁。
+// TableName 返回来源对应的版本表名。
+func TableName(source string) string {
+	if source == CoreName {
+		return coreTable
+	}
+	return moduleTablePrefix + strings.ReplaceAll(source, "-", "_")
+}
+
+// Sources 返回来源名列表，顺序即执行顺序。
+func (m *Migrator) Sources() []string {
+	names := make([]string, 0, len(m.sources))
+	for _, src := range m.sources {
+		names = append(names, src.Name)
+	}
+	return names
+}
+
+// Up 按来源顺序应用所有待执行的迁移，全程持有互斥锁。
 func (m *Migrator) Up(ctx context.Context) error {
-	return m.withLock(ctx, func(conn *sql.Conn) error {
-		before, err := m.version(ctx)
-		if err != nil {
-			return err
-		}
-
-		goose.SetBaseFS(m.fsys)
-		defer goose.SetBaseFS(nil)
-		if upErr := goose.UpContext(ctx, m.db, "."); upErr != nil {
-			return fmt.Errorf("执行迁移: %w", upErr)
-		}
-
-		after, err := m.version(ctx)
-		if err != nil {
-			return err
-		}
-		if m.logger != nil {
-			if before == after {
-				m.logger.Info("数据库 schema 已是最新", slog.Int64("version", after))
-			} else {
-				m.logger.Info("迁移完成",
-					slog.Int64("from", before),
-					slog.Int64("to", after))
+	return m.withLock(ctx, func() error {
+		for _, src := range m.sources {
+			provider, err := m.provider(src)
+			if err != nil {
+				return err
 			}
+			results, err := provider.Up(ctx)
+			if err != nil {
+				return fmt.Errorf("执行来源 %q 的迁移: %w", src.Name, err)
+			}
+			version, err := provider.GetDBVersion(ctx)
+			if err != nil {
+				return fmt.Errorf("读取来源 %q 的版本: %w", src.Name, err)
+			}
+			if m.logger == nil {
+				continue
+			}
+			if len(results) == 0 {
+				m.logger.Info("数据库 schema 已是最新",
+					slog.String("source", src.Name),
+					slog.Int64("version", version))
+				continue
+			}
+			m.logger.Info("迁移完成",
+				slog.String("source", src.Name),
+				slog.Int64("from", version-int64(len(results))),
+				slog.Int64("to", version),
+				slog.Int("applied", len(results)))
 		}
 		return nil
 	})
 }
 
-// Down 回滚最后一个迁移。仅供开发排错，生产不应使用。
-func (m *Migrator) Down(ctx context.Context) error {
-	return m.withLock(ctx, func(conn *sql.Conn) error {
-		goose.SetBaseFS(m.fsys)
-		defer goose.SetBaseFS(nil)
-		if err := goose.DownContext(ctx, m.db, "."); err != nil {
-			return fmt.Errorf("回滚迁移: %w", err)
-		}
-		return nil
-	})
-}
-
-// Status 打印各迁移的应用状态。
-func (m *Migrator) Status(ctx context.Context) error {
-	goose.SetBaseFS(m.fsys)
-	defer goose.SetBaseFS(nil)
-	if err := goose.StatusContext(ctx, m.db, "."); err != nil {
-		return fmt.Errorf("查询迁移状态: %w", err)
-	}
-	return nil
-}
-
-// Version 返回当前已应用的最新迁移版本号。
-func (m *Migrator) Version(ctx context.Context) (int64, error) {
-	return m.version(ctx)
-}
-
-// version 读取当前 schema 版本；迁移表尚不存在时视为 0。
-func (m *Migrator) version(ctx context.Context) (int64, error) {
-	goose.SetBaseFS(m.fsys)
-	defer goose.SetBaseFS(nil)
-
-	v, err := goose.GetDBVersionContext(ctx, m.db)
+// Down 回滚指定来源的最后一个迁移；source 为空时取核心。仅供开发排错，生产不应使用。
+func (m *Migrator) Down(ctx context.Context, source string) error {
+	src, err := m.find(source)
 	if err != nil {
-		// 首次运行时 goose 版本表不存在，视为版本 0 而非失败。
-		return 0, nil //nolint:nilerr // 首次迁移前无版本表属正常状态
+		return err
 	}
-	return v, nil
+	return m.withLock(ctx, func() error {
+		provider, err := m.provider(src)
+		if err != nil {
+			return err
+		}
+		current, err := provider.GetDBVersion(ctx)
+		if err != nil {
+			return fmt.Errorf("读取来源 %q 的版本: %w", src.Name, err)
+		}
+		if current == 0 {
+			if m.logger != nil {
+				m.logger.Info("没有可回滚的迁移", slog.String("source", src.Name))
+			}
+			return nil
+		}
+		result, err := provider.Down(ctx)
+		if err != nil {
+			if errors.Is(err, goose.ErrNoNextVersion) {
+				return nil
+			}
+			return fmt.Errorf("回滚来源 %q 的迁移: %w", src.Name, err)
+		}
+		if m.logger != nil && result != nil && result.Source != nil {
+			m.logger.Info("已回滚迁移",
+				slog.String("source", src.Name),
+				slog.Int64("version", result.Source.Version),
+				slog.String("file", result.Source.Path))
+		}
+		return nil
+	})
+}
+
+// Status 返回全部来源中每个迁移的应用状态，按来源顺序、版本升序排列。
+func (m *Migrator) Status(ctx context.Context) ([]Status, error) {
+	var out []Status
+	for _, src := range m.sources {
+		provider, err := m.provider(src)
+		if err != nil {
+			return nil, err
+		}
+		statuses, err := provider.Status(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("查询来源 %q 的迁移状态: %w", src.Name, err)
+		}
+		for _, st := range statuses {
+			if st == nil || st.Source == nil {
+				continue
+			}
+			out = append(out, Status{
+				Source:    src.Name,
+				Version:   st.Source.Version,
+				Path:      st.Source.Path,
+				Applied:   st.State == goose.StateApplied,
+				AppliedAt: st.AppliedAt,
+			})
+		}
+	}
+	return out, nil
+}
+
+// Version 返回指定来源当前已应用的最新迁移版本号；source 为空时取核心。
+// 版本表尚不存在时返回 0。
+func (m *Migrator) Version(ctx context.Context, source string) (int64, error) {
+	src, err := m.find(source)
+	if err != nil {
+		return 0, err
+	}
+	provider, err := m.provider(src)
+	if err != nil {
+		return 0, err
+	}
+	version, err := provider.GetDBVersion(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("读取来源 %q 的版本: %w", src.Name, err)
+	}
+	return version, nil
+}
+
+// provider 为来源构造 goose Provider。Provider 不持有连接，无需关闭；
+// 切勿调用其 Close——那会关掉共享的连接池。
+func (m *Migrator) provider(src Source) (*goose.Provider, error) {
+	provider, err := goose.NewProvider(goose.DialectPostgres, m.db, src.FS,
+		goose.WithTableName(TableName(src.Name)))
+	if err != nil {
+		if errors.Is(err, goose.ErrNoMigrations) {
+			return nil, fmt.Errorf("迁移来源 %q 没有任何迁移文件", src.Name)
+		}
+		return nil, fmt.Errorf("构造迁移来源 %q: %w", src.Name, err)
+	}
+	return provider, nil
+}
+
+// find 按名称查找来源，空名取核心。
+func (m *Migrator) find(name string) (Source, error) {
+	if name == "" {
+		name = CoreName
+	}
+	for _, src := range m.sources {
+		if src.Name == name {
+			return src, nil
+		}
+	}
+	return Source{}, fmt.Errorf("migrate: 未知的迁移来源 %q（可用：%s）", name, strings.Join(m.Sources(), ", "))
 }
 
 // withLock 在持有 advisory lock 的独占连接上执行 fn。
 //
 // 用 pg_advisory_lock 而非 pg_try_advisory_lock：拿不到锁时应当等待其他实例
 // 完成迁移，而不是放弃后在旧 schema 上启动。等待上限由 ctx 控制。
-func (m *Migrator) withLock(ctx context.Context, fn func(conn *sql.Conn) error) error {
+func (m *Migrator) withLock(ctx context.Context, fn func() error) error {
 	// advisory lock 是会话级的，必须锁定到同一条连接上，否则解锁会打在别的会话。
 	conn, err := m.db.Conn(ctx)
 	if err != nil {
@@ -152,5 +289,5 @@ func (m *Migrator) withLock(ctx context.Context, fn func(conn *sql.Conn) error) 
 		}
 	}()
 
-	return fn(conn)
+	return fn()
 }

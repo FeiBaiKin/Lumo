@@ -22,6 +22,9 @@ type Principal struct {
 	Method AuthMethod
 	// TokenID 仅在 Method 为 MethodToken 时有值。
 	TokenID int64
+	// Session 仅在 Method 为 MethodSession 时由鉴权中间件填充，
+	// 供登出与 CSRF 校验直接使用，免去再次查库。
+	Session *Session
 
 	// permissions 是本次调用的**有效**权限：
 	// 会话认证时等于用户权限；令牌认证时为用户权限与令牌 scope 的交集。

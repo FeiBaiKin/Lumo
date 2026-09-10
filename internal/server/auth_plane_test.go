@@ -1,11 +1,13 @@
 package server
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 // 本文件验证三平面的鉴权**接线**是否正确。
@@ -20,6 +22,31 @@ type stubAuthenticator struct{}
 func (stubAuthenticator) Middleware(next http.Handler) http.Handler { return next }
 func (stubAuthenticator) CSRF(next http.Handler) http.Handler       { return next }
 
+// secretOutput 模拟受保护的响应。
+type secretOutput struct {
+	Body struct {
+		Secret string `json:"secret"`
+	}
+}
+
+// registerSecret 在给定注册面挂一个返回敏感内容的操作，且**不**自行加鉴权。
+func registerSecret(target huma.API, id, method, path string) {
+	huma.Register(target, huma.Operation{OperationID: id, Method: method, Path: path},
+		func(context.Context, *struct{}) (*secretOutput, error) {
+			out := &secretOutput{}
+			out.Body.Secret = "secret"
+			return out, nil
+		})
+}
+
+func serve(t *testing.T, root http.Handler, method, target string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), method, target, http.NoBody)
+	rec := httptest.NewRecorder()
+	root.ServeHTTP(rec, req)
+	return rec
+}
+
 // TestConsolePlaneRequiresAuthByDefault 是本文件最重要的测试。
 //
 // 历史背景：Console 平面曾不挂 RequireAuth，仅靠 serve.go 给认证端点
@@ -28,53 +55,28 @@ func (stubAuthenticator) CSRF(next http.Handler) http.Handler       { return nex
 func TestConsolePlaneRequiresAuthByDefault(t *testing.T) {
 	t.Parallel()
 
-	// Authenticator 为 nil 时不挂鉴权中间件，故这里需要一个非 nil 的实例。
-	// 用真实构造器但依赖为空：本测试只走「无凭据」路径，不会触库。
-	authenticator := stubAuthenticator{}
+	root, planes := NewRouter(&Options{Authenticator: stubAuthenticator{}})
+	registerSecret(planes.Console(), "admin-only", http.MethodGet, "/admin-only")
 
-	root, planes := NewRouter(&Options{Authenticator: authenticator})
-
-	// 模拟模块往 Console 平面注册一个后台接口，**不**自行加鉴权。
-	planes.Console(func(r chi.Router) {
-		r.Get("/admin-only", func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("secret"))
-		})
-	})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, PrefixConsole+"/admin-only", http.NoBody)
-	root.ServeHTTP(rec, req)
-
+	rec := serve(t, root, http.MethodGet, PrefixConsole+"/admin-only")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("Console 平面未默认要求认证：状态码 = %d，期望 401", rec.Code)
 	}
-	if rec.Body.String() == "secret" {
+	if strings.Contains(rec.Body.String(), "secret") {
 		t.Fatal("未认证请求读到了受保护内容")
 	}
 }
 
-// TestPublicConsoleRoutesBypassAuth 验证免认证入口仍然可用。
-func TestPublicConsoleRoutesBypassAuth(t *testing.T) {
+// TestConsolePublicBypassesAuth 验证免认证注册面仍然可用（登录端点所在）。
+func TestConsolePublicBypassesAuth(t *testing.T) {
 	t.Parallel()
 
-	authenticator := stubAuthenticator{}
+	root, planes := NewRouter(&Options{Authenticator: stubAuthenticator{}})
+	registerSecret(planes.ConsolePublic(), "login", http.MethodPost, "/auth/login")
 
-	root, _ := NewRouter(&Options{
-		Authenticator: authenticator,
-		PublicConsoleRoutes: func(r chi.Router) {
-			r.Post("/auth/login", func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte("login"))
-			})
-		},
-	})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, PrefixConsole+"/auth/login", http.NoBody)
-	root.ServeHTTP(rec, req)
-
+	rec := serve(t, root, http.MethodPost, PrefixConsole+"/auth/login")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("免认证端点被拦截：状态码 = %d，期望 200", rec.Code)
+		t.Fatalf("免认证端点被拦截：状态码 = %d，期望 200：%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -82,19 +84,10 @@ func TestPublicConsoleRoutesBypassAuth(t *testing.T) {
 func TestExtensionPlaneRequiresAuth(t *testing.T) {
 	t.Parallel()
 
-	authenticator := stubAuthenticator{}
-	root, planes := NewRouter(&Options{Authenticator: authenticator})
+	root, planes := NewRouter(&Options{Authenticator: stubAuthenticator{}})
+	registerSecret(planes.Extension(), "ext-posts", http.MethodGet, "/posts")
 
-	planes.Extension(func(r chi.Router) {
-		r.Get("/posts", func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("secret"))
-		})
-	})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, PrefixExtension+"/posts", http.NoBody)
-	root.ServeHTTP(rec, req)
-
+	rec := serve(t, root, http.MethodGet, PrefixExtension+"/posts")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("Extension 平面未要求认证：状态码 = %d，期望 401", rec.Code)
 	}
@@ -104,19 +97,10 @@ func TestExtensionPlaneRequiresAuth(t *testing.T) {
 func TestPublicPlaneAllowsAnonymous(t *testing.T) {
 	t.Parallel()
 
-	authenticator := stubAuthenticator{}
-	root, planes := NewRouter(&Options{Authenticator: authenticator})
+	root, planes := NewRouter(&Options{Authenticator: stubAuthenticator{}})
+	registerSecret(planes.Public(), "public-posts", http.MethodGet, "/posts")
 
-	planes.Public(func(r chi.Router) {
-		r.Get("/posts", func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("published"))
-		})
-	})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, PrefixPublic+"/posts", http.NoBody)
-	root.ServeHTTP(rec, req)
-
+	rec := serve(t, root, http.MethodGet, PrefixPublic+"/posts")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Public 平面应允许匿名访问：状态码 = %d，期望 200", rec.Code)
 	}
@@ -129,41 +113,24 @@ func TestPublicPlaneAllowsAnonymous(t *testing.T) {
 func TestAnonymousWriteReturns401NotForbidden(t *testing.T) {
 	t.Parallel()
 
-	authenticator := stubAuthenticator{}
-	root, planes := NewRouter(&Options{Authenticator: authenticator})
+	root, planes := NewRouter(&Options{Authenticator: stubAuthenticator{}})
+	registerSecret(planes.Console(), "create-post", http.MethodPost, "/posts")
 
-	planes.Console(func(r chi.Router) {
-		r.Post("/posts", func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("created"))
-		})
-	})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, PrefixConsole+"/posts", http.NoBody)
-	root.ServeHTTP(rec, req)
-
+	rec := serve(t, root, http.MethodPost, PrefixConsole+"/posts")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("匿名写请求状态码 = %d，期望 401", rec.Code)
 	}
 }
 
 // TestNilAuthenticatorKeepsSkeletonUsable 验证未配置认证时路由骨架仍可用，
-// 便于阶段 1 的骨架测试与诊断端点。
+// 便于骨架测试与诊断端点。
 func TestNilAuthenticatorKeepsSkeletonUsable(t *testing.T) {
 	t.Parallel()
 
 	root, planes := NewRouter(&Options{})
+	registerSecret(planes.Console(), "open", http.MethodGet, "/open")
 
-	planes.Console(func(r chi.Router) {
-		r.Get("/open", func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("open"))
-		})
-	})
-
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, PrefixConsole+"/open", http.NoBody)
-	root.ServeHTTP(rec, req)
-
+	rec := serve(t, root, http.MethodGet, PrefixConsole+"/open")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("未配置认证时骨架应放行：状态码 = %d", rec.Code)
 	}

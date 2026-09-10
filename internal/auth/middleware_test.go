@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humachi"
+
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
@@ -63,24 +66,43 @@ func TestRequireAuth(t *testing.T) {
 	})
 }
 
+// runPermission 用 huma 上下文执行权限中间件；放行时 next 写出 200 "ok"。
+func runPermission(t *testing.T, principal *auth.Principal, permissions ...perm.Permission) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/console/users", http.NoBody)
+	if principal != nil {
+		req = req.WithContext(auth.WithPrincipal(req.Context(), principal))
+	}
+	rec := httptest.NewRecorder()
+	ctx := humachi.NewContext(&huma.Operation{OperationID: "test"}, req, rec)
+
+	auth.RequirePermission(permissions...)(ctx, func(c huma.Context) {
+		c.SetStatus(http.StatusOK)
+		_, _ = c.BodyWriter().Write([]byte("ok"))
+	})
+	return rec
+}
+
 func TestRequirePermission(t *testing.T) {
 	t.Parallel()
 
 	t.Run("匿名请求返回 401 而非 403", func(t *testing.T) {
 		t.Parallel()
-		handler := auth.RequirePermission(perm.PostsWrite)(okHandler())
-		rec := serveWith(t, nil, handler)
+		rec := runPermission(t, nil, perm.PostsWrite)
 
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("状态码 = %d，期望 401（未认证应优先于无权限）", rec.Code)
+		}
+		if ct := rec.Header().Get("Content-Type"); ct != httpx.ContentTypeProblem {
+			t.Errorf("Content-Type = %q，期望 %q", ct, httpx.ContentTypeProblem)
 		}
 	})
 
 	t.Run("权限不足返回 403 并列出所需权限", func(t *testing.T) {
 		t.Parallel()
-		handler := auth.RequirePermission(perm.UsersManage)(okHandler())
 		principal := auth.NewSessionPrincipal(testUser(1, "author", perm.PostsWrite))
-		rec := serveWith(t, principal, handler)
+		rec := runPermission(t, principal, perm.UsersManage)
 
 		if rec.Code != http.StatusForbidden {
 			t.Fatalf("状态码 = %d，期望 403", rec.Code)
@@ -98,20 +120,21 @@ func TestRequirePermission(t *testing.T) {
 
 	t.Run("持有权限则放行", func(t *testing.T) {
 		t.Parallel()
-		handler := auth.RequirePermission(perm.UsersManage)(okHandler())
 		principal := auth.NewSessionPrincipal(testUser(1, "admin", perm.UsersManage))
-		rec := serveWith(t, principal, handler)
+		rec := runPermission(t, principal, perm.UsersManage)
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("状态码 = %d，期望 200", rec.Code)
+		}
+		if rec.Body.String() != "ok" {
+			t.Errorf("响应体 = %q", rec.Body.String())
 		}
 	})
 
 	t.Run("满足其一即可", func(t *testing.T) {
 		t.Parallel()
-		handler := auth.RequirePermission(perm.UsersManage, perm.RolesManage)(okHandler())
 		principal := auth.NewSessionPrincipal(testUser(1, "admin", perm.RolesManage))
-		rec := serveWith(t, principal, handler)
+		rec := runPermission(t, principal, perm.UsersManage, perm.RolesManage)
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("状态码 = %d，期望 200", rec.Code)
@@ -122,14 +145,35 @@ func TestRequirePermission(t *testing.T) {
 		t.Parallel()
 		// author 持有 posts:write 但只能操作自己的对象；
 		// 中间件只检查「是否直接持有」，所有权由处理器负责。
-		handler := auth.RequirePermission(perm.PostsWrite)(okHandler())
 		principal := auth.NewSessionPrincipal(testUser(1, "author", perm.PostsWrite))
-		rec := serveWith(t, principal, handler)
+		rec := runPermission(t, principal, perm.PostsWrite)
 
 		if rec.Code != http.StatusOK {
 			t.Fatalf("状态码 = %d，期望 200", rec.Code)
 		}
 	})
+}
+
+// TestForbiddenProblemCarriesPermissions 验证处理器内所有权判定失败时返回的错误可直接给 huma。
+func TestForbiddenProblemCarriesPermissions(t *testing.T) {
+	t.Parallel()
+
+	problem := auth.ForbiddenProblem(perm.PostsDeleteAny)
+	if problem.GetStatus() != http.StatusForbidden {
+		t.Errorf("状态码 = %d", problem.GetStatus())
+	}
+	raw, err := json.Marshal(problem)
+	if err != nil {
+		t.Fatalf("序列化失败: %v", err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("解析失败: %v", err)
+	}
+	required, ok := body["requiredPermissions"].([]any)
+	if !ok || len(required) != 1 || required[0] != "posts:delete_any" {
+		t.Errorf("requiredPermissions = %v", body["requiredPermissions"])
+	}
 }
 
 func TestBearerToken(t *testing.T) {

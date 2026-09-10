@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
@@ -26,9 +25,4 @@ func parseScopes(raw []string) ([]perm.Permission, error) {
 		scopes = append(scopes, p)
 	}
 	return scopes, nil
-}
-
-// parseInt64 解析路径参数中的整数 ID。
-func parseInt64(raw string) (int64, error) {
-	return strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
 }

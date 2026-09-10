@@ -16,6 +16,8 @@ import (
 //
 // 模块只通过 App 获取依赖并注册能力，不直接互相引用——这是编译期插件形态
 // 的关键约束，也是 v2 换成进程外插件时唯一需要替换的接缝。
+//
+// 生命周期：New → Register（装配）→ 迁移 → Start（播种、后台任务）→ 对外服务 → Close。
 type App struct {
 	cfg    config.Config
 	db     *database.DB
@@ -31,7 +33,7 @@ type App struct {
 	hooks       []Hook
 }
 
-// NamedFS 是带来源模块名的迁移文件系统，便于错误定位。
+// NamedFS 是带来源模块名的迁移文件系统，便于错误定位与版本表命名。
 type NamedFS struct {
 	Module string
 	FS     fs.FS
@@ -43,6 +45,7 @@ type Options struct {
 	// DB 可为 nil：不需要数据库的命令（如仅渲染帮助）也应能构造 App。
 	DB     *database.DB
 	Logger *slog.Logger
+	// Router 可为 nil：migrate 等非 HTTP 场景不注册接口。
 	Router Router
 }
 
@@ -69,7 +72,7 @@ func (a *App) DB() *database.DB { return a.db }
 // Logger 返回应用日志器。
 func (a *App) Logger() *slog.Logger { return a.logger }
 
-// Router 返回三平面路由注册面，可能为 nil（非 HTTP 场景）。
+// Router 返回三平面注册面，可能为 nil（非 HTTP 场景）。
 func (a *App) Router() Router { return a.router }
 
 // Modules 返回已注册模块的名称，顺序即注册顺序。
@@ -81,7 +84,7 @@ func (a *App) Modules() []string {
 	return names
 }
 
-// Migrations 返回所有模块贡献的迁移文件系统。
+// Migrations 返回所有模块贡献的迁移文件系统，顺序即注册顺序。
 func (a *App) Migrations() []NamedFS { return a.migrations }
 
 // Settings 返回所有模块注册的设置分组。
@@ -156,9 +159,22 @@ func (a *App) collectCapabilities(module Module) {
 	}
 }
 
-// Closer 是需要在应用关闭时释放资源的模块可选能力。
-type Closer interface {
-	Close(ctx context.Context) error
+// Start 按注册顺序启动实现了 Starter 的模块。
+//
+// 必须在迁移完成之后调用：Start 是模块第一次被允许访问数据库的时机。
+// 任一模块启动失败即整体失败。
+func (a *App) Start(ctx context.Context) error {
+	for _, module := range a.modules {
+		starter, ok := module.(Starter)
+		if !ok {
+			continue
+		}
+		if err := starter.Start(ctx); err != nil {
+			return fmt.Errorf("启动模块 %q: %w", module.Name(), err)
+		}
+		a.logger.Debug("模块已启动", slog.String("module", module.Name()))
+	}
+	return nil
 }
 
 // Close 逆序关闭实现了 Closer 的模块。

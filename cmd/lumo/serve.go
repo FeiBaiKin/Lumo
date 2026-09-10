@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/FeiBaiKin/lumo/internal/api"
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/config"
@@ -23,10 +24,12 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/server"
 	"github.com/FeiBaiKin/lumo/internal/version"
 	"github.com/FeiBaiKin/lumo/internal/workdir"
-	"github.com/FeiBaiKin/lumo/migrations"
 )
 
 // runServe 启动 HTTP 服务。
+//
+// 生命周期：配置 → 数据库 → 路由与认证栈 → 模块装配 → 迁移 → 播种与模块启动 → 对外服务。
+// 迁移必须在模块启动之前：Start 是模块第一次被允许访问数据库的时机。
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	configPath := fs.String("config", "", "配置文件路径，默认按序尝试 ./config.yaml、./config.yml")
@@ -86,23 +89,8 @@ func runServe(args []string) error {
 	logger.Info("数据库已连接", slog.String("dsn", cfg.RedactedDSN()))
 	db.LogInfo(ctx, logger)
 
-	if cfg.Database.AutoMigrate {
-		migrator, migErr := migrate.New(db.SQLDB(), migrations.FS, logger)
-		if migErr != nil {
-			return migErr
-		}
-		if upErr := migrator.Up(ctx); upErr != nil {
-			return upErr
-		}
-	} else {
-		logger.Warn("已跳过自动迁移，schema 可能落后于当前版本")
-	}
-
-	// 认证栈。内置角色每次启动都以代码为准同步，确保升级后新增权限生效。
+	// 认证栈。构造不触库，可以在迁移之前完成。
 	users := auth.NewStore(db.DB)
-	if seedErr := users.SeedRoles(ctx); seedErr != nil {
-		return seedErr
-	}
 	sessions := auth.NewSessionStore(db.DB, cfg.Server.SecureCookies)
 	tokens := auth.NewTokenStore(db.DB)
 	authService := auth.NewService(users, sessions, tokens, logger)
@@ -110,9 +98,6 @@ func runServe(args []string) error {
 
 	if !cfg.Server.SecureCookies {
 		logger.Warn("会话 Cookie 未启用 Secure，仅适用于本地 HTTP 开发；生产环境请设 LUMO_SECURE_COOKIES=true")
-	}
-	if count, cErr := users.CountUsers(ctx); cErr == nil && count == 0 {
-		logger.Warn("尚无任何用户，请执行 lumo admin create-user 创建初始管理员")
 	}
 
 	clientIP, err := httpx.NewClientIPResolver(cfg.Server.TrustedProxies)
@@ -123,36 +108,50 @@ func runServe(args []string) error {
 		logger.Info("未配置可信代理，将忽略 X-Forwarded-For 并使用直连地址")
 	}
 
-	// 认证端点的处理器。
-	authHandler := auth.NewHandler(authService, sessions, tokens, logger)
-
 	root, planes := server.NewRouter(&server.Options{
 		Logger:        logger,
 		Authenticator: authenticator,
 		ClientIP:      clientIP,
-		// 登录是 Console 平面下唯一无需认证的端点。
-		PublicConsoleRoutes: func(r chi.Router) {
-			authHandler.RegisterPublic(r)
-		},
+		Version:       info.Version,
 	})
 
-	// Console 平面默认要求已认证，此处只需注册路由本身。
-	planes.Console(func(r chi.Router) {
-		authHandler.RegisterAuthenticated(r)
-	})
+	// 认证端点由核心提供：登录走免认证注册面，其余走强制认证注册面。
+	auth.NewHandler(authService, sessions, tokens, logger).Register(planes.ConsolePublic(), planes.Console())
 
-	// 后台定期清理过期会话。
-	go authService.StartSessionCleanup(ctx, time.Hour)
-
+	// 功能模块装配。此时只注册能力与接口，不访问数据库。
 	application := app.New(&app.Options{
 		Config: cfg,
 		DB:     db,
 		Logger: logger,
 		Router: planes,
 	})
-	// 阶段 2 的认证能力直接由核心提供；功能模块从阶段 3 起在此注册。
-	if regErr := application.Register(); regErr != nil {
+	if regErr := application.Register(modules()...); regErr != nil {
 		return regErr
+	}
+
+	if cfg.Database.AutoMigrate {
+		migrator, migErr := migrate.New(db.SQLDB(), migrationSources(application), logger)
+		if migErr != nil {
+			return migErr
+		}
+		if upErr := migrator.Up(ctx); upErr != nil {
+			return upErr
+		}
+	} else {
+		logger.Warn("已跳过自动迁移，schema 可能落后于当前版本")
+	}
+
+	// 内置角色每次启动都以代码为准同步，确保升级后新增权限生效。
+	if seedErr := users.SeedRoles(ctx); seedErr != nil {
+		return seedErr
+	}
+	if count, cErr := users.CountUsers(ctx); cErr == nil && count == 0 {
+		logger.Warn("尚无任何用户，请执行 lumo admin create-user 创建初始管理员")
+	}
+
+	// 迁移完成，模块可以开始播种数据、启动后台任务。
+	if startErr := application.Start(ctx); startErr != nil {
+		return startErr
 	}
 	defer func() {
 		closeCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
@@ -162,7 +161,13 @@ func runServe(args []string) error {
 		}
 	}()
 
+	// 后台定期清理过期会话。
+	go authService.StartSessionCleanup(ctx, time.Hour)
+
 	registerHealth(root, db, &info)
+	logger.Info("API 规范与文档已就绪",
+		slog.String("openapi", api.OpenAPIPath+".json"),
+		slog.String("docs", api.DocsPath))
 
 	srv := server.New(root, &cfg.Server, logger)
 	if err := srv.Run(ctx); err != nil {
@@ -175,6 +180,7 @@ func runServe(args []string) error {
 // registerHealth 挂载健康检查端点。
 //
 // /healthz 只报进程存活；/readyz 额外探测数据库，用于负载均衡摘流判断。
+// 它们是运维探针而非业务接口，故不进 OpenAPI 文档。
 func registerHealth(root chi.Router, db *database.DB, info *version.Info) {
 	root.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, r, http.StatusOK, map[string]any{
