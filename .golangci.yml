@@ -1,0 +1,77 @@
+# golangci-lint 配置（v2 schema）
+# 安装：go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  # 默认集为 errcheck / govet / ineffassign / staticcheck / unused。
+  default: standard
+  enable:
+    - bodyclose      # HTTP 响应体必须关闭
+    - copyloopvar    # 循环变量复制检查
+    - durationcheck  # 时间单位误乘
+    - errorlint      # 错误包装与比较方式
+    - gocritic       # 综合代码质量诊断
+    - goconst        # 重复字面量
+    - misspell       # 英文拼写
+    - nilerr         # err != nil 却返回 nil
+    - noctx          # 缺少 context 的请求
+    - revive         # 风格与命名
+    - rowserrcheck   # database/sql 行遍历错误
+    - sqlclosecheck  # SQL 资源关闭
+    - unconvert      # 冗余类型转换
+    - unparam        # 未使用的参数
+    - usetesting     # 测试辅助函数用法
+    - whitespace     # 多余空行
+
+  settings:
+    errcheck:
+      # 显式忽略这些写入类调用的返回值：HTTP 响应写入失败无从恢复。
+      exclude-functions:
+        - (net/http.ResponseWriter).Write
+        - fmt.Fprintf
+        - fmt.Fprint
+        - fmt.Fprintln
+    govet:
+      enable:
+        - shadow
+    revive:
+      rules:
+        - name: exported
+          # 导出标识符需注释；本项目注释用中文，不强制「以名称开头」的英文句式。
+          arguments: [checkPrivateReceivers, disableStutteringCheck]
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - whyNoLint
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+    rules:
+      # 测试文件放宽重复字面量与参数检查。
+      - path: _test\.go
+        linters:
+          - goconst
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/FeiBaiKin/lumo
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

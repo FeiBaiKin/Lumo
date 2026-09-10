@@ -1,0 +1,136 @@
+# Lumo 任务编排（跨平台，Windows 友好）
+# 安装 Task：go install github.com/go-task/task/v3/cmd/task@latest
+version: "3"
+
+vars:
+  BINARY: lumo{{exeExt}}
+  MODULE: github.com/FeiBaiKin/lumo
+  PKG_VERSION: "{{.MODULE}}/internal/version"
+  CONSOLE_DIR: console
+  DIST_DIR: internal/console/dist
+  # 版本信息在构建期注入，源码内的默认值仅用于 go run 场景。
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo 0.0.0-dev
+  COMMIT:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
+  BUILD_DATE:
+    sh: git log -1 --format=%cI 2>/dev/null || echo unknown
+  LDFLAGS: >-
+    -s -w
+    -X {{.PKG_VERSION}}.Version={{.VERSION}}
+    -X {{.PKG_VERSION}}.Commit={{.COMMIT}}
+    -X {{.PKG_VERSION}}.Date={{.BUILD_DATE}}
+
+env:
+  CGO_ENABLED: "0"
+
+tasks:
+  default:
+    desc: 列出所有可用任务
+    cmds:
+      - task --list
+    silent: true
+
+  # ---------- 后端 ----------
+
+  tidy:
+    desc: 整理 Go 依赖
+    cmds:
+      - go mod tidy
+
+  fmt:
+    desc: 格式化 Go 代码
+    cmds:
+      - go fmt ./...
+
+  vet:
+    desc: 运行 go vet
+    cmds:
+      - go vet ./...
+
+  lint:
+    desc: 运行 golangci-lint（需先安装）
+    cmds:
+      - golangci-lint run
+
+  test:
+    desc: 运行 Go 测试
+    cmds:
+      - go test ./... {{.CLI_ARGS}}
+
+  test:cover:
+    desc: 运行测试并生成覆盖率报告
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -func=coverage.out
+
+  build:
+    desc: 构建后端二进制（不含前端，前端请先跑 console:build）
+    cmds:
+      - go build -trimpath -ldflags="{{.LDFLAGS}}" -o {{.BINARY}} ./cmd/lumo
+
+  run:
+    desc: 本地运行（开发用，不注入版本信息）
+    cmds:
+      - go run ./cmd/lumo {{.CLI_ARGS}}
+
+  # ---------- 前端 ----------
+
+  console:install:
+    desc: 安装 Console 依赖
+    dir: "{{.CONSOLE_DIR}}"
+    cmds:
+      - npm install
+
+  console:dev:
+    desc: 启动 Console 开发服务器（HMR）
+    dir: "{{.CONSOLE_DIR}}"
+    cmds:
+      - npm run dev
+
+  console:build:
+    desc: 构建 Console 产物到 internal/console/dist
+    dir: "{{.CONSOLE_DIR}}"
+    cmds:
+      - npm run build
+
+  console:lint:
+    desc: 检查 Console 代码（Biome + tsc）
+    dir: "{{.CONSOLE_DIR}}"
+    cmds:
+      - npm run lint
+      - npm run typecheck
+
+  console:test:
+    desc: 运行 Console 单元测试（Vitest）
+    dir: "{{.CONSOLE_DIR}}"
+    cmds:
+      - npm run test
+
+  # ---------- 组合 ----------
+
+  all:
+    desc: 全量构建：前端 + 后端（发布前用这个）
+    cmds:
+      - task: console:install
+      - task: console:build
+      - task: build
+
+  check:
+    desc: 提交前自检：格式化 + vet + lint + 测试
+    cmds:
+      - task: fmt
+      - task: vet
+      - task: lint
+      - task: test
+
+  clean:
+    desc: 清理构建产物
+    cmds:
+      - cmd: go clean -cache -testcache
+        ignore_error: true
+      - cmd: '{{if eq OS "windows"}}powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue {{.BINARY}}, coverage.out"{{else}}rm -f {{.BINARY}} coverage.out{{end}}'
+        ignore_error: true
+      # 清空 dist 但保留 .gitkeep，否则 go:embed 会编译失败。
+      - cmd: '{{if eq OS "windows"}}powershell -NoProfile -Command "Get-ChildItem -Path {{.DIST_DIR}} -Exclude .gitkeep -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue"{{else}}find {{.DIST_DIR}} -mindepth 1 -not -name .gitkeep -delete{{end}}'
+        ignore_error: true

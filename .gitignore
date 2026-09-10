@@ -2,7 +2,9 @@
 /lumo
 /lumo.exe
 /dist/
-internal/console/dist/
+internal/console/dist/*
+# 占位文件必须入库：go:embed all:dist 要求目录存在，否则全新克隆无法编译
+!internal/console/dist/.gitkeep
 
 # 运行时数据（工作目录）
 /data/

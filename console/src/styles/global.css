@@ -1,0 +1,8 @@
+/*
+ * Tailwind CSS v4 入口。
+ *
+ * agent.md §11.1：设计 token 体系（三层 primitive → semantic → component）
+ * 与明暗双主题属于阶段 7 的设计工作，必须先经前端设计 skill 统筹后再落地。
+ * 此处刻意只引入 Tailwind 基础层，不预设任何配色或字体，避免产生需要推翻的既成决策。
+ */
+@import "tailwindcss";

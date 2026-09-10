@@ -1,0 +1,2 @@
+# 占位文件：保证 go:embed all:dist 在前端未构建时仍可编译。
+# Vite 的实际构建产物输出到本目录，且不入库（见 .gitignore）。

@@ -1,0 +1,81 @@
+# goreleaser 发布配置
+# 校验：goreleaser check
+# 本地试跑：goreleaser release --snapshot --clean
+version: 2
+
+project_name: lumo
+
+before:
+  hooks:
+    - go mod tidy
+    # 前端产物必须在 Go 构建前生成，否则 go:embed 嵌入的是空目录。
+    - npm --prefix console ci
+    - npm --prefix console run build
+
+builds:
+  - id: lumo
+    main: ./cmd/lumo
+    binary: lumo
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/FeiBaiKin/lumo/internal/version.Version={{.Version}}
+      - -X github.com/FeiBaiKin/lumo/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/FeiBaiKin/lumo/internal/version.Date={{.CommitDate}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE*
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+  groups:
+    - title: 新特性
+      regexp: '^feat(\(.+\))?!?:'
+      order: 0
+    - title: 修复
+      regexp: '^fix(\(.+\))?!?:'
+      order: 1
+    - title: 性能
+      regexp: '^perf(\(.+\))?!?:'
+      order: 2
+    - title: 重构
+      regexp: '^refactor(\(.+\))?!?:'
+      order: 3
+
+# Docker 镜像发布留到阶段 9（部署与发布）与 deploy/Dockerfile 一并接入，
+# 此处不预先声明，避免引用尚不存在的文件导致发布流程失败。
+
+release:
+  draft: true
+  prerelease: auto
+  footer: |
+    **完整变更**：https://github.com/FeiBaiKin/lumo/compare/{{ .PreviousTag }}...{{ .Tag }}
