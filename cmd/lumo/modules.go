@@ -2,7 +2,9 @@ package main
 
 import (
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/comment"
 	"github.com/FeiBaiKin/lumo/internal/content"
+	"github.com/FeiBaiKin/lumo/internal/mail"
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
 	"github.com/FeiBaiKin/lumo/internal/settings"
@@ -16,15 +18,18 @@ import (
 // 模块的 Register 只做装配，不得访问数据库：migrate 命令也会走同一条注册链，
 // 而那时业务表可能尚不存在。需要读写库的启动逻辑放到 Start。
 //
-// 顺序即依赖：settings 被其他模块经 App.Lookup 取用，须最先；
+// 顺序即依赖：settings 与 mail 被其他模块经 App.Lookup 取用，须最先；
 // media 读 storage 设置分组，排在 settings 之后；
-// content 的迁移引用 taxonomy 的表，必须排在它之后。
+// content 的迁移引用 taxonomy 的表，必须排在它之后；
+// comment 引用 content 的 posts 表，排在最后。
 func modules() []app.Module {
 	return []app.Module{
 		settings.New(),
+		mail.New(),
 		media.New(),
 		taxonomy.New(),
 		content.New(),
+		comment.New(),
 	}
 }
 

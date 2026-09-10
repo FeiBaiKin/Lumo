@@ -170,3 +170,17 @@ func stripPort(addr string) string {
 	}
 	return strings.Trim(addr, "[]")
 }
+
+// userAgentKey 是本包私有的 context 键。
+var userAgentKey = &struct{ name string }{name: "httpx.userAgent"}
+
+// WithUserAgent 把请求的 User-Agent 放入 context，供评论模块留痕。
+func WithUserAgent(ctx context.Context, ua string) context.Context {
+	return context.WithValue(ctx, userAgentKey, ua)
+}
+
+// UserAgentFromContext 取出请求的 User-Agent，未设置时返回空串。
+func UserAgentFromContext(ctx context.Context) string {
+	ua, _ := ctx.Value(userAgentKey).(string)
+	return ua
+}

@@ -82,6 +82,12 @@ func NewRouter(opts *Options) (root chi.Router, planes *api.Planes) {
 	root.Use(recoverer(logger))
 	root.Use(requestSize(orDefault(opts.MaxBodySize, defaultMaxBodySize),
 		orDefault(opts.MaxUploadSize, defaultMaxUploadSize)))
+	// 评论模块要留痕 User-Agent；放在这里是为了让模块不必直接读请求头。
+	root.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(httpx.WithUserAgent(r.Context(), r.UserAgent())))
+		})
+	})
 
 	// 404 与 405 也必须返回 problem+json，避免 API 出现两套错误格式。
 	root.NotFound(func(w http.ResponseWriter, r *http.Request) {

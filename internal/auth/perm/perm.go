@@ -26,7 +26,9 @@ const (
 	PagesDeleteAny Permission = "pages:delete_any"
 
 	TaxonomiesManage Permission = "taxonomies:manage"
-	CommentsManage   Permission = "comments:manage"
+
+	CommentsManage    Permission = "comments:manage"
+	CommentsManageAny Permission = "comments:manage_any"
 
 	MediaWrite     Permission = "media:write"
 	MediaDeleteAny Permission = "media:delete_any"
@@ -46,7 +48,7 @@ var All = []Permission{
 	PostsWrite, PostsWriteAny, PostsPublish, PostsDeleteAny,
 	PagesWrite, PagesWriteAny, PagesPublish, PagesDeleteAny,
 	TaxonomiesManage,
-	CommentsManage,
+	CommentsManage, CommentsManageAny,
 	MediaWrite, MediaDeleteAny,
 	MenusManage,
 	UsersManage,
@@ -130,7 +132,7 @@ var BuiltinRoles = map[string][]Permission{
 		PostsWrite, PostsWriteAny, PostsPublish, PostsDeleteAny,
 		PagesWrite, PagesWriteAny, PagesPublish, PagesDeleteAny,
 		TaxonomiesManage,
-		CommentsManage,
+		CommentsManage, CommentsManageAny,
 		MediaWrite, MediaDeleteAny,
 		MenusManage,
 		UsersManage,
@@ -144,7 +146,7 @@ var BuiltinRoles = map[string][]Permission{
 		PostsWrite, PostsWriteAny, PostsPublish, PostsDeleteAny,
 		PagesWrite, PagesWriteAny, PagesPublish, PagesDeleteAny,
 		TaxonomiesManage,
-		CommentsManage,
+		CommentsManage, CommentsManageAny,
 		MediaWrite, MediaDeleteAny,
 	},
 
