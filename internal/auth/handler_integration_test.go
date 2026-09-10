@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
@@ -25,6 +26,15 @@ func newRouter(t *testing.T, e *env) http.Handler {
 	t.Helper()
 	root, planes := server.NewRouter(&server.Options{Authenticator: e.authn, Version: "test"})
 	auth.NewHandler(e.service, e.sessions, e.tokens, nil).Register(planes.ConsolePublic(), planes.Console())
+	// 管理端点也一并挂上：与 serve 一致，且管理接口会用到会话与令牌的失效联动。
+	auth.NewAdminHandler(e.users, e.service, func() []auth.PermissionInfo {
+		declared := app.CorePermissions()
+		out := make([]auth.PermissionInfo, 0, len(declared))
+		for _, p := range declared {
+			out = append(out, auth.PermissionInfo{Key: p.Key, Label: p.Label, Description: p.Description})
+		}
+		return out
+	}).Register(planes.Console())
 	return root
 }
 

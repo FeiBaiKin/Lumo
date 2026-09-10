@@ -122,16 +122,28 @@ func runServe(args []string) error {
 		UploadsDir: filepath.Join(dataDir, media.UploadsDirName),
 	})
 
-	// 认证端点由核心提供：登录走免认证注册面，其余走强制认证注册面。
-	auth.NewHandler(authService, sessions, tokens, logger).Register(planes.ConsolePublic(), planes.Console())
-
 	// 功能模块装配。此时只注册能力与接口，不访问数据库。
+	// 必须先于下面的处理器构造：权限清单由模块声明，处理器要在请求时读得到。
 	application := app.New(&app.Options{
 		Config: cfg,
 		DB:     db,
 		Logger: logger,
 		Router: planes,
 	})
+
+	// 认证端点由核心提供：登录走免认证注册面，其余走强制认证注册面。
+	auth.NewHandler(authService, sessions, tokens, logger).Register(planes.ConsolePublic(), planes.Console())
+	// 权限清单由各模块在注册期声明，故用一个延迟读取的闭包：此时模块尚未注册。
+	auth.NewAdminHandler(users, authService, func() []auth.PermissionInfo {
+		// 核心自身引入的权限与各模块声明的合并：前者没有对应的功能模块。
+		declared := append(app.CorePermissions(), application.Permissions()...)
+		out := make([]auth.PermissionInfo, 0, len(declared))
+		for _, p := range declared {
+			out = append(out, auth.PermissionInfo{Key: p.Key, Label: p.Label, Description: p.Description})
+		}
+		return out
+	}).Register(planes.Console())
+
 	if regErr := application.Register(modules()...); regErr != nil {
 		return regErr
 	}

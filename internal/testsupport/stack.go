@@ -61,8 +61,16 @@ func NewStackWith(t *testing.T, db *database.DB, opts *StackOptions) *Stack {
 		UploadsDir:    opts.UploadsDir,
 	})
 	auth.NewHandler(service, sessions, tokens, nil).Register(planes.ConsolePublic(), planes.Console())
-
 	application := app.New(&app.Options{Config: opts.Config, DB: db, Router: planes})
+	auth.NewAdminHandler(users, service, func() []auth.PermissionInfo {
+		declared := append(app.CorePermissions(), application.Permissions()...)
+		out := make([]auth.PermissionInfo, 0, len(declared))
+		for _, p := range declared {
+			out = append(out, auth.PermissionInfo{Key: p.Key, Label: p.Label, Description: p.Description})
+		}
+		return out
+	}).Register(planes.Console())
+
 	if err := application.Register(opts.Modules...); err != nil {
 		t.Fatalf("注册模块失败: %v", err)
 	}
