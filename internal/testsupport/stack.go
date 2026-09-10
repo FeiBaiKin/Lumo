@@ -45,10 +45,16 @@ func NewStack(t *testing.T, db *database.DB, modules ...app.Module) *Stack {
 	if err := application.Register(modules...); err != nil {
 		t.Fatalf("注册模块失败: %v", err)
 	}
-	if err := application.Start(ctx); err != nil {
+	// 模块的后台任务随此 ctx 退出，避免 goroutine 泄漏到其他测试。
+	runCtx, cancel := context.WithCancel(ctx)
+	if err := application.Start(runCtx); err != nil {
+		cancel()
 		t.Fatalf("启动模块失败: %v", err)
 	}
-	t.Cleanup(func() { _ = application.Close(context.Background()) })
+	t.Cleanup(func() {
+		cancel()
+		_ = application.Close(context.Background())
+	})
 
 	return &Stack{DB: db, Root: root, App: application, Users: users, Tokens: tokens}
 }

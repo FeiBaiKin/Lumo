@@ -1,6 +1,6 @@
 // Package perm 定义权限串、内置角色与所有权规则。
 //
-// 权限串格式为 <资源>:<动作>，动词统一为 write / publish / delete_any / manage。
+// 权限串格式为 <资源>:<动作>，动词统一为 write / write_any / publish / delete_any / manage。
 // `_any` 后缀表示「不限所有权」；不带后缀的权限只能操作自己拥有的对象（agent.md §7.2）。
 package perm
 
@@ -16,10 +16,12 @@ type Permission string
 // v1 权限清单（agent.md §7.2）。
 const (
 	PostsWrite     Permission = "posts:write"
+	PostsWriteAny  Permission = "posts:write_any"
 	PostsPublish   Permission = "posts:publish"
 	PostsDeleteAny Permission = "posts:delete_any"
 
 	PagesWrite     Permission = "pages:write"
+	PagesWriteAny  Permission = "pages:write_any"
 	PagesPublish   Permission = "pages:publish"
 	PagesDeleteAny Permission = "pages:delete_any"
 
@@ -41,8 +43,8 @@ const (
 
 // All 是全部合法权限串，顺序固定以便生成稳定的角色定义与 UI 列表。
 var All = []Permission{
-	PostsWrite, PostsPublish, PostsDeleteAny,
-	PagesWrite, PagesPublish, PagesDeleteAny,
+	PostsWrite, PostsWriteAny, PostsPublish, PostsDeleteAny,
+	PagesWrite, PagesWriteAny, PagesPublish, PagesDeleteAny,
 	TaxonomiesManage,
 	CommentsManage,
 	MediaWrite, MediaDeleteAny,
@@ -125,8 +127,8 @@ var BuiltinRoles = map[string][]Permission{
 
 	// 除站点级危险操作外的全部权限。
 	RoleAdmin: {
-		PostsWrite, PostsPublish, PostsDeleteAny,
-		PagesWrite, PagesPublish, PagesDeleteAny,
+		PostsWrite, PostsWriteAny, PostsPublish, PostsDeleteAny,
+		PagesWrite, PagesWriteAny, PagesPublish, PagesDeleteAny,
 		TaxonomiesManage,
 		CommentsManage,
 		MediaWrite, MediaDeleteAny,
@@ -139,8 +141,8 @@ var BuiltinRoles = map[string][]Permission{
 
 	// 内容全权（含发布、删任何人的内容）；不碰用户/角色/设置/主题/菜单。
 	RoleEditor: {
-		PostsWrite, PostsPublish, PostsDeleteAny,
-		PagesWrite, PagesPublish, PagesDeleteAny,
+		PostsWrite, PostsWriteAny, PostsPublish, PostsDeleteAny,
+		PagesWrite, PagesWriteAny, PagesPublish, PagesDeleteAny,
 		TaxonomiesManage,
 		CommentsManage,
 		MediaWrite, MediaDeleteAny,
@@ -216,12 +218,13 @@ func (s Set) Allows(p Permission, owned bool) bool {
 		// _any 权限不可由基础权限推导，必须显式授予。
 		return s.Has(p)
 	}
-	if s.Has(p) {
-		// 不带 _any 的权限受所有权约束。
-		return owned
+	// 先查不限所有权的版本：同时持有 posts:write 与 posts:write_any 的编辑
+	// 必须能操作他人的对象，不能因为先命中基础权限就被所有权规则挡住。
+	if s.Has(Permission(string(p) + anySuffix)) {
+		return true
 	}
-	// 持有对应的 _any 权限即可越过所有权限制。
-	return s.Has(Permission(string(p) + anySuffix))
+	// 不带 _any 的权限受所有权约束。
+	return s.Has(p) && owned
 }
 
 // HasAny 报告集合是否包含任一给定权限，用于「满足其一即可」的场景。

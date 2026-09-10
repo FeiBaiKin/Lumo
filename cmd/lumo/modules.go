@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/content"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
 	"github.com/FeiBaiKin/lumo/migrations"
@@ -12,9 +13,12 @@ import (
 // 阶段 3 起的每个业务模块都在此登记；这是核心与模块之间唯一的装配点（agent.md §3.2）。
 // 模块的 Register 只做装配，不得访问数据库：migrate 命令也会走同一条注册链，
 // 而那时业务表可能尚不存在。需要读写库的启动逻辑放到 Start。
+//
+// 顺序即依赖：content 的迁移引用 taxonomy 的表，必须排在它之后。
 func modules() []app.Module {
 	return []app.Module{
 		taxonomy.New(),
+		content.New(),
 	}
 }
 
