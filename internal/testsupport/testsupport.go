@@ -41,6 +41,8 @@ type Options struct {
 	Schema string
 	// Migrate 为真时在重置 schema 后执行全部迁移。
 	Migrate bool
+	// Sources 是核心之外的额外迁移来源（模块迁移），按顺序在核心之后执行；仅在 Migrate 为真时生效。
+	Sources []migrate.Source
 }
 
 // Open 准备一个干净的、独占 schema 的测试库连接。
@@ -107,6 +109,7 @@ func Open(t *testing.T, opts Options) *database.DB {
 
 	if opts.Migrate {
 		sources := []migrate.Source{{Name: migrate.CoreName, FS: migrations.FS}}
+		sources = append(sources, opts.Sources...)
 		migrator, migErr := migrate.New(db.SQLDB(), sources, nil)
 		if migErr != nil {
 			t.Fatalf("构造 Migrator 失败: %v", migErr)
