@@ -1,10 +1,9 @@
 name: CI
 
+# 不再随推送/PR 自动触发：验证改在本机完成（Taskfile 的 check / test）。
+# 需要跑完整流水线时，在 Actions 页面手动 Run workflow。
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 # 同一分支的新推送取消尚在运行的旧任务，节省额度。
 concurrency:
