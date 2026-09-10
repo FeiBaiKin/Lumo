@@ -16,16 +16,18 @@ const usage = `Lumo — 用 Go 编写的现代化开源 CMS
   lumo <命令> [参数]
 
 命令：
-  serve                  启动 HTTP 服务
-  migrate                管理数据库迁移（up / down / status / version）
-  admin reset-password   重置管理员密码（阶段 2 实现）
-  version                输出版本信息
+  serve       启动 HTTP 服务
+  migrate     管理数据库迁移（up / down / status / version）
+  admin       管理用户（create-user / reset-password / list-users）
+  version     输出版本信息
 
 用 "lumo <命令> -h" 查看具体命令的参数。
 
 环境变量：
   LUMO_DATABASE_DSN      数据库连接串（必需，口令不写入配置文件）
   LUMO_ADDR              监听地址，默认 :8080
+  LUMO_SECURE_COOKIES    会话 Cookie 是否启用 Secure，生产环境应为 true
+  LUMO_TRUSTED_PROXIES   可信反向代理 CIDR，逗号分隔；留空则忽略 X-Forwarded-For
   LUMO_LOG_LEVEL         日志级别 debug/info/warn/error
   LUMO_LOG_FORMAT        日志格式 text/json
   LUMO_DATA_DIR          工作目录，默认 ./data

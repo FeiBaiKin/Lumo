@@ -18,6 +18,19 @@ server:
   # 优雅关闭时留给在途请求的时间（LUMO_SHUTDOWN_TIMEOUT）
   shutdownTimeout: 15s
 
+  # 可信反向代理的 CIDR 列表（LUMO_TRUSTED_PROXIES，逗号分隔）。
+  #
+  # 只有当直连对端属于这些网段时，X-Forwarded-For 才会被采信；
+  # 否则一律使用直连地址。留空 = 不信任任何代理，这是最安全的默认值。
+  # 反向代理与应用同机时填 127.0.0.0/8 即可。
+  trustedProxies: []
+
+  # 会话 Cookie 是否启用 Secure 属性（LUMO_SECURE_COOKIES）。
+  #
+  # 生产环境（HTTPS）必须为 true，此时还会启用 __Host- 前缀以抵御子域 Cookie 注入。
+  # 本地 HTTP 开发必须为 false，否则浏览器不会保存 Cookie，登录会「成功但立刻失效」。
+  secureCookies: false
+
 database:
   # 连接池上限（LUMO_DATABASE_MAX_OPEN_CONNS）
   maxOpenConns: 25

@@ -38,6 +38,14 @@ type ServerConfig struct {
 	WriteTimeout      time.Duration `yaml:"writeTimeout"`
 	IdleTimeout       time.Duration `yaml:"idleTimeout"`
 	ShutdownTimeout   time.Duration `yaml:"shutdownTimeout"`
+	// TrustedProxies 是可信反向代理的 CIDR 列表。
+	//
+	// 只有当直连对端属于这些网段时，X-Forwarded-For 才被采信。
+	// 留空表示不信任任何代理，一律使用直连地址——这是最安全的默认值。
+	TrustedProxies []string `yaml:"trustedProxies"`
+	// SecureCookies 决定会话 Cookie 是否带 Secure 属性并启用 __Host- 前缀。
+	// 生产环境（HTTPS）必须为 true；本地 HTTP 开发需为 false，否则浏览器不接受 Cookie。
+	SecureCookies bool `yaml:"secureCookies"`
 }
 
 // DatabaseConfig 是数据库连接配置。
@@ -192,12 +200,32 @@ func applyEnv(cfg *Config, env getenv) error {
 		*target = d
 	}
 
-	if v := env(EnvPrefix + "DATABASE_AUTO_MIGRATE"); v != "" {
+	bools := map[string]*bool{
+		"DATABASE_AUTO_MIGRATE": &cfg.Database.AutoMigrate,
+		"SECURE_COOKIES":        &cfg.Server.SecureCookies,
+	}
+	for key, target := range bools {
+		v := env(EnvPrefix + key)
+		if v == "" {
+			continue
+		}
 		b, err := strconv.ParseBool(v)
 		if err != nil {
-			return fmt.Errorf("环境变量 %sDATABASE_AUTO_MIGRATE 不是布尔值: %q", EnvPrefix, v)
+			return fmt.Errorf("环境变量 %s%s 不是布尔值: %q", EnvPrefix, key, v)
 		}
-		cfg.Database.AutoMigrate = b
+		*target = b
+	}
+
+	// 逗号分隔的 CIDR 列表。
+	if v := env(EnvPrefix + "TRUSTED_PROXIES"); v != "" {
+		parts := strings.Split(v, ",")
+		proxies := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if trimmed := strings.TrimSpace(part); trimmed != "" {
+				proxies = append(proxies, trimmed)
+			}
+		}
+		cfg.Server.TrustedProxies = proxies
 	}
 	return nil
 }

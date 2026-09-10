@@ -8,10 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/database"
@@ -96,7 +98,51 @@ func runServe(args []string) error {
 		logger.Warn("已跳过自动迁移，schema 可能落后于当前版本")
 	}
 
-	root, planes := server.NewRouter(logger)
+	// 认证栈。内置角色每次启动都以代码为准同步，确保升级后新增权限生效。
+	users := auth.NewStore(db.DB)
+	if seedErr := users.SeedRoles(ctx); seedErr != nil {
+		return seedErr
+	}
+	sessions := auth.NewSessionStore(db.DB, cfg.Server.SecureCookies)
+	tokens := auth.NewTokenStore(db.DB)
+	authService := auth.NewService(users, sessions, tokens, logger)
+	authenticator := auth.NewAuthenticator(users, sessions, tokens, logger)
+
+	if !cfg.Server.SecureCookies {
+		logger.Warn("会话 Cookie 未启用 Secure，仅适用于本地 HTTP 开发；生产环境请设 LUMO_SECURE_COOKIES=true")
+	}
+	if count, cErr := users.CountUsers(ctx); cErr == nil && count == 0 {
+		logger.Warn("尚无任何用户，请执行 lumo admin create-user 创建初始管理员")
+	}
+
+	clientIP, err := httpx.NewClientIPResolver(cfg.Server.TrustedProxies)
+	if err != nil {
+		return err
+	}
+	if len(cfg.Server.TrustedProxies) == 0 {
+		logger.Info("未配置可信代理，将忽略 X-Forwarded-For 并使用直连地址")
+	}
+
+	// 认证端点的处理器。
+	authHandler := auth.NewHandler(authService, sessions, tokens, logger)
+
+	root, planes := server.NewRouter(&server.Options{
+		Logger:        logger,
+		Authenticator: authenticator,
+		ClientIP:      clientIP,
+		// 登录是 Console 平面下唯一无需认证的端点。
+		PublicConsoleRoutes: func(r chi.Router) {
+			authHandler.RegisterPublic(r)
+		},
+	})
+
+	// Console 平面默认要求已认证，此处只需注册路由本身。
+	planes.Console(func(r chi.Router) {
+		authHandler.RegisterAuthenticated(r)
+	})
+
+	// 后台定期清理过期会话。
+	go authService.StartSessionCleanup(ctx, time.Hour)
 
 	application := app.New(&app.Options{
 		Config: cfg,
@@ -104,9 +150,9 @@ func runServe(args []string) error {
 		Logger: logger,
 		Router: planes,
 	})
-	// 阶段 1 尚无功能模块；阶段 2 起在此注册。
-	if err := application.Register(); err != nil {
-		return err
+	// 阶段 2 的认证能力直接由核心提供；功能模块从阶段 3 起在此注册。
+	if regErr := application.Register(); regErr != nil {
+		return regErr
 	}
 	defer func() {
 		closeCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
@@ -118,7 +164,7 @@ func runServe(args []string) error {
 
 	registerHealth(root, db, &info)
 
-	srv := server.New(root, cfg.Server, logger)
+	srv := server.New(root, &cfg.Server, logger)
 	if err := srv.Run(ctx); err != nil {
 		return err
 	}

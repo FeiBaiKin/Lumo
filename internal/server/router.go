@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 )
@@ -35,18 +36,53 @@ func (p *planeRouter) Console(fn func(r chi.Router))   { fn(p.console) }
 func (p *planeRouter) Public(fn func(r chi.Router))    { fn(p.public) }
 func (p *planeRouter) Extension(fn func(r chi.Router)) { fn(p.extension) }
 
+// Authenticator 是路由层所需的鉴权能力。
+//
+// 定义在使用方（消费者侧接口，Go 惯例），使 server 不依赖 auth 的具体实现，
+// 也让接线测试可以替换成轻量替身而不必连数据库。
+type Authenticator interface {
+	// Middleware 解析凭据并注入 context，但不强制要求已认证。
+	Middleware(next http.Handler) http.Handler
+	// CSRF 校验非安全方法的 CSRF 令牌。
+	CSRF(next http.Handler) http.Handler
+}
+
+// Options 是构造路由所需的依赖。
+type Options struct {
+	Logger *slog.Logger
+	// Authenticator 为 nil 时不挂载鉴权中间件，仅用于测试路由骨架。
+	Authenticator Authenticator
+	// ClientIP 为 nil 时不解析转发头，一律使用直连地址。
+	ClientIP *httpx.ClientIPResolver
+	// PublicConsoleRoutes 注册 Console 平面下**无需认证**的端点（如登录）。
+	//
+	// 必须经此入口注册：直接注册到 Console 平面的路由一律要求已认证，
+	// 这是刻意的默认值，避免新增接口时漏加鉴权中间件。
+	PublicConsoleRoutes func(r chi.Router)
+}
+
 // NewRouter 构造根路由并返回供模块注册用的三平面注册面。
 //
-// 阶段 1 只搭挂载点与通用中间件；鉴权中间件在阶段 2 接入，
-// 各平面的业务路由由模块在阶段 3 起自行注册。
-func NewRouter(logger *slog.Logger) (root chi.Router, planes app.Router) {
+// 三平面的鉴权策略（agent.md §6）：
+//   - Console：解析凭据 + CSRF + **强制已认证**；细粒度权限由各处理器声明
+//   - Public：解析凭据但不强制，匿名可读已发布内容
+//   - Extension：解析凭据 + CSRF + 强制已认证
+//
+// 注意：中间件只对**匹配到的路由**生效。未注册的路径由根路由的 NotFound
+// 处理并返回 404，不会先经过各平面的鉴权中间件——这是正确行为，
+// 但排查时容易误以为鉴权没生效。
+func NewRouter(opts *Options) (root chi.Router, planes app.Router) {
+	logger := opts.Logger
 	mux := chi.NewRouter()
 	root = mux
 
 	root.Use(middleware.RequestID)
 	// 不用 middleware.RealIP：它无条件信任 X-Forwarded-For / X-Real-IP，
-	// 存在 IP 伪造风险（GHSA-3fxj-6jh8-hvhx）。真实客户端 IP 的解析需要
-	// 知道可信代理范围，留到阶段 2 随反向代理配置一并实现。
+	// 任何客户端都能伪造（GHSA-3fxj-6jh8-hvhx）。改用需显式配置可信代理
+	// 范围的解析器，且不覆盖 r.RemoteAddr。
+	if opts.ClientIP != nil {
+		root.Use(opts.ClientIP.Middleware)
+	}
 	root.Use(requestLogger(logger))
 	root.Use(recoverer(logger))
 	// 请求体上限 10 MiB；附件上传在阶段 3 单独放宽。
@@ -67,7 +103,37 @@ func NewRouter(logger *slog.Logger) (root chi.Router, planes app.Router) {
 	}
 	planes = registry
 
-	root.Mount(PrefixConsole, registry.console)
+	if opts.Authenticator != nil {
+		// Console 平面**默认要求已认证**。免认证端点在挂载时被排除在外（见下），
+		// 而不是反过来让每个注册者自己记得加中间件——后者只要漏一次，
+		// 就会暴露一个无鉴权的后台接口（agent.md §6）。
+		//
+		// CSRF 置于 RequireAuth 之前：匿名写请求应得到 401（未登录）
+		// 而非 403（CSRF 失败），否则客户端不知道该去重新登录。
+		registry.console.Use(opts.Authenticator.CSRF)
+		registry.console.Use(auth.RequireAuth)
+
+		// Public：解析凭据但不强制，匿名可读已发布内容；
+		// 已登录用户可额外获得未发布内容的预览等能力。
+		registry.public.Use(opts.Authenticator.Middleware)
+
+		// Extension：v1 内部使用，一律要求已认证。
+		registry.extension.Use(opts.Authenticator.CSRF)
+		registry.extension.Use(auth.RequireAuth)
+	}
+
+	// 组装 Console 平面：外层只解析凭据，内层才是受保护的模块注册面。
+	consoleRoot := chi.NewRouter()
+	if opts.Authenticator != nil {
+		consoleRoot.Use(opts.Authenticator.Middleware)
+	}
+	// 免认证端点挂在外层，因此不受 CSRF 与 RequireAuth 约束。
+	if opts.PublicConsoleRoutes != nil {
+		opts.PublicConsoleRoutes(consoleRoot)
+	}
+	consoleRoot.Mount("/", registry.console)
+
+	root.Mount(PrefixConsole, consoleRoot)
 	root.Mount(PrefixPublic, registry.public)
 	root.Mount(PrefixExtension, registry.extension)
 

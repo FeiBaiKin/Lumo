@@ -121,6 +121,26 @@ func Error(w http.ResponseWriter, r *http.Request, status int, detail string) {
 	WriteProblem(w, r, NewProblem(status, detail), nil)
 }
 
+// BadRequest 输出 400，detail 为面向调用方的可读原因。
+func BadRequest(w http.ResponseWriter, r *http.Request, detail string) {
+	Error(w, r, http.StatusBadRequest, detail)
+}
+
+// Unauthorized 输出 401。
+func Unauthorized(w http.ResponseWriter, r *http.Request, detail string) {
+	Error(w, r, http.StatusUnauthorized, detail)
+}
+
+// Forbidden 输出 403。
+func Forbidden(w http.ResponseWriter, r *http.Request, detail string) {
+	Error(w, r, http.StatusForbidden, detail)
+}
+
+// NotFound 输出 404。
+func NotFound(w http.ResponseWriter, r *http.Request, detail string) {
+	Error(w, r, http.StatusNotFound, detail)
+}
+
 // WriteError 把任意 error 转成 problem 响应。
 //
 // 若 err 链上存在 *Problem 则沿用其状态与说明；否则统一按 500 处理，

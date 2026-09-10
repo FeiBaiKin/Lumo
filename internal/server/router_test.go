@@ -17,7 +17,7 @@ import (
 func TestErrorsAreProblemJSON(t *testing.T) {
 	t.Parallel()
 
-	root, _ := NewRouter(nil)
+	root, _ := NewRouter(&Options{})
 
 	tests := []struct {
 		name       string
@@ -58,7 +58,7 @@ func TestErrorsAreProblemJSON(t *testing.T) {
 func TestThreePlanesMounted(t *testing.T) {
 	t.Parallel()
 
-	root, planes := NewRouter(nil)
+	root, planes := NewRouter(&Options{})
 
 	planes.Console(func(r chi.Router) {
 		r.Get("/ping", func(w http.ResponseWriter, _ *http.Request) {
@@ -122,7 +122,7 @@ func TestPlanePrefixes(t *testing.T) {
 func TestRootRedirectsToConsole(t *testing.T) {
 	t.Parallel()
 
-	root, _ := NewRouter(nil)
+	root, _ := NewRouter(&Options{})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
 	root.ServeHTTP(rec, req)
@@ -142,7 +142,7 @@ func TestRecovererReturnsProblemJSON(t *testing.T) {
 
 	const secret = "s3cr3t-must-not-leak"
 
-	root, planes := NewRouter(nil)
+	root, planes := NewRouter(&Options{})
 	planes.Public(func(r chi.Router) {
 		r.Get("/boom", func(http.ResponseWriter, *http.Request) {
 			panic("内部实现细节：" + secret)

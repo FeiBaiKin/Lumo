@@ -2,80 +2,29 @@ package migrate_test
 
 import (
 	"context"
-	"os"
-	"strings"
 	"testing"
-	"time"
 
-	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/database"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
+	"github.com/FeiBaiKin/lumo/internal/testsupport"
 	"github.com/FeiBaiKin/lumo/migrations"
 )
 
 // 集成测试直连本机 PG 的独立测试库（agent.md §12）。
-// 未设置 LUMO_TEST_DSN 时跳过，保证 go test ./... 在无数据库环境下仍可通过。
-const testDSNEnv = "LUMO_TEST_DSN"
+//
+// 本包使用独占 schema 做隔离：go test ./... 会并行执行多个包，
+// 若共用 public schema，各包的清空操作会互删对方的表。
+const testSchema = "lumo_it_migrate"
 
-// forbiddenDatabases 是禁止连接的库（agent.md §13.2）。
-// 集成测试会执行 DDL 并清空 schema，误连到这些库会破坏真实数据。
-// 库名相近（gocms vs gocms_dev）使误连风险很高，故在代码层面设防而非仅靠文档。
-var forbiddenDatabases = []string{"gocms", "gocms_dev", "authcenter", "hone", "xzji", "postgres"}
-
-// openTestDB 建立测试库连接，并在库名不安全时直接让测试失败。
+// openTestDB 准备一个干净的、独占 schema 的测试库连接（不自动迁移，
+// 由各测试自行控制迁移时机）。
 func openTestDB(t *testing.T) *database.DB {
 	t.Helper()
-
-	dsn := os.Getenv(testDSNEnv)
-	if dsn == "" {
-		t.Skipf("未设置 %s，跳过集成测试", testDSNEnv)
-	}
-
-	cfg := config.Default()
-	cfg.Database.DSN = dsn
-	if err := cfg.RequireDSN(); err != nil {
-		t.Fatalf("%s 不合法: %v", testDSNEnv, err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	db, err := database.Open(ctx, cfg.Database, false)
-	if err != nil {
-		t.Fatalf("连接测试库失败: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	name, err := db.CurrentDatabase(ctx)
-	if err != nil {
-		t.Fatalf("读取当前库名失败: %v", err)
-	}
-	// 安全护栏：必须连到专用测试库。
-	for _, forbidden := range forbiddenDatabases {
-		if strings.EqualFold(name, forbidden) {
-			t.Fatalf("拒绝在库 %q 上运行集成测试：该库属其他项目或非测试库（agent.md §13.2）", name)
-		}
-	}
-	if !strings.Contains(strings.ToLower(name), "test") {
-		t.Fatalf("集成测试库名 %q 未包含 test，拒绝执行以防误连", name)
-	}
-	return db
-}
-
-// resetSchema 把测试库恢复到空白状态。
-func resetSchema(t *testing.T, db *database.DB) {
-	t.Helper()
-
-	ctx := context.Background()
-	if _, err := db.ExecContext(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"); err != nil {
-		t.Fatalf("重置 schema 失败: %v", err)
-	}
+	return testsupport.Open(t, testsupport.Options{Schema: testSchema})
 }
 
 func TestMigrateUpAndDown(t *testing.T) {
 	db := openTestDB(t)
-	resetSchema(t, db)
-	t.Cleanup(func() { resetSchema(t, db) })
 
 	ctx := context.Background()
 	migrator, err := migrate.New(db.SQLDB(), migrations.FS, nil)
@@ -104,10 +53,15 @@ func TestMigrateUpAndDown(t *testing.T) {
 		t.Fatalf("迁移后版本 = %d，应至少为 1", v)
 	}
 
-	// extensions 表及其索引必须存在。
+	// extensions 表及其索引必须存在（00001）。
 	assertTableExists(t, db, "extensions")
 	for _, idx := range []string{"extensions_spec_gin", "extensions_kind_idx", "extensions_unique"} {
 		assertIndexExists(t, db, idx)
+	}
+
+	// 认证相关表必须存在（00002）。
+	for _, table := range []string{"users", "roles", "user_roles", "sessions", "access_tokens"} {
+		assertTableExists(t, db, table)
 	}
 
 	// Up 必须幂等：重复执行不应报错，版本不变。
@@ -122,19 +76,39 @@ func TestMigrateUpAndDown(t *testing.T) {
 		t.Errorf("重复 Up 后版本变化: %d -> %d", v, again)
 	}
 
-	if err := migrator.Down(ctx); err != nil {
-		t.Fatalf("Down 失败: %v", err)
+	// Down 只回滚**最后一个**迁移。这是 goose 的语义：早期只有单个迁移时
+	// 容易误以为它会清空整个 schema，加了第二个迁移就会暴露这个误解。
+	if downErr := migrator.Down(ctx); downErr != nil {
+		t.Fatalf("Down 失败: %v", downErr)
 	}
-	if exists := tableExists(t, db, "extensions"); exists {
-		t.Error("Down 后 extensions 表应被删除")
+	if exists := relExists(t, db, "users"); exists {
+		t.Error("Down 后 users 表应被删除")
+	}
+	if !relExists(t, db, "extensions") {
+		t.Error("Down 只应回滚最后一个迁移，extensions 表应保留")
+	}
+
+	// 继续回滚直到版本 0，此时全部表都应消失。
+	for range 10 {
+		current, verErr := migrator.Version(ctx)
+		if verErr != nil {
+			t.Fatalf("读取版本失败: %v", verErr)
+		}
+		if current == 0 {
+			break
+		}
+		if downErr := migrator.Down(ctx); downErr != nil {
+			t.Fatalf("回滚到版本 0 失败: %v", downErr)
+		}
+	}
+	if exists := relExists(t, db, "extensions"); exists {
+		t.Error("全部回滚后 extensions 表应被删除")
 	}
 }
 
 // TestExtensionsConstraints 验证迁移建立的约束真正生效。
 func TestExtensionsConstraints(t *testing.T) {
 	db := openTestDB(t)
-	resetSchema(t, db)
-	t.Cleanup(func() { resetSchema(t, db) })
 
 	ctx := context.Background()
 	migrator, err := migrate.New(db.SQLDB(), migrations.FS, nil)
@@ -185,8 +159,6 @@ func TestExtensionsConstraints(t *testing.T) {
 // 这是多实例部署的关键保障：无锁时并发 DDL 会留下半成品 schema。
 func TestConcurrentUpIsSerialized(t *testing.T) {
 	db := openTestDB(t)
-	resetSchema(t, db)
-	t.Cleanup(func() { resetSchema(t, db) })
 
 	ctx := context.Background()
 	const workers = 4
@@ -212,16 +184,19 @@ func TestConcurrentUpIsSerialized(t *testing.T) {
 	assertTableExists(t, db, "extensions")
 }
 
-func tableExists(t *testing.T, db *database.DB, name string) bool {
+// relExists 报告表或索引是否存在。
+//
+// 用 to_regclass 而非 information_schema 按 schema 名过滤：前者按当前
+// search_path 解析，因此查的是本包独占 schema 里的对象。若写死 'public'，
+// 一旦 public 中残留同名对象，断言就会对着错误的表给出结论。
+func relExists(t *testing.T, db *database.DB, name string) bool {
 	t.Helper()
 
 	var exists bool
-	err := db.NewRaw(
-		`SELECT EXISTS (SELECT 1 FROM information_schema.tables
-			WHERE table_schema = 'public' AND table_name = ?)`, name).
+	err := db.NewRaw("SELECT to_regclass(?) IS NOT NULL", name).
 		Scan(context.Background(), &exists)
 	if err != nil {
-		t.Fatalf("查询表 %s 是否存在失败: %v", name, err)
+		t.Fatalf("查询对象 %s 是否存在失败: %v", name, err)
 	}
 	return exists
 }
@@ -229,7 +204,7 @@ func tableExists(t *testing.T, db *database.DB, name string) bool {
 func assertTableExists(t *testing.T, db *database.DB, name string) {
 	t.Helper()
 
-	if !tableExists(t, db, name) {
+	if !relExists(t, db, name) {
 		t.Errorf("表 %s 应当存在", name)
 	}
 }
@@ -237,15 +212,7 @@ func assertTableExists(t *testing.T, db *database.DB, name string) {
 func assertIndexExists(t *testing.T, db *database.DB, name string) {
 	t.Helper()
 
-	var exists bool
-	err := db.NewRaw(
-		`SELECT EXISTS (SELECT 1 FROM pg_indexes
-			WHERE schemaname = 'public' AND indexname = ?)`, name).
-		Scan(context.Background(), &exists)
-	if err != nil {
-		t.Fatalf("查询索引 %s 失败: %v", name, err)
-	}
-	if !exists {
+	if !relExists(t, db, name) {
 		t.Errorf("索引 %s 应当存在", name)
 	}
 }

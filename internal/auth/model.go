@@ -1,0 +1,126 @@
+// Package auth 提供用户、角色、会话与访问令牌的存储与鉴权逻辑。
+package auth
+
+import (
+	"time"
+
+	"github.com/uptrace/bun"
+
+	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+)
+
+// User 是用户实体。
+type User struct {
+	bun.BaseModel `bun:"table:users,alias:u"`
+
+	ID       int64  `bun:"id,pk,autoincrement" json:"id"`
+	Username string `bun:"username,notnull"    json:"username"`
+	Email    string `bun:"email,notnull"       json:"email"`
+	// PasswordHash 绝不出现在 JSON 中：json:"-" 是防止口令哈希经 API 泄漏的第一道防线。
+	PasswordHash string     `bun:"password_hash,notnull" json:"-"`
+	DisplayName  string     `bun:"display_name"          json:"displayName"`
+	AvatarURL    string     `bun:"avatar_url"            json:"avatarUrl"`
+	Bio          string     `bun:"bio"                   json:"bio"`
+	Disabled     bool       `bun:"disabled"              json:"disabled"`
+	LastLoginAt  *time.Time `bun:"last_login_at"         json:"lastLoginAt,omitempty"`
+	CreatedAt    time.Time  `bun:"created_at,nullzero"   json:"createdAt"`
+	UpdatedAt    time.Time  `bun:"updated_at,nullzero"   json:"updatedAt"`
+
+	// Roles 由 LoadRoles 填充，不是数据库列。
+	Roles []Role `bun:"-" json:"roles,omitempty"`
+}
+
+// Name 返回用于展示的名称，显示名缺失时回退到用户名。
+func (u *User) Name() string {
+	if u.DisplayName != "" {
+		return u.DisplayName
+	}
+	return u.Username
+}
+
+// RoleNames 返回用户的角色名列表。
+func (u *User) RoleNames() []string {
+	names := make([]string, 0, len(u.Roles))
+	for i := range u.Roles {
+		names = append(names, u.Roles[i].Name)
+	}
+	return names
+}
+
+// Permissions 汇总用户所有角色的权限并集。
+func (u *User) Permissions() perm.Set {
+	set := make(perm.Set)
+	for i := range u.Roles {
+		set.Add(u.Roles[i].Permissions...)
+	}
+	return set
+}
+
+// Role 是角色实体，本质是一组权限串。
+type Role struct {
+	bun.BaseModel `bun:"table:roles,alias:r"`
+
+	ID          int64             `bun:"id,pk,autoincrement" json:"id"`
+	Name        string            `bun:"name,notnull"        json:"name"`
+	Label       string            `bun:"label"               json:"label"`
+	Description string            `bun:"description"         json:"description"`
+	Permissions []perm.Permission `bun:"permissions,type:jsonb" json:"permissions"`
+	Builtin     bool              `bun:"builtin"             json:"builtin"`
+	CreatedAt   time.Time         `bun:"created_at,nullzero" json:"createdAt"`
+	UpdatedAt   time.Time         `bun:"updated_at,nullzero" json:"updatedAt"`
+}
+
+// UserRole 是用户与角色的关联。
+type UserRole struct {
+	bun.BaseModel `bun:"table:user_roles,alias:ur"`
+
+	UserID    int64     `bun:"user_id,pk"`
+	RoleID    int64     `bun:"role_id,pk"`
+	GrantedAt time.Time `bun:"granted_at,nullzero"`
+}
+
+// Session 是服务端会话。
+//
+// TokenHash 是会话令牌的哈希；令牌明文只存在于客户端 Cookie 中。
+type Session struct {
+	bun.BaseModel `bun:"table:sessions,alias:s"`
+
+	TokenHash  string    `bun:"token_hash,pk"`
+	UserID     int64     `bun:"user_id,notnull"`
+	CSRFToken  string    `bun:"csrf_token,notnull"`
+	UserAgent  string    `bun:"user_agent"`
+	IP         string    `bun:"ip"`
+	ExpiresAt  time.Time `bun:"expires_at,notnull"`
+	CreatedAt  time.Time `bun:"created_at,nullzero"`
+	LastSeenAt time.Time `bun:"last_seen_at,nullzero"`
+}
+
+// Expired 报告会话是否已过期。
+func (s *Session) Expired(now time.Time) bool {
+	return !now.Before(s.ExpiresAt)
+}
+
+// AccessToken 是 Personal Access Token（agent.md §7.1：仅存哈希）。
+type AccessToken struct {
+	bun.BaseModel `bun:"table:access_tokens,alias:at"`
+
+	ID        int64  `bun:"id,pk,autoincrement" json:"id"`
+	TokenHash string `bun:"token_hash,notnull"  json:"-"`
+	// TokenHint 是令牌前缀，仅用于 UI 区分，不足以用于认证。
+	TokenHint string `bun:"token_hint" json:"tokenHint"`
+	UserID    int64  `bun:"user_id,notnull" json:"userId"`
+	Name      string `bun:"name,notnull"    json:"name"`
+	// Scopes 为空表示继承用户的全部权限。
+	Scopes     []perm.Permission `bun:"scopes,type:jsonb" json:"scopes"`
+	ExpiresAt  *time.Time        `bun:"expires_at"        json:"expiresAt,omitempty"`
+	LastUsedAt *time.Time        `bun:"last_used_at"      json:"lastUsedAt,omitempty"`
+	CreatedAt  time.Time         `bun:"created_at,nullzero" json:"createdAt"`
+}
+
+// Expired 报告令牌是否已过期。ExpiresAt 为 nil 表示永不过期。
+func (t *AccessToken) Expired(now time.Time) bool {
+	if t.ExpiresAt == nil {
+		return false
+	}
+	return !now.Before(*t.ExpiresAt)
+}

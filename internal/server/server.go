@@ -14,11 +14,11 @@ import (
 type Server struct {
 	http   *http.Server
 	logger *slog.Logger
-	cfg    config.ServerConfig
+	cfg    *config.ServerConfig
 }
 
 // New 构造 Server。
-func New(handler http.Handler, cfg config.ServerConfig, logger *slog.Logger) *Server {
+func New(handler http.Handler, cfg *config.ServerConfig, logger *slog.Logger) *Server {
 	return &Server{
 		http: &http.Server{
 			Addr:              cfg.Addr,
