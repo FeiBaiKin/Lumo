@@ -10,6 +10,7 @@ import (
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
+	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/database"
 	"github.com/FeiBaiKin/lumo/internal/server"
 )
@@ -24,8 +25,24 @@ type Stack struct {
 	Tokens *auth.TokenStore
 }
 
+// StackOptions 是装配整机测试栈的可选参数。
+type StackOptions struct {
+	// Config 传给 app.App，模块经 App.Config() 读取（如附件的 DataDir）。
+	Config config.Config
+	// UploadsDir 非空时把该目录以静态文件形式挂在 /uploads 下。
+	UploadsDir string
+	// Modules 是要装配的模块，顺序即注册顺序。
+	Modules []app.Module
+}
+
 // NewStack 装配路由与模块并播种内置角色。调用方须已完成迁移（含模块迁移）。
 func NewStack(t *testing.T, db *database.DB, modules ...app.Module) *Stack {
+	t.Helper()
+	return NewStackWith(t, db, &StackOptions{Modules: modules})
+}
+
+// NewStackWith 是带可选参数的装配入口，供需要工作目录或自定义配置的模块使用。
+func NewStackWith(t *testing.T, db *database.DB, opts *StackOptions) *Stack {
 	t.Helper()
 	ctx := context.Background()
 
@@ -38,11 +55,15 @@ func NewStack(t *testing.T, db *database.DB, modules ...app.Module) *Stack {
 	service := auth.NewService(users, sessions, tokens, nil)
 	authn := auth.NewAuthenticator(users, sessions, tokens, nil)
 
-	root, planes := server.NewRouter(&server.Options{Authenticator: authn, Version: "test"})
+	root, planes := server.NewRouter(&server.Options{
+		Authenticator: authn,
+		Version:       "test",
+		UploadsDir:    opts.UploadsDir,
+	})
 	auth.NewHandler(service, sessions, tokens, nil).Register(planes.ConsolePublic(), planes.Console())
 
-	application := app.New(&app.Options{DB: db, Router: planes})
-	if err := application.Register(modules...); err != nil {
+	application := app.New(&app.Options{Config: opts.Config, DB: db, Router: planes})
+	if err := application.Register(opts.Modules...); err != nil {
 		t.Fatalf("注册模块失败: %v", err)
 	}
 	// 模块的后台任务随此 ctx 退出，避免 goroutine 泄漏到其他测试。
@@ -82,12 +103,14 @@ func (s *Stack) Bearer(t *testing.T, username, role string) string {
 	return "Bearer " + issued.Plaintext
 }
 
-// Request 描述一次 JSON 请求。
+// Request 描述一次请求。
 type Request struct {
 	Method string
 	Path   string
-	// Body 非空时按 application/json 提交。
+	// Body 非空时作为请求体提交，默认按 application/json。
 	Body string
+	// ContentType 覆盖默认的 application/json，供 multipart 一类请求使用。
+	ContentType string
 	// Auth 非空时写入 Authorization 头。
 	Auth string
 }
@@ -102,7 +125,11 @@ func (s *Stack) Do(t *testing.T, r *Request) *httptest.ResponseRecorder {
 	}
 	req := httptest.NewRequestWithContext(t.Context(), r.Method, r.Path, reader)
 	if r.Body != "" {
-		req.Header.Set("Content-Type", "application/json")
+		contentType := r.ContentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		req.Header.Set("Content-Type", contentType)
 	}
 	if r.Auth != "" {
 		req.Header.Set("Authorization", r.Auth)

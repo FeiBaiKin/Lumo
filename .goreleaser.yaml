@@ -22,6 +22,8 @@ builds:
     goarch: [amd64, arm64]
     flags:
       - -trimpath
+      # nodynamic：不回退到系统 libwebp，保证发布产物是自足的静态二进制。
+      - -tags=nodynamic
     ldflags:
       - -s -w
       - -X github.com/FeiBaiKin/lumo/internal/version.Version={{.Version}}

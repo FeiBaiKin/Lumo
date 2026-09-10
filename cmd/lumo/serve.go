@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/database"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 	"github.com/FeiBaiKin/lumo/internal/logging"
+	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
 	"github.com/FeiBaiKin/lumo/internal/server"
 	"github.com/FeiBaiKin/lumo/internal/version"
@@ -68,7 +70,8 @@ func runServe(args []string) error {
 		logger.Warn("Console 前端未嵌入，后台界面不可用；执行 task console:build 后重新编译")
 	}
 
-	if _, err = workdir.Init(cfg.DataDir, logger); err != nil {
+	dataDir, err := workdir.Init(cfg.DataDir, logger)
+	if err != nil {
 		return err
 	}
 
@@ -113,6 +116,10 @@ func runServe(args []string) error {
 		Authenticator: authenticator,
 		ClientIP:      clientIP,
 		Version:       info.Version,
+		MaxBodySize:   cfg.Server.MaxBodySize,
+		MaxUploadSize: cfg.Server.MaxUploadSize,
+		// 本地存储的附件由核心以静态文件提供；换成 S3 后这个目录只是空着，无害。
+		UploadsDir: filepath.Join(dataDir, media.UploadsDirName),
 	})
 
 	// 认证端点由核心提供：登录走免认证注册面，其余走强制认证注册面。

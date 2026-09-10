@@ -8,6 +8,14 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	// 内嵌 IANA 时区库（约 450 KB）。
+	//
+	// 站点设置要求填写真实存在的 IANA 时区名，而 time.LoadLocation 默认要么读系统
+	// 时区库（Windows 上没有），要么读 $GOROOT/lib/time/zoneinfo.zip——发布用的
+	// -trimpath 构建连 GOROOT 都不再嵌入，装不了 Go 的机器上一律解析失败。
+	// 目标是「单一静态二进制到哪都一样」，时区库必须跟着走。
+	_ "time/tzdata"
 )
 
 const usage = `Lumo — 用 Go 编写的现代化开源 CMS

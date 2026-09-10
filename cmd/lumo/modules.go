@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/content"
+	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
@@ -16,10 +17,12 @@ import (
 // 而那时业务表可能尚不存在。需要读写库的启动逻辑放到 Start。
 //
 // 顺序即依赖：settings 被其他模块经 App.Lookup 取用，须最先；
+// media 读 storage 设置分组，排在 settings 之后；
 // content 的迁移引用 taxonomy 的表，必须排在它之后。
 func modules() []app.Module {
 	return []app.Module{
 		settings.New(),
+		media.New(),
 		taxonomy.New(),
 		content.New(),
 	}

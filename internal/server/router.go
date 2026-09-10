@@ -3,6 +3,7 @@ package server
 
 import (
 	"log/slog"
+	"mime"
 	"net/http"
 	"time"
 
@@ -42,7 +43,19 @@ type Options struct {
 	ClientIP *httpx.ClientIPResolver
 	// Version 写入 OpenAPI 文档的 info.version。
 	Version string
+	// MaxBodySize 是普通请求体的字节上限，0 表示用默认值。
+	MaxBodySize int64
+	// MaxUploadSize 是 multipart 请求体的字节上限，0 表示用默认值。
+	MaxUploadSize int64
+	// UploadsDir 非空时把该目录以静态文件形式挂在 /uploads 下，供本地存储的附件访问。
+	UploadsDir string
 }
+
+// 请求体上限的兜底默认值，仅在调用方未提供时生效。
+const (
+	defaultMaxBodySize   int64 = 10 << 20
+	defaultMaxUploadSize int64 = 64 << 20
+)
 
 // NewRouter 构造根路由并返回供模块注册用的三平面注册面。
 //
@@ -67,8 +80,8 @@ func NewRouter(opts *Options) (root chi.Router, planes *api.Planes) {
 	}
 	root.Use(requestLogger(logger))
 	root.Use(recoverer(logger))
-	// 请求体上限 10 MiB；附件上传在阶段 3 单独放宽。
-	root.Use(middleware.RequestSize(10 << 20))
+	root.Use(requestSize(orDefault(opts.MaxBodySize, defaultMaxBodySize),
+		orDefault(opts.MaxUploadSize, defaultMaxUploadSize)))
 
 	// 404 与 405 也必须返回 problem+json，避免 API 出现两套错误格式。
 	root.NotFound(func(w http.ResponseWriter, r *http.Request) {
@@ -87,6 +100,10 @@ func NewRouter(opts *Options) (root chi.Router, planes *api.Planes) {
 	}
 	api.SetErrorLogger(logger)
 	planes = api.NewPlanes(root, planeOpts)
+
+	if opts.UploadsDir != "" {
+		root.Mount(UploadsPath, uploadsHandler(opts.UploadsDir))
+	}
 
 	// Console SPA 与根路径重定向。
 	root.Mount(console.MountPath, console.Handler())
@@ -149,4 +166,51 @@ func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// UploadsPath 是本地存储附件的对外访问前缀。
+const UploadsPath = "/uploads"
+
+// orDefault 返回 value，非正数时返回 fallback。
+func orDefault(value, fallback int64) int64 {
+	if value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+// requestSize 按内容类型施加请求体上限。
+//
+// multipart 走附件上限、其余走普通上限：附件动辄几十兆，而 JSON 接口不该有那么大的口子。
+// 判据用 Content-Type 而非路径，是为了不把「哪些路径是上传接口」这种模块知识写进核心路由。
+func requestSize(maxBody, maxUpload int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			limit := maxBody
+			if mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err == nil &&
+				mediaType == "multipart/form-data" {
+				limit = maxUpload
+			}
+			if r.Body != nil {
+				r.Body = http.MaxBytesReader(w, r.Body, limit)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// uploadsHandler 以静态文件形式提供本地存储的附件。
+//
+// 上传内容与 Console 同源，必须假定其中可能有 SVG 或 HTML 一类可执行文档：
+//   - nosniff 阻止浏览器把 .txt 猜成 HTML 去执行；
+//   - CSP 的 sandbox 与 default-src 'none' 让直接打开这些文件时脚本无法运行，
+//     只放行图片与音视频自身的渲染。作为子资源（<img src>）加载时 CSP 不生效，主题不受影响。
+func uploadsHandler(dir string) http.Handler {
+	fileServer := http.FileServer(http.Dir(dir))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox")
+		http.StripPrefix(UploadsPath, fileServer).ServeHTTP(w, r)
+	})
 }

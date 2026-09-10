@@ -46,6 +46,13 @@ type ServerConfig struct {
 	// SecureCookies 决定会话 Cookie 是否带 Secure 属性并启用 __Host- 前缀。
 	// 生产环境（HTTPS）必须为 true；本地 HTTP 开发需为 false，否则浏览器不接受 Cookie。
 	SecureCookies bool `yaml:"secureCookies"`
+	// MaxBodySize 是普通请求体的字节上限。
+	MaxBodySize int64 `yaml:"maxBodySize"`
+	// MaxUploadSize 是 multipart 请求（附件上传）的字节上限。
+	//
+	// 与 MaxBodySize 分开是因为二者的取舍相反：JSON 接口越小越好，
+	// 而附件动辄几十兆，用同一个值要么挡住正常上传，要么给所有接口放开口子。
+	MaxUploadSize int64 `yaml:"maxUploadSize"`
 }
 
 // DatabaseConfig 是数据库连接配置。
@@ -77,6 +84,8 @@ func Default() Config {
 			WriteTimeout:      60 * time.Second,
 			IdleTimeout:       60 * time.Second,
 			ShutdownTimeout:   15 * time.Second,
+			MaxBodySize:       10 << 20,
+			MaxUploadSize:     64 << 20,
 		},
 		Database: DatabaseConfig{
 			MaxOpenConns:    25,
@@ -184,6 +193,22 @@ func applyEnv(cfg *Config, env getenv) error {
 		*target = n
 	}
 
+	int64s := map[string]*int64{
+		"MAX_BODY_SIZE":   &cfg.Server.MaxBodySize,
+		"MAX_UPLOAD_SIZE": &cfg.Server.MaxUploadSize,
+	}
+	for key, target := range int64s {
+		v := env(EnvPrefix + key)
+		if v == "" {
+			continue
+		}
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return fmt.Errorf("环境变量 %s%s 不是整数: %q", EnvPrefix, key, v)
+		}
+		*target = n
+	}
+
 	durations := map[string]*time.Duration{
 		"DATABASE_CONN_MAX_LIFETIME": &cfg.Database.ConnMaxLifetime,
 		"SHUTDOWN_TIMEOUT":           &cfg.Server.ShutdownTimeout,
@@ -257,6 +282,12 @@ func (c *Config) Validate() error {
 	}
 	if c.DataDir == "" {
 		errs = append(errs, errors.New("dataDir 不能为空"))
+	}
+	if c.Server.MaxBodySize <= 0 {
+		errs = append(errs, fmt.Errorf("server.maxBodySize 必须为正数，实际 %d", c.Server.MaxBodySize))
+	}
+	if c.Server.MaxUploadSize <= 0 {
+		errs = append(errs, fmt.Errorf("server.maxUploadSize 必须为正数，实际 %d", c.Server.MaxUploadSize))
 	}
 	if c.Database.MaxOpenConns <= 0 {
 		errs = append(errs, fmt.Errorf("database.maxOpenConns 必须为正数，实际 %d", c.Database.MaxOpenConns))

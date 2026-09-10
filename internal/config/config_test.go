@@ -29,6 +29,8 @@ func TestApplyEnv(t *testing.T) {
 		"LUMO_DATABASE_MAX_OPEN_CONNS":    "50",
 		"LUMO_DATABASE_CONN_MAX_LIFETIME": "30m",
 		"LUMO_DATABASE_AUTO_MIGRATE":      "false",
+		"LUMO_MAX_BODY_SIZE":              "2097152",
+		"LUMO_MAX_UPLOAD_SIZE":            "134217728",
 	}
 
 	cfg := Default()
@@ -54,6 +56,12 @@ func TestApplyEnv(t *testing.T) {
 	if cfg.Database.AutoMigrate {
 		t.Error("AutoMigrate 应被覆盖为 false")
 	}
+	if cfg.Server.MaxBodySize != 2<<20 {
+		t.Errorf("MaxBodySize = %d，期望 %d", cfg.Server.MaxBodySize, 2<<20)
+	}
+	if cfg.Server.MaxUploadSize != 128<<20 {
+		t.Errorf("MaxUploadSize = %d，期望 %d", cfg.Server.MaxUploadSize, 128<<20)
+	}
 }
 
 func TestApplyEnvRejectsBadValues(t *testing.T) {
@@ -66,6 +74,8 @@ func TestApplyEnvRejectsBadValues(t *testing.T) {
 		{"整数非法", map[string]string{"LUMO_DATABASE_MAX_OPEN_CONNS": "abc"}},
 		{"时长非法", map[string]string{"LUMO_DATABASE_CONN_MAX_LIFETIME": "5 weeks"}},
 		{"布尔非法", map[string]string{"LUMO_DATABASE_AUTO_MIGRATE": "maybe"}},
+		{"请求体上限非法", map[string]string{"LUMO_MAX_BODY_SIZE": "10MB"}},
+		{"上传上限非法", map[string]string{"LUMO_MAX_UPLOAD_SIZE": "64MiB"}},
 	}
 
 	for _, tt := range tests {
@@ -97,6 +107,8 @@ func TestValidateCatchesBadConfig(t *testing.T) {
 			c.Database.MaxIdleConns = 10
 		}, "maxIdleConns"},
 		{"非法外部 URL", func(c *Config) { c.Server.ExternalURL = "not-a-url" }, "externalUrl"},
+		{"请求体上限非正", func(c *Config) { c.Server.MaxBodySize = 0 }, "maxBodySize"},
+		{"上传上限非正", func(c *Config) { c.Server.MaxUploadSize = -1 }, "maxUploadSize"},
 	}
 
 	for _, tt := range tests {

@@ -5,6 +5,9 @@ version: "2"
 run:
   timeout: 5m
   tests: true
+  # 与 Taskfile / goreleaser 保持一致：不加就会去分析 webp 的动态库回退分支。
+  build-tags:
+    - nodynamic
 
 linters:
   # 默认集为 errcheck / govet / ineffassign / staticcheck / unused。

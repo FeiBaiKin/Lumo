@@ -31,6 +31,14 @@ server:
   # 本地 HTTP 开发必须为 false，否则浏览器不会保存 Cookie，登录会「成功但立刻失效」。
   secureCookies: false
 
+  # 请求体上限，单位字节。
+  #
+  # maxBodySize 管普通请求（LUMO_MAX_BODY_SIZE），maxUploadSize 管 multipart 上传
+  # （LUMO_MAX_UPLOAD_SIZE）。分开设是因为二者取舍相反：JSON 接口越小越安全，
+  # 而附件动辄几十兆，用同一个值要么挡住正常上传，要么给所有接口开大口子。
+  maxBodySize: 10485760      # 10 MiB
+  maxUploadSize: 67108864    # 64 MiB
+
 database:
   # 连接池上限（LUMO_DATABASE_MAX_OPEN_CONNS）
   maxOpenConns: 25
@@ -48,3 +56,8 @@ log:
 
 # 运行时工作目录，内含 themes/uploads/cache/logs/backups（LUMO_DATA_DIR）
 dataDir: ./data
+
+# 附件存储位置在后台「设置 → 附件存储」中配置，不写在此文件里。
+# 选择 S3 兼容存储时，访问密钥只从环境变量读取，同样不入库、不进配置文件：
+#   LUMO_S3_ACCESS_KEY=...
+#   LUMO_S3_SECRET_KEY=...

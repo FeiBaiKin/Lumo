@@ -4,6 +4,9 @@ version: "3"
 
 vars:
   BINARY: lumo{{exeExt}}
+  # nodynamic：禁用 gen2brain/webp 的动态库回退，只用转译为 Go 的 libwebp。
+  # 不加这个标签，运行时会尝试 dlopen 系统里的 libwebp，产物就不再是「同一份二进制到哪都一样」了。
+  BUILD_TAGS: nodynamic
   MODULE: github.com/FeiBaiKin/lumo
   PKG_VERSION: "{{.MODULE}}/internal/version"
   CONSOLE_DIR: console
@@ -46,7 +49,7 @@ tasks:
   vet:
     desc: 运行 go vet
     cmds:
-      - go vet ./...
+      - go vet -tags {{.BUILD_TAGS}} ./...
 
   lint:
     desc: 运行 golangci-lint（需先安装）
@@ -56,7 +59,7 @@ tasks:
   test:
     desc: 运行 Go 测试（未设 LUMO_TEST_DSN 时自动跳过集成测试）
     cmds:
-      - go test ./... {{.CLI_ARGS}}
+      - go test -tags {{.BUILD_TAGS}} ./... {{.CLI_ARGS}}
 
   test:integration:
     desc: 运行集成测试（需先设 LUMO_TEST_DSN；库名必须含 test，护栏会拒绝其他库）
@@ -67,23 +70,23 @@ tasks:
           故不提供默认值以避免误连。示例（PowerShell）：
             $env:LUMO_TEST_DSN = "postgres://用户:口令@127.0.0.1:5432/你的_test库?sslmode=disable"
     cmds:
-      - go test -count=1 ./... {{.CLI_ARGS}}
+      - go test -tags {{.BUILD_TAGS}} -count=1 ./... {{.CLI_ARGS}}
 
   test:cover:
     desc: 运行测试并生成覆盖率报告
     cmds:
-      - go test -coverprofile=coverage.out ./...
+      - go test -tags {{.BUILD_TAGS}} -coverprofile=coverage.out ./...
       - go tool cover -func=coverage.out
 
   build:
     desc: 构建后端二进制（不含前端，前端请先跑 console:build）
     cmds:
-      - go build -trimpath -ldflags="{{.LDFLAGS}}" -o {{.BINARY}} ./cmd/lumo
+      - go build -tags {{.BUILD_TAGS}} -trimpath -ldflags="{{.LDFLAGS}}" -o {{.BINARY}} ./cmd/lumo
 
   run:
     desc: 本地运行（开发用，不注入版本信息）
     cmds:
-      - go run ./cmd/lumo {{.CLI_ARGS}}
+      - go run -tags {{.BUILD_TAGS}} ./cmd/lumo {{.CLI_ARGS}}
 
   # ---------- 前端 ----------
 
