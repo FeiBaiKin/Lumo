@@ -58,6 +58,7 @@ type Options struct {
 
 // Planes 持有三平面的 huma 分组，实现 app.Router。
 type Planes struct {
+	root          chi.Router
 	api           huma.API
 	console       *huma.Group
 	consolePublic *huma.Group
@@ -78,6 +79,7 @@ type Planes struct {
 func NewPlanes(root chi.Router, opts *Options) *Planes {
 	humaAPI := humachi.New(root, NewConfig(opts.Title, opts.Version))
 	p := &Planes{
+		root:          root,
 		api:           humaAPI,
 		console:       huma.NewGroup(humaAPI, PrefixConsole),
 		consolePublic: huma.NewGroup(humaAPI, PrefixConsole),
@@ -129,6 +131,11 @@ func (p *Planes) Extension() huma.API { return p.extension }
 
 // API 返回不带前缀与鉴权的根 huma API，仅供核心挂载诊断类操作。
 func (p *Planes) API() huma.API { return p.api }
+
+// Raw 在站点根路径挂一个直接写响应的处理器，实现 app.Router。
+func (p *Planes) Raw(method, path string, handler http.HandlerFunc) {
+	p.root.Method(method, path, handler)
+}
 
 // OpenAPI 返回生成中的规范文档。
 func (p *Planes) OpenAPI() *huma.OpenAPI { return p.api.OpenAPI() }

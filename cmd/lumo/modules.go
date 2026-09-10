@@ -8,6 +8,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/menu"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
+	"github.com/FeiBaiKin/lumo/internal/seo"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
 	"github.com/FeiBaiKin/lumo/migrations"
@@ -22,7 +23,7 @@ import (
 // 顺序即依赖：settings 与 mail 被其他模块经 App.Lookup 取用，须最先；
 // media 读 storage 设置分组，排在 settings 之后；
 // content 的迁移引用 taxonomy 的表，必须排在它之后；
-// comment 引用 content 的 posts 表；menu 读取 content 与 taxonomy 的表来解析条目地址。
+// comment 引用 content 的 posts 表；menu 与 seo 读取 content、taxonomy 与 users 的表。
 func modules() []app.Module {
 	return []app.Module{
 		settings.New(),
@@ -32,6 +33,7 @@ func modules() []app.Module {
 		content.New(),
 		comment.New(),
 		menu.New(),
+		seo.New(),
 	}
 }
 

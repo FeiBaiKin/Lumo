@@ -87,6 +87,12 @@ type Router interface {
 	Public() huma.API
 	// Extension 挂载 /apis/{group}/{version}/{kind} ：强制已认证。
 	Extension() huma.API
+	// Raw 在站点根路径上挂一个直接写响应的处理器，供 robots.txt、sitemap.xml、
+	// 订阅源一类**非 JSON 且必须位于根路径**的资源使用。
+	//
+	// 这是三平面之外唯一的注册口子，刻意开得很窄：它不经过任何鉴权与内容协商，
+	// 挂上去的处理器对匿名请求可见。业务接口一律走上面四个注册面。
+	Raw(method, path string, handler http.HandlerFunc)
 }
 
 // SettingGroup 是一组设置项声明，走统一表单 Schema（agent.md §5）。
