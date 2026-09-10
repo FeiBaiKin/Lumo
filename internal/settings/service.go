@@ -1,0 +1,339 @@
+package settings
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
+	"regexp"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/httpx"
+	"github.com/FeiBaiKin/lumo/internal/slug"
+)
+
+// 错误哨兵。
+var (
+	// ErrUnknownGroup 表示分组未注册。
+	ErrUnknownGroup = errors.New("设置分组不存在")
+)
+
+// ValidationError 表示值未通过 Schema 或 Go 侧校验，Details 逐条定位到字段。
+type ValidationError struct {
+	Details []httpx.ErrorDetail
+}
+
+// Error 实现 error。
+func (e *ValidationError) Error() string {
+	if len(e.Details) == 0 {
+		return "设置校验失败"
+	}
+	parts := make([]string, 0, len(e.Details))
+	for _, d := range e.Details {
+		if d.Location != "" {
+			parts = append(parts, d.Location+": "+d.Message)
+		} else {
+			parts = append(parts, d.Message)
+		}
+	}
+	return "设置校验失败：" + strings.Join(parts, "；")
+}
+
+// cacheTTL 是有效值的进程内缓存时长：多实例部署时其他实例的写入最迟这么久后可见。
+const cacheTTL = 30 * time.Second
+
+// groupNamePattern 限定分组名形态（DNS-1123）。
+var groupNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
+// Group 是已编译的设置分组。
+type Group struct {
+	app.SettingGroup
+	schema   *jsonschema.Schema
+	doc      map[string]any
+	defaults map[string]any
+}
+
+// SchemaDoc 返回解析后的 Schema 文档，供接口输出。
+func (g *Group) SchemaDoc() map[string]any { return g.doc }
+
+// Defaults 返回缺省值的副本。
+func (g *Group) DefaultValues() map[string]any { return maps.Clone(g.defaults) }
+
+type cacheEntry struct {
+	values  map[string]any
+	expires time.Time
+}
+
+// Service 是设置的读写入口：持有已注册分组、校验器与缓存。
+type Service struct {
+	store *Store
+
+	mu     sync.RWMutex
+	groups map[string]*Group
+	order  []string
+	cache  map[string]cacheEntry
+}
+
+// NewService 构造 Service；store 可为 nil（仅做 Schema 校验的场景）。
+func NewService(store *Store) *Service {
+	return &Service{store: store, groups: map[string]*Group{}, cache: map[string]cacheEntry{}}
+}
+
+// RegisterGroups 编译并登记分组。任一分组的 Schema 或 Defaults 不合法即整体失败：
+// 那是模块作者的错误，必须在启动时暴露。
+func (s *Service) RegisterGroups(groups []app.SettingGroup) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := range groups {
+		g, err := compileGroup(&groups[i])
+		if err != nil {
+			return err
+		}
+		if _, dup := s.groups[g.Name]; dup {
+			return fmt.Errorf("settings: 分组 %q 重复注册", g.Name)
+		}
+		s.groups[g.Name] = g
+		s.order = append(s.order, g.Name)
+	}
+	sort.SliceStable(s.order, func(i, j int) bool {
+		a, b := s.groups[s.order[i]], s.groups[s.order[j]]
+		if a.Order != b.Order {
+			return a.Order < b.Order
+		}
+		return a.Name < b.Name
+	})
+	return nil
+}
+
+// compileGroup 校验声明并编译 Schema。
+func compileGroup(decl *app.SettingGroup) (*Group, error) {
+	if !groupNamePattern.MatchString(decl.Name) {
+		return nil, fmt.Errorf("settings: 非法的分组名 %q", decl.Name)
+	}
+	if len(decl.Schema) == 0 {
+		return nil, fmt.Errorf("settings: 分组 %q 缺少 Schema", decl.Name)
+	}
+
+	rawDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(decl.Schema))
+	if err != nil {
+		return nil, fmt.Errorf("settings: 分组 %q 的 Schema 不是合法 JSON: %w", decl.Name, err)
+	}
+	doc, ok := rawDoc.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("settings: 分组 %q 的 Schema 须为对象", decl.Name)
+	}
+	if typ, _ := doc["type"].(string); typ != "object" {
+		return nil, fmt.Errorf("settings: 分组 %q 的 Schema 顶层 type 须为 object", decl.Name)
+	}
+
+	compiler := jsonschema.NewCompiler()
+	location := "lumo://settings/" + decl.Name + ".json"
+	if addErr := compiler.AddResource(location, rawDoc); addErr != nil {
+		return nil, fmt.Errorf("settings: 载入分组 %q 的 Schema: %w", decl.Name, addErr)
+	}
+	schema, err := compiler.Compile(location)
+	if err != nil {
+		return nil, fmt.Errorf("settings: 编译分组 %q 的 Schema: %w", decl.Name, err)
+	}
+
+	defaults := map[string]any{}
+	if len(decl.Defaults) > 0 {
+		if err := json.Unmarshal(decl.Defaults, &defaults); err != nil {
+			return nil, fmt.Errorf("settings: 分组 %q 的 Defaults 不是合法 JSON 对象: %w", decl.Name, err)
+		}
+	}
+	g := &Group{SettingGroup: *decl, schema: schema, doc: doc, defaults: defaults}
+	if err := g.validate(defaults); err != nil {
+		return nil, fmt.Errorf("settings: 分组 %q 的 Defaults 未通过自身 Schema: %w", decl.Name, err)
+	}
+	return g, nil
+}
+
+// validate 用 Schema 与 Check 校验有效值。
+func (g *Group) validate(values map[string]any) error {
+	if err := g.schema.Validate(normalize(values)); err != nil {
+		var verr *jsonschema.ValidationError
+		if errors.As(err, &verr) {
+			return &ValidationError{Details: collectDetails(verr.BasicOutput(), nil)}
+		}
+		return &ValidationError{Details: []httpx.ErrorDetail{{Message: err.Error()}}}
+	}
+	if g.Check != nil {
+		if err := g.Check(values); err != nil {
+			var verr *ValidationError
+			if errors.As(err, &verr) {
+				return verr
+			}
+			return &ValidationError{Details: []httpx.ErrorDetail{{Message: err.Error(), Location: "body"}}}
+		}
+	}
+	return nil
+}
+
+// normalize 把值经 JSON 往返一次，让整数等类型与校验器的期望一致。
+func normalize(values map[string]any) any {
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return values
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		return values
+	}
+	return doc
+}
+
+// collectDetails 把校验器的树状输出摊平成逐条明细。
+func collectDetails(unit *jsonschema.OutputUnit, out []httpx.ErrorDetail) []httpx.ErrorDetail {
+	if unit == nil {
+		return out
+	}
+	if unit.Error != nil && len(unit.Errors) == 0 {
+		out = append(out, httpx.ErrorDetail{
+			Message:  unit.Error.String(),
+			Location: "body" + strings.ReplaceAll(unit.InstanceLocation, "/", "."),
+		})
+	}
+	for i := range unit.Errors {
+		out = collectDetails(&unit.Errors[i], out)
+	}
+	return out
+}
+
+// Groups 返回全部分组，按 Order、Name 排序。
+func (s *Service) Groups() []*Group {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*Group, 0, len(s.order))
+	for _, name := range s.order {
+		out = append(out, s.groups[name])
+	}
+	return out
+}
+
+// Group 按名称取分组。
+func (s *Service) Group(name string) (*Group, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	g, ok := s.groups[name]
+	return g, ok
+}
+
+// Effective 返回分组的有效值（缺省值被已保存值按顶层键覆盖）的副本。
+func (s *Service) Effective(ctx context.Context, name string) (map[string]any, error) {
+	g, ok := s.Group(name)
+	if !ok {
+		return nil, ErrUnknownGroup
+	}
+
+	s.mu.RLock()
+	entry, cached := s.cache[name]
+	s.mu.RUnlock()
+	if cached && time.Now().Before(entry.expires) {
+		return maps.Clone(entry.values), nil
+	}
+
+	stored := map[string]any{}
+	if s.store != nil {
+		loaded, err := s.store.Load(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		stored = loaded
+	}
+	values := merge(g.defaults, stored)
+
+	s.mu.Lock()
+	s.cache[name] = cacheEntry{values: values, expires: time.Now().Add(cacheTTL)}
+	s.mu.Unlock()
+	return maps.Clone(values), nil
+}
+
+// Get 把分组的有效值解码到 out（通常是带 json 标签的结构体）。
+func (s *Service) Get(ctx context.Context, name string, out any) error {
+	values, err := s.Effective(ctx, name)
+	if err != nil {
+		return err
+	}
+	raw, err := json.Marshal(values)
+	if err != nil {
+		return fmt.Errorf("编码设置 %s: %w", name, err)
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("解码设置 %s: %w", name, err)
+	}
+	return nil
+}
+
+// Update 用给定值覆盖分组：先与缺省值合并成完整对象，校验通过后整体保存并返回有效值。
+func (s *Service) Update(ctx context.Context, name string, values map[string]any) (map[string]any, error) {
+	g, ok := s.Group(name)
+	if !ok {
+		return nil, ErrUnknownGroup
+	}
+	effective := merge(g.defaults, values)
+	if err := g.validate(effective); err != nil {
+		return nil, err
+	}
+	if s.store == nil {
+		return nil, errors.New("settings: 未配置存储，无法写入")
+	}
+	if err := s.store.Save(ctx, name, effective); err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	delete(s.cache, name)
+	s.mu.Unlock()
+	return maps.Clone(effective), nil
+}
+
+// Public 返回各分组中标记为公开的字段，供前台与登录页使用。
+func (s *Service) Public(ctx context.Context) (map[string]map[string]any, error) {
+	out := map[string]map[string]any{}
+	for _, g := range s.Groups() {
+		if len(g.Public) == 0 {
+			continue
+		}
+		values, err := s.Effective(ctx, g.Name)
+		if err != nil {
+			return nil, err
+		}
+		picked := make(map[string]any, len(g.Public))
+		for _, key := range g.Public {
+			if v, ok := values[key]; ok {
+				picked[key] = v
+			}
+		}
+		out[g.Name] = picked
+	}
+	return out, nil
+}
+
+// Slug 按站点设置的策略生成 slug：unicode 保留中文，pinyin 转为拼音。
+//
+// 分组尚未注册或读取失败时退回 unicode 策略，不让一次设置读取失败拖垮内容创建。
+func (s *Service) Slug(ctx context.Context, text string) string {
+	var site Site
+	if err := s.Get(ctx, GroupSite, &site); err == nil && site.SlugStrategy == SlugPinyin {
+		return slug.Pinyin(text)
+	}
+	return slug.Make(text)
+}
+
+// merge 返回 defaults 被 overrides 按顶层键覆盖后的新对象。
+func merge(defaults, overrides map[string]any) map[string]any {
+	out := make(map[string]any, len(defaults)+len(overrides))
+	maps.Copy(out, defaults)
+	maps.Copy(out, overrides)
+	return out
+}

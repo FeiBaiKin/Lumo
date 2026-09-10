@@ -10,6 +10,7 @@ import (
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/settings"
 )
 
 //go:embed migrations/*.sql
@@ -20,7 +21,8 @@ const Name = "taxonomy"
 
 // Module 是分类与标签模块。
 type Module struct {
-	store *Store
+	store   *Store
+	slugify Slugger
 }
 
 // New 构造模块。
@@ -32,9 +34,14 @@ func New() *Module {
 func (m *Module) Name() string { return Name }
 
 // Register 实现 app.Module：只做装配，不访问数据库。
+//
+// 若 settings 模块先于本模块装配，slug 生成策略跟随站点设置；否则退回保留中文的缺省策略。
 func (m *Module) Register(a *app.App) error {
 	if db := a.DB(); db != nil {
 		m.store = NewStore(db.DB)
+	}
+	if svc := settings.From(a); svc != nil {
+		m.slugify = svc.Slug
 	}
 	return nil
 }
@@ -55,7 +62,7 @@ func (m *Module) Routes(r app.Router) {
 		// 无数据库的场景（如只渲染帮助）不挂接口。
 		return
 	}
-	NewHandler(m.store).Register(r.Console(), r.Public())
+	NewHandler(m.store, m.slugify).Register(r.Console(), r.Public())
 }
 
 // Permissions 实现 app.PermissionProvider。

@@ -36,14 +36,21 @@ const maxSlugRetries = 20
 // reservedCategorySlugs 是与固定路径冲突、不能用作分类 slug 的值。
 var reservedCategorySlugs = map[string]bool{"tree": true}
 
+// Slugger 由文本生成 slug；站点设置决定保留中文还是转拼音。
+type Slugger func(ctx context.Context, text string) string
+
 // Handler 提供分类与标签的 Console 与 Public 接口。
 type Handler struct {
-	store *Store
+	store   *Store
+	slugify Slugger
 }
 
-// NewHandler 构造 Handler。
-func NewHandler(store *Store) *Handler {
-	return &Handler{store: store}
+// NewHandler 构造 Handler；slugify 为 nil 时使用保留中文的缺省策略。
+func NewHandler(store *Store, slugify Slugger) *Handler {
+	if slugify == nil {
+		slugify = func(_ context.Context, text string) string { return slug.Make(text) }
+	}
+	return &Handler{store: store, slugify: slugify}
 }
 
 // Register 挂载接口：Console 平面读操作对任何已认证用户开放（作者选分类需要），
@@ -329,7 +336,7 @@ func (h *Handler) createCategory(ctx context.Context, in *categoryInput) (*categ
 	if err != nil {
 		return nil, err
 	}
-	s, err := resolveSlug(in.Body.Slug, name, "", reservedCategorySlugs)
+	s, err := h.resolveSlug(ctx, in.Body.Slug, name, "", reservedCategorySlugs)
 	if err != nil {
 		return nil, err
 	}
@@ -372,7 +379,7 @@ func (h *Handler) updateCategory(ctx context.Context, in *categoryUpdateInput) (
 	if err != nil {
 		return nil, err
 	}
-	s, err := resolveSlug(in.Body.Slug, name, current.Slug, reservedCategorySlugs)
+	s, err := h.resolveSlug(ctx, in.Body.Slug, name, current.Slug, reservedCategorySlugs)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +436,7 @@ func (h *Handler) createTag(ctx context.Context, in *tagInput) (*tagOutput, erro
 	if err != nil {
 		return nil, err
 	}
-	s, err := resolveSlug(in.Body.Slug, name, "", nil)
+	s, err := h.resolveSlug(ctx, in.Body.Slug, name, "", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -458,7 +465,7 @@ func (h *Handler) updateTag(ctx context.Context, in *tagUpdateInput) (*tagOutput
 	if err != nil {
 		return nil, err
 	}
-	s, err := resolveSlug(in.Body.Slug, name, current.Slug, nil)
+	s, err := h.resolveSlug(ctx, in.Body.Slug, name, current.Slug, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -494,8 +501,8 @@ func cleanName(name string) (string, error) {
 // resolveSlug 决定最终 slug：
 //   - 调用方给了 slug：按统一规则规范化，无法规范化则报错；
 //   - 没给但对象已有 slug（更新）：保留原值，避免既有链接失效；
-//   - 都没有（创建）：由名称生成，生成不出则要求手动指定。
-func resolveSlug(provided, name, current string, reserved map[string]bool) (string, error) {
+//   - 都没有（创建）：按站点策略由名称生成，生成不出则要求手动指定。
+func (h *Handler) resolveSlug(ctx context.Context, provided, name, current string, reserved map[string]bool) (string, error) {
 	var s string
 	switch {
 	case strings.TrimSpace(provided) != "":
@@ -506,7 +513,7 @@ func resolveSlug(provided, name, current string, reserved map[string]bool) (stri
 	case current != "":
 		return current, nil
 	default:
-		s = slug.Make(name)
+		s = h.slugify(ctx, name)
 		if s == "" {
 			return "", huma.Error400BadRequest("无法从名称生成 slug，请手动指定")
 		}

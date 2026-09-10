@@ -7,6 +7,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 
@@ -88,14 +89,26 @@ type Router interface {
 	Extension() huma.API
 }
 
-// SettingGroup 是一组设置项声明，字段随阶段 3 的表单 Schema 落地后细化。
+// SettingGroup 是一组设置项声明，走统一表单 Schema（agent.md §5）。
+//
+// 分组是设置的读写单位：Console 按分组渲染表单，接口按分组整体替换值。
 type SettingGroup struct {
-	// Name 是分组标识。
+	// Name 是分组标识（DNS-1123），如 site、seo、mail。
 	Name string
-	// Label 是分组显示名，走 i18n key。
+	// Label 是分组显示名。
 	Label string
-	// Schema 是 JSON Schema 子集 + x-widget 的声明（agent.md §5）。
-	Schema []byte
+	// Description 是分组说明。
+	Description string
+	// Order 决定 Console 中的显示顺序，数值小者在前。
+	Order int
+	// Schema 是 JSON Schema 2020-12 子集 + x-widget 的声明，须为 object 类型并逐项声明 properties。
+	Schema json.RawMessage
+	// Defaults 是缺省值对象，须能通过 Schema 校验；有效值 = Defaults 被已保存值按顶层键覆盖。
+	Defaults json.RawMessage
+	// Public 列出可经 Public 平面读取的字段名（如站点标题）；其余字段仅 Console 可见。
+	Public []string
+	// Check 是 Schema 之外的 Go 侧校验（如时区名是否真实存在），入参为合并默认值后的有效值；可为 nil。
+	Check func(values map[string]any) error
 }
 
 // Permission 是一条权限声明，格式为 <资源>:<动作>（agent.md §7.2）。

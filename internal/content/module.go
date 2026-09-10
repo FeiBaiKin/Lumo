@@ -15,6 +15,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/settings"
 )
 
 //go:embed migrations/*.sql
@@ -28,8 +29,9 @@ const scheduleInterval = 30 * time.Second
 
 // Module 是内容模块。
 type Module struct {
-	store  *Store
-	logger *slog.Logger
+	store   *Store
+	logger  *slog.Logger
+	slugify Slugger
 }
 
 // New 构造模块。
@@ -41,10 +43,15 @@ func New() *Module {
 func (m *Module) Name() string { return Name }
 
 // Register 实现 app.Module：只做装配，不访问数据库。
+//
+// 若 settings 模块先于本模块装配，slug 生成策略跟随站点设置；否则退回保留中文的缺省策略。
 func (m *Module) Register(a *app.App) error {
 	m.logger = a.Logger()
 	if db := a.DB(); db != nil {
 		m.store = NewStore(db.DB, auth.NewStore(db.DB))
+	}
+	if svc := settings.From(a); svc != nil {
+		m.slugify = svc.Slug
 	}
 	return nil
 }
@@ -63,7 +70,7 @@ func (m *Module) Routes(r app.Router) {
 	if m.store == nil {
 		return
 	}
-	NewHandler(m.store).Register(r.Console(), r.Public())
+	NewHandler(m.store, m.slugify).Register(r.Console(), r.Public())
 }
 
 // Permissions 实现 app.PermissionProvider。

@@ -4,6 +4,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/content"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
+	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
 	"github.com/FeiBaiKin/lumo/migrations"
 )
@@ -14,9 +15,11 @@ import (
 // 模块的 Register 只做装配，不得访问数据库：migrate 命令也会走同一条注册链，
 // 而那时业务表可能尚不存在。需要读写库的启动逻辑放到 Start。
 //
-// 顺序即依赖：content 的迁移引用 taxonomy 的表，必须排在它之后。
+// 顺序即依赖：settings 被其他模块经 App.Lookup 取用，须最先；
+// content 的迁移引用 taxonomy 的表，必须排在它之后。
 func modules() []app.Module {
 	return []app.Module{
+		settings.New(),
 		taxonomy.New(),
 		content.New(),
 	}

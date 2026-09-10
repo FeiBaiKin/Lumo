@@ -31,6 +31,8 @@ type App struct {
 	settings    []SettingGroup
 	permissions []Permission
 	hooks       []Hook
+	// provided 是模块登记的共享服务。
+	provided map[string]any
 }
 
 // NamedFS 是带来源模块名的迁移文件系统，便于错误定位与版本表命名。
@@ -101,6 +103,23 @@ func (a *App) Hooks() []Hook {
 		return sorted[i].Priority < sorted[j].Priority
 	})
 	return sorted
+}
+
+// Provide 登记一个供其他模块使用的共享服务（如设置读取器）。
+//
+// 这是模块之间唯一的依赖注入点：先注册的模块在 Register 里 Provide，
+// 后注册的模块经 Lookup 取用，依赖方向由 modules.go 的装配顺序决定。
+func (a *App) Provide(name string, value any) {
+	if a.provided == nil {
+		a.provided = map[string]any{}
+	}
+	a.provided[name] = value
+}
+
+// Lookup 取回 Provide 登记的共享服务；未登记时返回 false。
+func (a *App) Lookup(name string) (any, bool) {
+	value, ok := a.provided[name]
+	return value, ok
 }
 
 // Register 依次注册模块，并用类型断言收集可选能力。

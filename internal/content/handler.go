@@ -67,14 +67,21 @@ func (k *kind) canDelete(p *auth.Principal, post *Post) bool {
 	return p.Has(k.deleteAny)
 }
 
+// Slugger 由文本生成 slug；站点设置决定保留中文还是转拼音。
+type Slugger func(ctx context.Context, text string) string
+
 // Handler 提供内容的 Console 与 Public 接口。
 type Handler struct {
-	store *Store
+	store   *Store
+	slugify Slugger
 }
 
-// NewHandler 构造 Handler。
-func NewHandler(store *Store) *Handler {
-	return &Handler{store: store}
+// NewHandler 构造 Handler；slugify 为 nil 时使用保留中文的缺省策略。
+func NewHandler(store *Store, slugify Slugger) *Handler {
+	if slugify == nil {
+		slugify = func(_ context.Context, text string) string { return slug.Make(text) }
+	}
+	return &Handler{store: store, slugify: slugify}
 }
 
 // Register 为文章与页面各挂一套接口。
@@ -312,7 +319,7 @@ func (h *Handler) create(k *kind) func(context.Context, *createInput) (*postOutp
 		if err := applyBody(post, &in.Body, k); err != nil {
 			return nil, err
 		}
-		s, err := resolveSlug(in.Body.Slug, post.Title, "")
+		s, err := h.resolveSlug(ctx, in.Body.Slug, post.Title, "")
 		if err != nil {
 			return nil, err
 		}
@@ -338,7 +345,7 @@ func (h *Handler) update(k *kind) func(context.Context, *updateInput) (*postOutp
 		if applyErr := applyBody(post, &in.Body, k); applyErr != nil {
 			return nil, applyErr
 		}
-		s, err := resolveSlug(in.Body.Slug, post.Title, before.Slug)
+		s, err := h.resolveSlug(ctx, in.Body.Slug, post.Title, before.Slug)
 		if err != nil {
 			return nil, err
 		}
@@ -605,8 +612,8 @@ func isGenerated(provided string) bool {
 	return strings.TrimSpace(provided) == ""
 }
 
-// resolveSlug 决定最终 slug：显式指定则规范化；更新时留空保留原值；创建时留空由标题生成。
-func resolveSlug(provided, title, current string) (string, error) {
+// resolveSlug 决定最终 slug：显式指定则规范化；更新时留空保留原值；创建时留空按站点策略由标题生成。
+func (h *Handler) resolveSlug(ctx context.Context, provided, title, current string) (string, error) {
 	switch {
 	case !isGenerated(provided):
 		s := slug.Make(provided)
@@ -617,7 +624,7 @@ func resolveSlug(provided, title, current string) (string, error) {
 	case current != "":
 		return current, nil
 	default:
-		s := slug.Make(title)
+		s := h.slugify(ctx, title)
 		if s == "" {
 			return "", huma.Error400BadRequest("无法从标题生成 slug，请手动指定")
 		}
