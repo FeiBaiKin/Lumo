@@ -1,0 +1,154 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/config"
+	"github.com/FeiBaiKin/lumo/internal/console"
+	"github.com/FeiBaiKin/lumo/internal/database"
+	"github.com/FeiBaiKin/lumo/internal/httpx"
+	"github.com/FeiBaiKin/lumo/internal/logging"
+	"github.com/FeiBaiKin/lumo/internal/migrate"
+	"github.com/FeiBaiKin/lumo/internal/server"
+	"github.com/FeiBaiKin/lumo/internal/version"
+	"github.com/FeiBaiKin/lumo/internal/workdir"
+	"github.com/FeiBaiKin/lumo/migrations"
+)
+
+// runServe 启动 HTTP 服务。
+func runServe(args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	configPath := fs.String("config", "", "配置文件路径，默认按序尝试 ./config.yaml、./config.yml")
+	addr := fs.String("addr", "", "监听地址，覆盖配置与环境变量")
+	noMigrate := fs.Bool("no-migrate", false, "跳过启动时自动迁移")
+	debugSQL := fs.Bool("debug-sql", false, "打印 SQL 语句（仅开发用）")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	// 命令行参数优先级最高，覆盖配置文件与环境变量。
+	if *addr != "" {
+		cfg.Server.Addr = *addr
+	}
+	if *noMigrate {
+		cfg.Database.AutoMigrate = false
+	}
+
+	logger := logging.New(os.Stdout, logging.Options{
+		Level:  cfg.Log.Level,
+		Format: cfg.Log.Format,
+	})
+
+	info := version.Get()
+	logger.Info("启动 Lumo",
+		slog.String("version", info.Version),
+		slog.String("commit", info.Commit),
+		slog.String("addr", cfg.Server.Addr),
+		slog.Bool("consoleEmbedded", console.Built()),
+	)
+	if !console.Built() {
+		logger.Warn("Console 前端未嵌入，后台界面不可用；执行 task console:build 后重新编译")
+	}
+
+	if _, err = workdir.Init(cfg.DataDir, logger); err != nil {
+		return err
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// 数据库是核心依赖：DSN 缺失或连接失败都应让启动失败，
+	// 而不是带着半残状态对外服务。
+	if dsnErr := cfg.RequireDSN(); dsnErr != nil {
+		return dsnErr
+	}
+	db, err := database.Open(ctx, cfg.Database, *debugSQL)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	logger.Info("数据库已连接", slog.String("dsn", cfg.RedactedDSN()))
+	db.LogInfo(ctx, logger)
+
+	if cfg.Database.AutoMigrate {
+		migrator, migErr := migrate.New(db.SQLDB(), migrations.FS, logger)
+		if migErr != nil {
+			return migErr
+		}
+		if upErr := migrator.Up(ctx); upErr != nil {
+			return upErr
+		}
+	} else {
+		logger.Warn("已跳过自动迁移，schema 可能落后于当前版本")
+	}
+
+	root, planes := server.NewRouter(logger)
+
+	application := app.New(&app.Options{
+		Config: cfg,
+		DB:     db,
+		Logger: logger,
+		Router: planes,
+	})
+	// 阶段 1 尚无功能模块；阶段 2 起在此注册。
+	if err := application.Register(); err != nil {
+		return err
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+		defer cancel()
+		if err := application.Close(closeCtx); err != nil {
+			logger.Error("关闭模块失败", slog.Any("error", err))
+		}
+	}()
+
+	registerHealth(root, db, &info)
+
+	srv := server.New(root, cfg.Server, logger)
+	if err := srv.Run(ctx); err != nil {
+		return err
+	}
+	logger.Info("已退出")
+	return nil
+}
+
+// registerHealth 挂载健康检查端点。
+//
+// /healthz 只报进程存活；/readyz 额外探测数据库，用于负载均衡摘流判断。
+func registerHealth(root chi.Router, db *database.DB, info *version.Info) {
+	root.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		httpx.WriteJSON(w, r, http.StatusOK, map[string]any{
+			keyStatus:  "ok",
+			keyVersion: info.Version,
+		})
+	})
+
+	root.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.PingContext(r.Context()); err != nil {
+			httpx.WriteProblem(w, r, &httpx.Problem{
+				Status: http.StatusServiceUnavailable,
+				Title:  "Service Unavailable",
+				Detail: "数据库不可用",
+			}, nil)
+			return
+		}
+		httpx.WriteJSON(w, r, http.StatusOK, map[string]any{
+			keyStatus:  "ready",
+			keyVersion: info.Version,
+		})
+	})
+}

@@ -54,9 +54,20 @@ tasks:
       - golangci-lint run
 
   test:
-    desc: 运行 Go 测试
+    desc: 运行 Go 测试（未设 LUMO_TEST_DSN 时自动跳过集成测试）
     cmds:
       - go test ./... {{.CLI_ARGS}}
+
+  test:integration:
+    desc: 运行集成测试（需先设 LUMO_TEST_DSN；库名必须含 test，护栏会拒绝其他库）
+    preconditions:
+      - sh: '{{if .LUMO_TEST_DSN}}exit 0{{else}}exit 1{{end}}'
+        msg: |
+          未设置 LUMO_TEST_DSN。集成测试会清空目标库的 public schema，
+          故不提供默认值以避免误连。示例（PowerShell）：
+            $env:LUMO_TEST_DSN = "postgres://用户:口令@127.0.0.1:5432/你的_test库?sslmode=disable"
+    cmds:
+      - go test -count=1 ./... {{.CLI_ARGS}}
 
   test:cover:
     desc: 运行测试并生成覆盖率报告

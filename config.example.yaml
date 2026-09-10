@@ -1,0 +1,37 @@
+# Lumo 配置示例
+#
+# 复制为 config.yaml 后按需修改。所有项都可被 LUMO_* 环境变量覆盖，
+# 优先级：内置默认值 < config.yaml < 环境变量 < 命令行参数。
+#
+# 注意：数据库连接串**不在此文件中配置**，只接受环境变量 LUMO_DATABASE_DSN，
+# 以避免口令进入版本库。例如：
+#   LUMO_DATABASE_DSN=postgres://user:password@127.0.0.1:5432/lumo?sslmode=disable
+
+server:
+  # 监听地址（LUMO_ADDR）
+  addr: ":8080"
+  # 站点对外可访问地址，用于生成 canonical、sitemap 等绝对链接（LUMO_EXTERNAL_URL）
+  externalUrl: ""
+  readHeaderTimeout: 10s
+  writeTimeout: 60s
+  idleTimeout: 60s
+  # 优雅关闭时留给在途请求的时间（LUMO_SHUTDOWN_TIMEOUT）
+  shutdownTimeout: 15s
+
+database:
+  # 连接池上限（LUMO_DATABASE_MAX_OPEN_CONNS）
+  maxOpenConns: 25
+  # 空闲连接数，不得大于 maxOpenConns（LUMO_DATABASE_MAX_IDLE_CONNS）
+  maxIdleConns: 5
+  connMaxLifetime: 1h
+  # 启动时自动执行迁移；也可用 --no-migrate 关闭（LUMO_DATABASE_AUTO_MIGRATE）
+  autoMigrate: true
+
+log:
+  # debug / info / warn / error（LUMO_LOG_LEVEL）
+  level: info
+  # text / json（LUMO_LOG_FORMAT）
+  format: text
+
+# 运行时工作目录，内含 themes/uploads/cache/logs/backups（LUMO_DATA_DIR）
+dataDir: ./data

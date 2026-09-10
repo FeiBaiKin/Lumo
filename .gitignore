@@ -31,6 +31,9 @@ coverage.out
 .env.*
 !.env.example
 config.local.yaml
+# 本地实际配置不入库，只保留 config.example.yaml
+/config.yaml
+/config.yml
 
 # 日志
 *.log
