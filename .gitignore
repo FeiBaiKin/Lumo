@@ -7,6 +7,14 @@ internal/console/dist/
 # 运行时数据（工作目录）
 /data/
 
+# 内部工作文档（仅本地，不入库）
+/agent.md
+/STATUS.md
+
+# AI 工具会话残留（仅本地，不入库）
+/.dsh-sess/
+/.dsh_*
+
 # 依赖
 node_modules/
 
