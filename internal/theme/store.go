@@ -39,11 +39,23 @@ const (
 // 草稿泄漏的可能——那是 CMS 最不能犯的错。私密内容对作者本人的可见性
 // 由路由层单独处理，不走这里。
 type Store struct {
-	db *bun.DB
+	db       *bun.DB
+	searcher Searcher
 }
 
 // NewStore 构造 Store。
 func NewStore(db *bun.DB) *Store { return &Store{db: db} }
+
+// Searcher 是前台搜索页需要的能力：关键词进，按相关度排好序的文章 ID 与总数出。
+//
+// 只要 ID 与顺序，作者 / 分类 / 标签仍由主题自己的查询补齐——这样搜索引擎换成
+// 什么实现都与前台无关（agent.md §2）。
+type Searcher interface {
+	SearchPostIDs(ctx context.Context, query string, limit, offset int) ([]int64, int, error)
+}
+
+// UseSearcher 注入搜索实现；不注入时搜索页退回标题与摘要的模糊匹配。
+func (s *Store) UseSearcher(searcher Searcher) { s.searcher = searcher }
 
 // publicFilter 是所有前台查询共用的可见性条件。
 const publicFilter = `p.status = 'published' AND p.visibility = 'public'`
@@ -145,14 +157,59 @@ func (s *Store) PostsByArchive(ctx context.Context, year, month, page, size int)
 	return s.pageQuery(ctx, where, args, page, size)
 }
 
-// SearchPosts 分页返回标题或摘要命中关键词的文章。
+// SearchPosts 分页返回命中关键词的文章，按相关度排序。
 //
-// v1 用 ILIKE 而非全文索引：全文搜索是阶段 6 的事，那时会换成 tsvector。
-// 现在先让搜索模板有数据可渲染，接口形态保持不变。
+// 装配了 search 模块时走全文索引；否则退回标题与摘要的 ILIKE 模糊匹配，
+// 保证主题在最小装配下仍有一个能用的搜索页。
 func (s *Store) SearchPosts(ctx context.Context, query string, page, size int) ([]PostView, int, error) {
-	pattern := "%" + escapeLike(strings.TrimSpace(query)) + "%"
-	where := publicFilter + ` AND p.type = 'post' AND (p.title ILIKE ? OR p.excerpt ILIKE ?)`
-	return s.pageQuery(ctx, where, []any{pattern, pattern}, page, size)
+	query = strings.TrimSpace(query)
+	if s.searcher == nil {
+		pattern := "%" + escapeLike(query) + "%"
+		where := publicFilter + ` AND p.type = 'post' AND (p.title ILIKE ? OR p.excerpt ILIKE ?)`
+		return s.pageQuery(ctx, where, []any{pattern, pattern}, page, size)
+	}
+
+	offset := max(0, (page-1)*size)
+	ids, total, err := s.searcher.SearchPostIDs(ctx, query, size, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(ids) == 0 {
+		return []PostView{}, total, nil
+	}
+	views, err := s.postsByIDs(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	return views, total, nil
+}
+
+// postsByIDs 按给定顺序取回文章视图。
+//
+// 顺序由搜索给出，SQL 的 IN 不保证返回次序，故在 Go 侧按 ids 重排；
+// 期间消失的内容（刚被删或撤回）直接跳过，不占位。
+func (s *Store) postsByIDs(ctx context.Context, ids []int64) ([]PostView, error) {
+	sqlText := `SELECT ` + postColumns + ` FROM posts AS p WHERE ` + publicFilter + ` AND p.id IN (?)`
+	rows := []postRow{}
+	if err := s.db.NewRaw(sqlText, bun.List(ids)).Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("按 ID 取回文章: %w", err)
+	}
+
+	views, err := s.attach(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[int64]PostView, len(views))
+	for i := range views {
+		byID[views[i].ID] = views[i]
+	}
+	out := make([]PostView, 0, len(ids))
+	for _, id := range ids {
+		if view, ok := byID[id]; ok {
+			out = append(out, view)
+		}
+	}
+	return out, nil
 }
 
 // pageQuery 执行一次分页列表查询并补上作者、分类与标签。

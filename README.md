@@ -3,14 +3,14 @@
 用 Go 编写的现代化开源 CMS，单一静态二进制：后台是 `go:embed` 进二进制的 React SPA，
 访客前台由服务端模板渲染主题。产品形态对标 [Halo](https://www.halo.run/)，目标是形成主题与插件生态。
 
-> **开发中** — 阶段 0 至 5 已完成（脚手架、后端核心基座、认证与权限、内容模型与业务功能、
-> 主题系统、API 层与代码生成），后端与访客前台均已可用；
+> **开发中** — 阶段 0 至 6 已完成（脚手架、后端核心基座、认证与权限、内容模型与业务功能、
+> 主题系统、API 层与代码生成、全文搜索），后端与访客前台均已可用；
 > **Console 界面尚未开发，当前版本不可用于生产**。
 > 进度明细见「[开发进度](#开发进度)」。
 
 ## 特性规划
 
-### 已完成（阶段 0–5）
+### 已完成（阶段 0–6）
 
 - **内容管理**：文章与独立页面（同表以 `type` 区分）、树形分类、标签、评论、附件、菜单。
   文章含状态机（草稿 / 已发布 / 定时发布 / 回收站）、置顶、封面、摘要、可见性与修订历史
@@ -35,11 +35,12 @@
 - **REST API**：Console / Public / Extension 三平面，OpenAPI 3.1 规范由 Go 代码生成，统一 offset 分页
 - **Extension 平面**：给插件预留的自定义模型通用 CRUD，`spec` 为自由 JSON，支持按字段筛选
 - **类型不手写两遍**：`lumo openapi` 导出规范，Console 的 TS 类型与客户端由它生成
-- **模块化**：10 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
+- **全文搜索**：Go 侧二元组分词 + PostgreSQL `tsvector`，**不依赖任何数据库扩展**；
+  中文按相邻两字切词并以短语算子还原相邻关系，标题 / 摘要 / 正文三段加权排序
+- **模块化**：11 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
 
-### 尚未开始（阶段 6–9）
+### 尚未开始（阶段 7–9）
 
-- **全文搜索**：Go 侧分词 + PostgreSQL `tsvector`，不依赖数据库扩展（当前搜索页暂用 `ILIKE` 匹配标题与摘要）
 - **后台 Console 界面**：块编辑器（TipTap）与 Markdown 编辑器（Milkdown）、通用表单引擎、七组导航页面、明暗双主题
 - **默认主题的进阶形态**：自托管 CJK 显示字体、GSAP + Lenis 动效；**Docker 部署**与**发布流水线**
 
@@ -53,7 +54,7 @@
 | 3 | 内容模型与业务功能 | 已完成 |
 | 4 | 主题系统 | 已完成 |
 | 5 | API 层与代码生成 | 已完成 |
-| 6 | 全文搜索 | 未开始 |
+| 6 | 全文搜索 | 已完成 |
 | 7 | Console 前端 | 未开始 |
 | 8 | 默认主题 | 未开始 |
 | 9 | 部署与发布 | 未开始 |
@@ -161,6 +162,25 @@ Extension 平面自阶段 5 起由 `internal/extension` 提供通用 CRUD，全�
 kind 为单数 PascalCase 而地址段用它的小写复数形式（`Post` 对应 `posts`），名称为 DNS-1123。
 `spec` 是自由 JSON，服务端只存取不解释；列表支持 `where=键=值`（可重复）按 spec 顶层字段筛选，走 GIN 索引。
 
+## 全文搜索
+
+`GET /api/v1/public/search?q=关键词`，匿名可用，只返回已发布且公开的内容；
+`type=post` / `type=page` 可重复，限定内容类型。响应是统一的分页结构，
+每条带 `score` 相关度（只在同一次查询内可比）。
+
+**不依赖任何 PostgreSQL 扩展**：切词在 Go 侧完成，中日韩按**二元组**切分
+（「全文搜索」→ 全文 / 文搜 / 搜索），拉丁与数字按整词并转小写，结果存成 `tsvector`
+并走 GIN 索引。查询时把同一段切出的二元组用短语算子 `<->` 相连，要求原文中相邻，
+效果等价于子串匹配；单字查询退化为前缀匹配。标题 / 摘要 / 正文三段加权，
+标题命中排在正文命中之前。
+
+不引分词词典是刻意的：词典一旦没收录某个新词，整篇文章就再也搜不到，且没有任何报错。
+
+索引由后台对账维护——按 `posts.updated_at` 找出落后的行重建，不在内容的写路径上挂钩子，
+因此批量导入甚至直接改库都跟得上，代价是新内容最多 2 秒后才可搜。
+`GET /api/v1/console/search/status` 看进度，`POST /api/v1/console/search/reindex` 整体重建
+（均需 `settings:manage`）。
+
 ## 认证与安全
 
 - **Console 登录**：服务端会话 + HttpOnly Cookie（`SameSite=Lax`）+ CSRF 双提交校验。
@@ -243,7 +263,7 @@ Console 目前只有脚手架（Vite 6 + React 19 + TS strict + Tailwind v4 + sh
 
 每个模块自带迁移（模块目录下 `migrations/*.sql`，经 `go:embed` 收进二进制），
 版本表为 `goose_db_version_<模块>`，**迁移编号只需在模块内递增**，不必全局唯一。
-当前共 9 个迁移来源：core 2，settings / media / taxonomy / content / comment / menu / extension / theme 各 1
+当前共 10 个迁移来源：core 2，settings / media / taxonomy / content / comment / menu / extension / search / theme 各 1
 （seo 与 mail 无数据表，故不出现）。
 
 ### 构建标签与静态性
@@ -291,6 +311,7 @@ internal/
   console/         SPA 的 go:embed 目标（dist/ 不进库）
   media/ taxonomy/ content/ settings/ comment/ mail/ menu/ seo/   功能模块
   extension/       Extension 平面的通用 CRUD，给插件预留的自定义模型
+  search/          全文搜索：Go 侧二元组分词 + tsvector 索引与后台对账
   theme/           主题系统：模板引擎、主题包、前台路由、主题设置
     builtin/ink/   内置默认主题「墨」，go:embed 进二进制，同时是所有主题的回退
   testsupport/     集成测试的整机装配与库名护栏

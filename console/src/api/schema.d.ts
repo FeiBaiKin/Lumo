@@ -847,6 +847,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/search/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 重建全部索引
+         * @description 把全部内容标记为待索引，由后台逐批重建；接口立即返回，不等待重建完成。切词规则升级后需要执行一次，否则只有此后被编辑过的内容才会用上新规则。
+         */
+        post: operations["search-reindex"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/search/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查看索引进度
+         * @description pending 为索引落后于内容的条数，后台每 2 秒对账一次，正常应当很快归零。
+         */
+        get: operations["search-status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/settings": {
         parameters: {
             query?: never;
@@ -1331,6 +1371,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/public/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 全文搜索
+         * @description 按相关度返回已发布且公开的内容。中文按二元组匹配，多个关键词之间取交集；关键词切不出词元时返回空结果。
+         */
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/seo/{kind}/{slug}": {
         parameters: {
             query?: never;
@@ -1775,6 +1835,22 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        Hit: {
+            excerpt: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /**
+             * Format: double
+             * @description 相关度，只在同一次查询内可比
+             */
+            score: number;
+            slug: string;
+            title: string;
+            /** @enum {string} */
+            type: "post" | "page";
+        };
         IssuedTokenView: {
             /** @description 令牌明文，只在此刻返回一次，此后无法找回 */
             plaintext: string;
@@ -2016,6 +2092,25 @@ export interface components {
              */
             total: number;
         };
+        PageHit: {
+            /** @description 当前页的条目 */
+            items: components["schemas"]["Hit"][] | null;
+            /**
+             * Format: int64
+             * @description 当前页码
+             */
+            page: number;
+            /**
+             * Format: int64
+             * @description 每页条数
+             */
+            size: number;
+            /**
+             * Format: int64
+             * @description 总条数
+             */
+            total: number;
+        };
         PageMedia: {
             /** @description 当前页的条目 */
             items: components["schemas"]["Media"][] | null;
@@ -2205,6 +2300,13 @@ export interface components {
              */
             publishAt?: string;
         };
+        ReindexOutputBody: {
+            /**
+             * Format: int64
+             * @description 已标记为待索引的条数
+             */
+            pending: number;
+        };
         Revision: {
             /**
              * Format: int64
@@ -2299,6 +2401,23 @@ export interface components {
         };
         SettingsListBody: {
             items: components["schemas"]["SettingsGroupView"][] | null;
+        };
+        Stats: {
+            /**
+             * Format: int64
+             * @description 已建索引的条数
+             */
+            indexed: number;
+            /**
+             * Format: int64
+             * @description 索引落后于内容、等待重建的条数
+             */
+            pending: number;
+            /**
+             * Format: int64
+             * @description 内容总数
+             */
+            total: number;
         };
         StatusBody: {
             /** @description true 为停用 */
@@ -5887,6 +6006,64 @@ export interface operations {
             };
         };
     };
+    "search-reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReindexOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "search-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Stats"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     "settings-list-groups": {
         parameters: {
             query?: never;
@@ -7623,6 +7800,53 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    search: {
+        parameters: {
+            query?: {
+                /** @description 页码，从 1 开始 */
+                page?: number;
+                /** @description 每页条数，最大 100 */
+                size?: number;
+                /** @description 关键词 */
+                q?: string;
+                /** @description 限定内容类型，可重复，取值 post 或 page；留空为不限 */
+                type?: string[] | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageHit"];
                 };
             };
             /** @description Unprocessable Entity */

@@ -21,6 +21,7 @@ import (
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/search"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/workdir"
 )
@@ -97,6 +98,10 @@ func (m *Module) Register(a *app.App) error {
 		m.store = NewStore(db.DB)
 		m.settings = NewSettingsStore(db.DB)
 		m.state = NewStateStore(db.DB)
+		// 装配了 search 模块就用全文索引，否则搜索页退回标题模糊匹配。
+		if searcher := search.From(a); searcher != nil {
+			m.store.UseSearcher(searcher)
+		}
 	}
 	m.renderer = NewRenderer(&RendererOptions{
 		Registry: registry,

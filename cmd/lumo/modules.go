@@ -9,6 +9,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/menu"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
+	"github.com/FeiBaiKin/lumo/internal/search"
 	"github.com/FeiBaiKin/lumo/internal/seo"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
@@ -27,6 +28,8 @@ import (
 // content 的迁移引用 taxonomy 的表，必须排在它之后；
 // comment 引用 content 的 posts 表；menu 与 seo 读取 content、taxonomy 与 users 的表；
 // extension 只碰核心的 extensions 表，不依赖任何模块；
+// search 给 content 的 posts 表加索引列，须排在 content 之后，也须在 theme 之前——
+// 前台搜索页要在装配期取到它；
 // theme 读取以上全部模块的表来渲染前台，排在最后。
 func modules() []app.Module {
 	return []app.Module{
@@ -39,6 +42,7 @@ func modules() []app.Module {
 		menu.New(),
 		seo.New(),
 		extension.New(),
+		search.New(),
 		theme.New(),
 	}
 }
