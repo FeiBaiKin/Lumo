@@ -102,7 +102,16 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "设置",
     items: [
-      { label: "站点", to: "/settings/site", icon: Settings },
+      // 设置的**全部**端点（含读取）都要求 settings:manage，见 internal/settings/handler.go
+      // 里的 manage 中间件 —— 未授权用户不该看到站点的 SMTP 主机与存储配置。
+      // 故这一组整体按权限显隐。侧栏只列四个常用分组，
+      // 其余分组（如 comment）在设置页的标签栏里可以切到。
+      {
+        label: "站点",
+        to: "/settings/site",
+        icon: Settings,
+        permission: "settings:manage",
+      },
       {
         label: "SEO",
         to: "/settings/seo",

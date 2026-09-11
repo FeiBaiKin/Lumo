@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/panel";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { SettingsPage } from "@/pages/settings/settings";
 import { CategoriesPage } from "@/pages/taxonomy/categories";
 import { TagsPage } from "@/pages/taxonomy/tags";
 import { Construction } from "lucide-react";
@@ -134,13 +135,7 @@ export const PLACEHOLDER_ROUTES = [
   },
   {
     path: "settings/:group",
-    element: () => (
-      <Placeholder
-        title="设置"
-        group="设置"
-        note="通用表单引擎渲染 JSON Schema + x-widget，站点与主题设置共用"
-      />
-    ),
+    element: SettingsPage,
   },
   {
     path: "about",
