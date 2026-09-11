@@ -1,0 +1,37 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+<div class="wrap">
+  <header class="archive-header">
+    <p class="archive-kind">搜索</p>
+    <form class="search-form" action="/search" method="get" role="search">
+      <label for="q" class="visually-hidden">搜索站内内容</label>
+      <input id="q" name="q" type="search" value="{{ .Query }}" placeholder="输入关键词" maxlength="100" autofocus>
+      <button type="submit">搜索</button>
+    </form>
+    {{ if .Query }}
+    <p class="archive-count">「{{ .Query }}」找到 {{ .Pagination.Total }} 篇</p>
+    {{ end }}
+  </header>
+
+  {{ if .Query }}
+    {{ if .Posts }}
+      {{ template "partials/post-list.html" . }}
+    {{ else }}
+    <p class="empty">没有匹配的内容。换个词试试，或者从<a href="/">首页</a>浏览。</p>
+    {{ end }}
+  {{ else }}
+    {{- /* 空态给入口而不是留白：标签云是最省力的「不知道搜什么」的解法。 */ -}}
+    {{ $cloud := .Find.Tags.Cloud 24 }}
+    {{ if $cloud }}
+    <section class="tag-cloud">
+      <h2 class="section-title">从标签开始</h2>
+      <p class="cloud">
+        {{ range $cloud }}<a class="tag" href="{{ .URL }}" data-weight="{{ .Weight }}"
+          {{ with .Color }}style="--tag-color: {{ . }}"{{ end }}>{{ .Name }}</a>{{ end }}
+      </p>
+    </section>
+    {{ end }}
+  {{ end }}
+</div>
+{{ end }}

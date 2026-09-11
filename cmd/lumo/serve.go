@@ -24,6 +24,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
 	"github.com/FeiBaiKin/lumo/internal/server"
+	"github.com/FeiBaiKin/lumo/internal/theme"
 	"github.com/FeiBaiKin/lumo/internal/version"
 	"github.com/FeiBaiKin/lumo/internal/workdir"
 )
@@ -171,6 +172,14 @@ func runServe(args []string) error {
 	// 迁移完成，模块可以开始播种数据、启动后台任务。
 	if startErr := application.Start(ctx); startErr != nil {
 		return startErr
+	}
+
+	// 访客前台必须最后挂载：它的兜底路由 /{slug}（独立页面）与 NotFound
+	// 会吞掉根路径下的一切单段路径，排在 /console/、/uploads/ 与 SEO 文档之前
+	// 就会把它们全部遮蔽。
+	if themes := theme.From(application); themes != nil {
+		themes.MountFrontend(root)
+		logger.Info("访客前台已挂载", slog.String("theme", themes.Registry().ActiveName()))
 	}
 	defer func() {
 		closeCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)

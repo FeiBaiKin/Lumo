@@ -1,0 +1,14 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+<div class="wrap">
+  <header class="archive-header">
+    <p class="archive-kind">标签</p>
+    <h1 class="archive-title"{{ with .Tag.Color }} style="--tag-color: {{ . }}"{{ end }}>{{ .Tag.Name }}</h1>
+    {{ with .Tag.Description }}<p class="archive-desc">{{ . }}</p>{{ end }}
+    <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+  </header>
+
+  {{ template "partials/post-list.html" . }}
+</div>
+{{ end }}

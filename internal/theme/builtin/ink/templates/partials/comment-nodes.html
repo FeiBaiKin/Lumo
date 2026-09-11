@@ -1,0 +1,26 @@
+{{- /*
+评论节点，递归渲染回复树。接收 []*CommentNode（不是页面上下文）。
+
+递归而非固定两层：服务端不限制回复深度，模板写死层数会让更深的回复凭空消失。
+注意本模板里的 $ 指向传入的切片而非页面上下文，故用 $c 显式持有当前节点。
+*/ -}}
+{{ range $c := . }}
+<li class="comment{{ if $c.IsAuthor }} is-author{{ end }}" id="comment-{{ $c.ID }}">
+  <div class="comment-head">
+    {{ if $c.AuthorURL }}
+    <a class="comment-author" href="{{ $c.AuthorURL }}" rel="nofollow ugc noopener" target="_blank">{{ $c.AuthorName }}</a>
+    {{ else }}
+    <span class="comment-author">{{ $c.AuthorName }}</span>
+    {{ end }}
+    {{ if $c.IsAuthor }}<span class="badge">作者</span>{{ end }}
+    <time class="comment-date" datetime="{{ date "rfc3339" $c.CreatedAt }}">{{ since $c.CreatedAt }}</time>
+  </div>
+  <div class="comment-body">{{ $c.ContentHTML }}</div>
+
+  {{ if $c.Children }}
+  <ol class="comment-replies">
+    {{ template "partials/comment-nodes.html" $c.Children }}
+  </ol>
+  {{ end }}
+</li>
+{{ end }}

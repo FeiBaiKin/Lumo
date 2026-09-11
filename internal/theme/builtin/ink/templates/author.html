@@ -1,0 +1,17 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+<div class="wrap">
+  <header class="archive-header author-header">
+    {{ with .Author.AvatarURL }}<img class="avatar avatar-lg" src="{{ . }}" alt="" loading="lazy">{{ end }}
+    <div>
+      <p class="archive-kind">作者</p>
+      <h1 class="archive-title">{{ .Author.DisplayName }}</h1>
+      {{ with .Author.Bio }}<p class="archive-desc">{{ . }}</p>{{ end }}
+      <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+    </div>
+  </header>
+
+  {{ template "partials/post-list.html" . }}
+</div>
+{{ end }}

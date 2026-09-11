@@ -49,6 +49,11 @@ type Options struct {
 	MaxUploadSize int64
 	// UploadsDir 非空时把该目录以静态文件形式挂在 /uploads 下，供本地存储的附件访问。
 	UploadsDir string
+	// FallbackRootToConsole 为真时把根路径重定向到 Console。
+	//
+	// 仅供没有装配主题模块的场景（路由骨架测试、未来的纯 API 模式）使用：
+	// 正常运行时根路径是访客前台，由 theme 模块接管。
+	FallbackRootToConsole bool
 }
 
 // 请求体上限的兜底默认值，仅在调用方未提供时生效。
@@ -111,11 +116,14 @@ func NewRouter(opts *Options) (root chi.Router, planes *api.Planes) {
 		root.Mount(UploadsPath, uploadsHandler(opts.UploadsDir))
 	}
 
-	// Console SPA 与根路径重定向。
+	// Console SPA。根路径不在这里注册：阶段 4 起它属于主题渲染的访客前台，
+	// 由 theme 模块在全部模块注册之后挂载（见 serve.go）。
 	root.Mount(console.MountPath, console.Handler())
-	root.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, console.MountPath, http.StatusFound)
-	})
+	if opts.FallbackRootToConsole {
+		root.Get("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, console.MountPath, http.StatusFound)
+		})
+	}
 
 	return root, planes
 }

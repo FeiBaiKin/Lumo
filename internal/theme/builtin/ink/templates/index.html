@@ -1,0 +1,11 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+<div class="wrap">
+  {{ if and (eq .Pagination.Page 1) .Site.Description }}
+  <p class="site-intro">{{ .Site.Description }}</p>
+  {{ end }}
+
+  {{ template "partials/post-list.html" . }}
+</div>
+{{ end }}

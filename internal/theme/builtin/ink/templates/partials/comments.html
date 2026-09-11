@@ -1,0 +1,53 @@
+{{- /*
+评论区。内容已在服务端全文转义并有限富化（agent.md §8），此处用 safeHTML 输出。
+
+访客提交走 Public 平面的 REST 接口，故表单由 JS 提交而非原生 form——
+原生提交后浏览器会跳到一个 JSON 响应页。无 JS 时表单按 hidden 处理，
+不给用户一个点了没反应的按钮。
+*/ -}}
+{{ $post := .Post }}
+{{ $tree := .Find.Comments.Tree $post.ID }}
+{{ $count := .Find.Comments.Count $post.ID }}
+
+<section class="comments" id="comments">
+  <h2 class="comments-title">{{ if $count }}{{ $count }} 条评论{{ else }}评论{{ end }}</h2>
+
+  {{ if $tree }}
+  <ol class="comment-list">
+    {{ template "partials/comment-nodes.html" $tree }}
+  </ol>
+  {{ else }}
+  <p class="empty">还没有评论，来说两句。</p>
+  {{ end }}
+
+  {{- /* 字段名与 internal/comment 的请求体一致：name / email / url / content / website2。 */ -}}
+  <form class="comment-form" id="comment-form" hidden data-post-id="{{ $post.ID }}">
+    <p class="comment-form-row">
+      <label for="c-name">称呼</label>
+      <input id="c-name" name="name" type="text" required maxlength="64" autocomplete="nickname">
+    </p>
+    <p class="comment-form-row">
+      <label for="c-email">邮箱</label>
+      <input id="c-email" name="email" type="email" maxlength="254" autocomplete="email">
+      <span class="hint">不会公开，仅用于回复通知</span>
+    </p>
+    <p class="comment-form-row">
+      <label for="c-url">主页</label>
+      <input id="c-url" name="url" type="url" maxlength="512" autocomplete="url">
+    </p>
+    <p class="comment-form-row">
+      <label for="c-content">评论</label>
+      <textarea id="c-content" name="content" required rows="4" maxlength="10000"></textarea>
+    </p>
+    {{- /* 蜜罐：正常访客看不见它，填了必是机器人（agent.md §8 的反垃圾第一判据）。 */ -}}
+    <p class="comment-hp" aria-hidden="true">
+      <label for="c-website2">请留空</label>
+      <input id="c-website2" name="website2" type="text" tabindex="-1" autocomplete="off">
+    </p>
+    <p class="comment-form-actions">
+      <button type="submit">发表评论</button>
+      <span class="comment-status" role="status" aria-live="polite"></span>
+    </p>
+  </form>
+</section>
+<script src="{{ .Theme.AssetsBase }}/comments.js" defer></script>

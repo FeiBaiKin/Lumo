@@ -1,0 +1,28 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+<div class="wrap notfound">
+  <h1 class="notfound-code">404</h1>
+  <p class="notfound-text">这里没有内容。地址可能改过，或者它从未存在。</p>
+
+  {{- /* 空状态是行动的邀请，不是道歉。给出下一步，而不是一句「很抱歉」。 */ -}}
+  {{ $recent := .Find.Posts.Recent 5 }}
+  {{ if $recent }}
+  <section class="notfound-suggest">
+    <h2 class="section-title">最近发表</h2>
+    <ul class="related-list">
+      {{ range $recent }}
+      <li>
+        <a href="{{ .URL }}">{{ .Title }}</a>
+        {{ if not .PublishedAt.IsZero }}
+        <time datetime="{{ date "rfc3339" .PublishedAt }}">{{ date "date" .PublishedAt }}</time>
+        {{ end }}
+      </li>
+      {{ end }}
+    </ul>
+  </section>
+  {{ end }}
+
+  <p class="notfound-actions"><a href="/">回到首页</a><a href="/search">搜索站内</a></p>
+</div>
+{{ end }}

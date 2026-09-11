@@ -78,7 +78,10 @@ func TestErrorsAreProblemJSON(t *testing.T) {
 		wantStatus int
 	}{
 		{"未匹配路径返回 404", http.MethodGet, "/api/v1/console/nope", http.StatusNotFound},
-		{"不支持的方法返回 405", http.MethodDelete, "/", http.StatusMethodNotAllowed},
+		// 用 /api/docs 而非 /：根路径在装配主题后由前台接管，本测试构造的是
+		// 不带主题的裸骨架，那时 / 上没有任何方法可言，走的是 404 而非 405。
+		// /api/docs 由 huma 在 chi 上注册为 GET，是稳定的「路径存在、方法不对」样本。
+		{"不支持的方法返回 405", http.MethodDelete, api.DocsPath, http.StatusMethodNotAllowed},
 	}
 
 	for _, tt := range tests {
@@ -153,11 +156,30 @@ func TestPlanePrefixes(t *testing.T) {
 	}
 }
 
-// TestRootRedirectsToConsole 验证根路径跳转到 Console。
-func TestRootRedirectsToConsole(t *testing.T) {
+// TestRootIsFreeForFrontend 验证根路径默认不被核心路由占用。
+//
+// 阶段 4 起根路径属于主题渲染的访客前台（agent.md §3.1、§4.2），
+// 由 theme 模块在全部模块注册之后挂载。核心路由若在此处抢先注册一个
+// 重定向，前台首页就永远到不了——这条断言是防止那次回归。
+func TestRootIsFreeForFrontend(t *testing.T) {
 	t.Parallel()
 
 	root, _ := NewRouter(&Options{})
+	rec := do(t, root, http.MethodGet, "/", "")
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("状态码 = %d，期望 404（根路径应留给前台）", rec.Code)
+	}
+	decodeProblem(t, rec)
+}
+
+// TestRootFallsBackToConsole 验证显式开启回退开关时根路径跳转到 Console。
+//
+// 这是没有装配主题模块的场景（如未来的纯 API 模式）的兜底行为。
+func TestRootFallsBackToConsole(t *testing.T) {
+	t.Parallel()
+
+	root, _ := NewRouter(&Options{FallbackRootToConsole: true})
 	rec := do(t, root, http.MethodGet, "/", "")
 
 	if rec.Code != http.StatusFound {

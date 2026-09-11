@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/config"
@@ -33,6 +35,11 @@ type StackOptions struct {
 	UploadsDir string
 	// Modules 是要装配的模块，顺序即注册顺序。
 	Modules []app.Module
+	// AfterStart 在全部模块 Start 之后、返回栈之前调用，可往根路由上再挂东西。
+	//
+	// 供访客前台使用：它的兜底路由 /{slug} 会吞掉根路径下的一切单段路径，
+	// 必须最后注册，与 serve 的顺序保持一致（见 cmd/lumo/serve.go）。
+	AfterStart func(root chi.Router, application *app.App)
 }
 
 // NewStack 装配路由与模块并播种内置角色。调用方须已完成迁移（含模块迁移）。
@@ -84,6 +91,10 @@ func NewStackWith(t *testing.T, db *database.DB, opts *StackOptions) *Stack {
 		cancel()
 		_ = application.Close(context.Background())
 	})
+
+	if opts.AfterStart != nil {
+		opts.AfterStart(root, application)
+	}
 
 	return &Stack{DB: db, Root: root, App: application, Users: users, Tokens: tokens}
 }

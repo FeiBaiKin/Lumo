@@ -1,0 +1,40 @@
+{{- /* 站点页眉：站名与主导航。菜单由后台维护，主题只按 slug 取。 */ -}}
+<header class="site-header">
+  <div class="wrap">
+    <div class="site-id">
+      <a class="site-title" href="/">
+        {{- with .Site.LogoURL -}}
+          <img class="site-logo" src="{{ . }}" alt="{{ $.Site.Title }}">
+        {{- else -}}
+          {{ .Site.Title }}
+        {{- end -}}
+      </a>
+      {{ with .Site.Subtitle }}<p class="site-subtitle">{{ . }}</p>{{ end }}
+    </div>
+
+    {{ $menuSlug := .Theme.Settings.layout.primaryMenu }}
+    {{ with $menuSlug }}
+      {{ $items := $.Find.Menus.Get . }}
+      {{ if $items }}
+      <nav class="site-nav" aria-label="主导航">
+        <ul>
+          {{ range $items }}
+          <li>
+            <a href="{{ .URL }}"
+               {{ with .Target }}target="{{ . }}" rel="noopener{{ with $.Params }}{{ end }}"{{ end }}
+               {{ with .Rel }}rel="{{ . }}"{{ end }}>{{ .Label }}</a>
+            {{ if .Children }}
+            <ul class="site-nav-sub">
+              {{ range .Children }}
+              <li><a href="{{ .URL }}"{{ with .Target }} target="{{ . }}" rel="noopener"{{ end }}>{{ .Label }}</a></li>
+              {{ end }}
+            </ul>
+            {{ end }}
+          </li>
+          {{ end }}
+        </ul>
+      </nav>
+      {{ end }}
+    {{ end }}
+  </div>
+</header>

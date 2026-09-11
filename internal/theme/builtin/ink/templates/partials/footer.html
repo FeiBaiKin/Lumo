@@ -1,0 +1,11 @@
+{{- /* 站点页脚。年份取站点时区的当前时间，而非服务器时区。 */ -}}
+<footer class="site-footer">
+  <div class="wrap">
+    <p class="copyright">© {{ year .Site.Now }} {{ .Site.Title }}</p>
+    {{ with .Theme.Settings.layout.footerText }}<p class="footer-text">{{ . }}</p>{{ end }}
+    <p class="footer-links">
+      <a href="/feed.xml">订阅</a>
+      <a href="/sitemap.xml">站点地图</a>
+    </p>
+  </div>
+</footer>

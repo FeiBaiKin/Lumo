@@ -1,0 +1,26 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+<div class="wrap">
+  <header class="archive-header">
+    <p class="archive-kind">归档</p>
+    <h1 class="archive-title">{{ .Archive.Label }}</h1>
+    <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+  </header>
+
+  {{ template "partials/post-list.html" . }}
+
+  {{- /* 其余月份：归档页的读者通常在按时间浏览，给他下一站。 */ -}}
+  {{ $months := .Find.Archives.ByMonth }}
+  {{ if $months }}
+  <nav class="archive-months" aria-label="其他归档">
+    <h2 class="section-title">其他月份</h2>
+    <ul>
+      {{ range $months }}
+      <li><a href="{{ .URL }}">{{ .Label }}</a><span class="count">{{ .Count }}</span></li>
+      {{ end }}
+    </ul>
+  </nav>
+  {{ end }}
+</div>
+{{ end }}

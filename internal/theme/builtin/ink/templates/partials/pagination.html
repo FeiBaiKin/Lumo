@@ -1,0 +1,33 @@
+{{- /*
+翻页条。页码序列由服务端算好（Pagination.Pages），0 表示省略号——
+边界条件（首尾保留、当前页居中、页数少时不省略）不该让每个主题各写一遍。
+*/ -}}
+{{ with .Pagination }}
+{{ if gt .TotalPages 1 }}
+<nav class="pagination" aria-label="翻页">
+  {{ if .HasPrev }}
+  <a class="page-prev" href="{{ .PrevURL }}" rel="prev">上一页</a>
+  {{ else }}
+  <span class="page-prev is-disabled" aria-hidden="true">上一页</span>
+  {{ end }}
+
+  <ol class="page-numbers">
+    {{ range .Pages }}
+      {{ if eq . 0 }}
+      <li class="page-gap" aria-hidden="true">…</li>
+      {{ else if eq . $.Pagination.Page }}
+      <li><span class="page-current" aria-current="page">{{ . }}</span></li>
+      {{ else }}
+      <li><a href="{{ $.Pagination.PageURL . }}">{{ . }}</a></li>
+      {{ end }}
+    {{ end }}
+  </ol>
+
+  {{ if .HasNext }}
+  <a class="page-next" href="{{ .NextURL }}" rel="next">下一页</a>
+  {{ else }}
+  <span class="page-next is-disabled" aria-hidden="true">下一页</span>
+  {{ end }}
+</nav>
+{{ end }}
+{{ end }}

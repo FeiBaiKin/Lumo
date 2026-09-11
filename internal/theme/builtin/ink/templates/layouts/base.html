@@ -1,0 +1,53 @@
+{{- /*
+外层骨架。所有页面模板都以 {{ template "layouts/base.html" . }} 开头，
+并各自定义 "main" 块作为正文区。
+
+这是 Hugo 风格的 layout 约定在 html/template 上的落法：Go 的模板系统没有
+模板继承，只有「定义块 + 调用块」，所以由页面模板调用骨架、骨架回调 "main"。
+*/ -}}
+<!doctype html>
+<html lang="{{ with .Site.Language }}{{ . }}{{ else }}zh-CN{{ end }}"
+      data-scheme="{{ with .Theme.Settings.appearance.colorScheme }}{{ . }}{{ else }}auto{{ end }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ if and .Title (ne .Title .Site.Title) }}{{ .Title }} · {{ end }}{{ .Site.Title }}</title>
+  {{ with .Description }}<meta name="description" content="{{ . }}">{{ end }}
+  {{ with .Canonical }}<link rel="canonical" href="{{ . }}">{{ end }}
+  {{ with .Site.FaviconURL }}<link rel="icon" href="{{ . }}">{{ end }}
+  <meta name="generator" content="{{ .Site.Generator }}">
+
+  {{- /* OpenGraph：分享到社交平台时的卡片。缺 og:image 时平台会自己抓首图。 */}}
+  <meta property="og:site_name" content="{{ .Site.Title }}">
+  <meta property="og:title" content="{{ if .Title }}{{ .Title }}{{ else }}{{ .Site.Title }}{{ end }}">
+  <meta property="og:type" content="{{ if eq .Kind "post" }}article{{ else }}website{{ end }}">
+  {{ with .Canonical }}<meta property="og:url" content="{{ . }}">{{ end }}
+  {{ with .Description }}<meta property="og:description" content="{{ . }}">{{ end }}
+  {{ with .Post }}{{ with .CoverURL }}<meta property="og:image" content="{{ . }}">{{ end }}{{ end }}
+
+  {{- /* 订阅源：阅读器靠这个标签自动发现。 */}}
+  <link rel="alternate" type="application/rss+xml" title="{{ .Site.Title }}" href="/feed.xml">
+  <link rel="alternate" type="application/atom+xml" title="{{ .Site.Title }}" href="/atom.xml">
+
+  <link rel="stylesheet" href="{{ .Theme.AssetsBase }}/theme.css">
+  {{- /* 印色可在后台改，作为内联变量覆盖样式表里的默认值。 */}}
+  {{ with .Theme.Settings.appearance }}
+  <style>
+    :root {
+      {{ with .seal }}--seal: {{ . }};{{ end }}
+      {{ with .contentWidth }}--measure: {{ . }}em;{{ end }}
+    }
+  </style>
+  {{ end }}
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到正文</a>
+  {{ template "partials/header.html" . }}
+
+  <main id="main" class="main">
+    {{ block "main" . }}{{ end }}
+  </main>
+
+  {{ template "partials/footer.html" . }}
+</body>
+</html>

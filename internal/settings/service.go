@@ -209,6 +209,67 @@ func collectDetails(unit *jsonschema.OutputUnit, out []httpx.ErrorDetail) []http
 	return out
 }
 
+// Validator 是一份编译好的 Schema 校验器，供设置分组之外的场景复用。
+//
+// 主题设置的 Schema 由主题包的 settings.yaml 声明、随主题安装而变，
+// 不能走 RegisterGroups 那条「启动期固定登记」的路径；但校验语义必须与站点设置完全一致，
+// 否则主题作者要面对两套规则。故把编译与校验单独暴露出来（agent.md §5）。
+type Validator struct {
+	schema *jsonschema.Schema
+	doc    map[string]any
+}
+
+// NewValidator 编译一份 JSON Schema 2020-12 声明。
+//
+// name 只用于错误信息与内部资源定位，不要求全局唯一。
+func NewValidator(name string, schema json.RawMessage) (*Validator, error) {
+	if len(schema) == 0 {
+		return nil, fmt.Errorf("settings: %s 缺少 Schema", name)
+	}
+	rawDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(schema))
+	if err != nil {
+		return nil, fmt.Errorf("settings: %s 的 Schema 不是合法 JSON: %w", name, err)
+	}
+	doc, ok := rawDoc.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("settings: %s 的 Schema 须为对象", name)
+	}
+	if typ, _ := doc["type"].(string); typ != "object" {
+		return nil, fmt.Errorf("settings: %s 的 Schema 顶层 type 须为 object", name)
+	}
+
+	compiler := jsonschema.NewCompiler()
+	location := "lumo://schema/" + name + ".json"
+	if addErr := compiler.AddResource(location, rawDoc); addErr != nil {
+		return nil, fmt.Errorf("settings: 载入 %s 的 Schema: %w", name, addErr)
+	}
+	compiled, err := compiler.Compile(location)
+	if err != nil {
+		return nil, fmt.Errorf("settings: 编译 %s 的 Schema: %w", name, err)
+	}
+	return &Validator{schema: compiled, doc: doc}, nil
+}
+
+// Doc 返回解析后的 Schema 文档，供接口原样输出给表单引擎。
+func (v *Validator) Doc() map[string]any { return v.doc }
+
+// Validate 校验一个值对象，失败时返回 *ValidationError（明细逐条定位到字段）。
+func (v *Validator) Validate(values map[string]any) error {
+	if err := v.schema.Validate(normalize(values)); err != nil {
+		var verr *jsonschema.ValidationError
+		if errors.As(err, &verr) {
+			return &ValidationError{Details: collectDetails(verr.BasicOutput(), nil)}
+		}
+		return &ValidationError{Details: []httpx.ErrorDetail{{Message: err.Error()}}}
+	}
+	return nil
+}
+
+// Merge 返回 defaults 被 overrides 按顶层键覆盖后的新对象，与设置分组的合并语义一致。
+func Merge(defaults, overrides map[string]any) map[string]any {
+	return merge(defaults, overrides)
+}
+
 // Groups 返回全部分组，按 Order、Name 排序。
 func (s *Service) Groups() []*Group {
 	s.mu.RLock()

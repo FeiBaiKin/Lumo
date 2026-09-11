@@ -1,0 +1,108 @@
+# 主题设置声明，走统一表单 Schema（agent.md §5）。
+# Console 用与站点设置完全相同的表单引擎渲染这里的内容。
+groups:
+  - name: appearance
+    label: 外观
+    description: 配色与版式。三个颜色各自对应一种真实物质：纸、墨、印。
+    order: 0
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      additionalProperties: false
+      properties:
+        colorScheme:
+          type: string
+          title: 配色模式
+          enum: [auto, light, dark]
+          x-widget: select
+          description: auto 跟随访客的系统设置
+        seal:
+          type: string
+          title: 印色
+          x-widget: color
+          description: 链接与交互态的颜色。默认取蓝黑墨水，纸底对比度 9.5:1
+          maxLength: 32
+        contentWidth:
+          type: integer
+          title: 正文栏宽
+          minimum: 28
+          maximum: 48
+          description: 单位为汉字个数。36 对应拉丁 65–75 字符，是长文阅读的舒适区间
+        showMeta:
+          type: boolean
+          title: 显示侧栏元信息
+          description: 宽屏时在正文左外侧显示日期、分类与阅读时长
+        showReadingTime:
+          type: boolean
+          title: 显示阅读时长
+          description: 在文章页的元信息栏显示估算的阅读分钟数；列表页不显示
+    defaults:
+      colorScheme: auto
+      seal: "#1B3A6B"
+      contentWidth: 36
+      showMeta: true
+      showReadingTime: true
+
+  - name: layout
+    label: 版式
+    description: 首页与列表的呈现方式。
+    order: 10
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      additionalProperties: false
+      properties:
+        indexMode:
+          type: string
+          title: 首页形态
+          enum: [list, excerpt]
+          x-widget: select
+          description: list 只列标题与日期；excerpt 额外显示摘要
+        showCover:
+          type: boolean
+          title: 列表显示封面图
+        primaryMenu:
+          type: string
+          title: 主导航菜单
+          maxLength: 64
+          description: 填菜单的标识（slug）。留空则不显示导航
+        footerText:
+          type: string
+          title: 页脚文字
+          maxLength: 500
+          x-widget: textarea
+          description: 支持备案号一类的纯文本，不解析 HTML
+    defaults:
+      indexMode: excerpt
+      showCover: false
+      primaryMenu: primary
+      footerText: ""
+
+  - name: content
+    label: 内容
+    description: 文章页的附加元素。
+    order: 20
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      additionalProperties: false
+      properties:
+        showRelated:
+          type: boolean
+          title: 显示相关文章
+        relatedCount:
+          type: integer
+          title: 相关文章条数
+          minimum: 1
+          maximum: 12
+        showComments:
+          type: boolean
+          title: 显示评论
+        showAuthor:
+          type: boolean
+          title: 文末显示作者信息
+    defaults:
+      showRelated: true
+      relatedCount: 3
+      showComments: true
+      showAuthor: true

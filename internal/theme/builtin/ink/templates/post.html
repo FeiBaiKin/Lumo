@@ -1,0 +1,99 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+{{ $post := .Post }}
+{{ $appearance := .Theme.Settings.appearance }}
+{{ $content := .Theme.Settings.content }}
+
+{{- /*
+本主题的唯一「大胆处」：正文列左外侧挂一条窄元信息栏（article-aside）。
+宽屏时与正文平行，窄屏折到标题下方。它不是 sidebar——不放导航、不放小部件，
+只放这篇文章自己的元信息，是学术期刊与中文注疏版式的横向转写。
+*/ -}}
+<article class="article{{ if $appearance.showMeta }} has-aside{{ end }}">
+  <header class="article-header wrap">
+    <h1 class="article-title">{{ $post.Title }}</h1>
+    {{ with $post.Excerpt }}<p class="article-lede">{{ . }}</p>{{ end }}
+  </header>
+
+  {{ if $appearance.showMeta }}
+  <aside class="article-aside" aria-label="文章信息">
+    {{ if not $post.PublishedAt.IsZero }}
+    <div class="aside-row">
+      <span class="aside-key">发表</span>
+      <time datetime="{{ date "rfc3339" $post.PublishedAt }}">{{ date "chinese" $post.PublishedAt }}</time>
+    </div>
+    {{ end }}
+    {{ with $post.Author }}
+    <div class="aside-row">
+      <span class="aside-key">作者</span>
+      <a href="{{ .URL }}" rel="author">{{ .DisplayName }}</a>
+    </div>
+    {{ end }}
+    {{ if $post.Categories }}
+    <div class="aside-row">
+      <span class="aside-key">分类</span>
+      <span>{{ range $i, $c := $post.Categories }}{{ if $i }}、{{ end }}<a href="/categories/{{ $c.Slug }}">{{ $c.Name }}</a>{{ end }}</span>
+    </div>
+    {{ end }}
+    {{ if and $appearance.showReadingTime $post.ReadingTime }}
+    <div class="aside-row">
+      <span class="aside-key">篇幅</span>
+      <span>{{ $post.WordCount }} 字 · {{ $post.ReadingTime }} 分钟</span>
+    </div>
+    {{ end }}
+  </aside>
+  {{ end }}
+
+  {{ with $post.CoverURL }}
+  <figure class="article-cover wrap">
+    <img src="{{ . }}" alt="" loading="lazy" decoding="async">
+  </figure>
+  {{ end }}
+
+  {{- /* 正文是服务端渲染好的 HTML（agent.md §3.3），主题只消费不加工。 */ -}}
+  <div class="prose wrap">{{ safeHTML $post.Content }}</div>
+
+  {{ if $post.Tags }}
+  <p class="article-tags wrap">
+    {{ range $post.Tags }}<a class="tag" href="/tags/{{ .Slug }}"
+      {{ with .Color }}style="--tag-color: {{ . }}"{{ end }}>{{ .Name }}</a>{{ end }}
+  </p>
+  {{ end }}
+
+  {{ if $content.showAuthor }}
+    {{ with $post.Author }}
+    <section class="article-author wrap">
+      {{ with .AvatarURL }}<img class="avatar" src="{{ . }}" alt="" loading="lazy">{{ end }}
+      <div>
+        <p class="author-name"><a href="{{ .URL }}" rel="author">{{ .DisplayName }}</a></p>
+        {{ with .Bio }}<p class="author-bio">{{ . }}</p>{{ end }}
+      </div>
+    </section>
+    {{ end }}
+  {{ end }}
+</article>
+
+{{ if $content.showRelated }}
+  {{ $related := .Find.Posts.Related $post.ID (default 3 $content.relatedCount) }}
+  {{ if $related }}
+  <section class="related wrap">
+    <h2 class="section-title">相关文章</h2>
+    <ul class="related-list">
+      {{ range $related }}
+      <li>
+        <a href="{{ .URL }}">{{ .Title }}</a>
+        {{ if not .PublishedAt.IsZero }}
+        <time datetime="{{ date "rfc3339" .PublishedAt }}">{{ date "date" .PublishedAt }}</time>
+        {{ end }}
+      </li>
+      {{ end }}
+    </ul>
+  </section>
+  {{ end }}
+{{ end }}
+
+{{ if $content.showComments }}
+<div class="wrap">{{ template "partials/comments.html" . }}</div>
+{{ end }}
+{{ end }}
