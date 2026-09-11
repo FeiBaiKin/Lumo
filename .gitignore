@@ -17,6 +17,9 @@ internal/console/dist/*
 /.dsh-sess/
 /.dsh_*
 
+# 本地启动脚本（仅本地，不入库）
+/dev.cmd
+
 # 依赖
 node_modules/
 
