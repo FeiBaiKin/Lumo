@@ -108,6 +108,24 @@ tasks:
     cmds:
       - npm run build
 
+  console:api:
+    desc: 导出 OpenAPI 规范并重新生成 Console 的 TS 客户端类型（需 LUMO_DATABASE_DSN）
+    summary: |
+      两步：后端导出规范 → openapi-typescript 生成类型。
+      导出需要数据库连接——模块拿不到 DB 就不注册任何接口，
+      否则会静默产出一份只剩核心端点的空壳规范。
+      规范与生成的类型都进版本库，前端构建因此不依赖后端在跑。
+    cmds:
+      - go run -tags {{.BUILD_TAGS}} ./cmd/lumo openapi -o {{.CONSOLE_DIR}}/openapi/openapi.json
+      - task: console:api:types
+
+  # 单独一个任务只为换工作目录：Task 的 dir 只能声明在任务上，不能逐条命令声明。
+  console:api:types:
+    internal: true
+    dir: "{{.CONSOLE_DIR}}"
+    cmds:
+      - npm run gen:api
+
   console:lint:
     desc: 检查 Console 代码（Biome + tsc）
     dir: "{{.CONSOLE_DIR}}"

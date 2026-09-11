@@ -6,7 +6,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": ["dist", "node_modules", "src/components/ui"]
+    "ignore": [
+      "dist",
+      "node_modules",
+      "src/components/ui",
+      "openapi",
+      "src/api/schema.d.ts"
+    ]
   },
   "formatter": {
     "enabled": true,

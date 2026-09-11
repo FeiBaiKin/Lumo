@@ -1,6 +1,6 @@
 // Command lumo 是 Lumo CMS 的唯一入口。
 //
-// 用法：lumo serve | migrate | admin | version
+// 用法：lumo serve | migrate | admin | openapi | version
 package main
 
 import (
@@ -27,6 +27,7 @@ const usage = `Lumo — 用 Go 编写的现代化开源 CMS
   serve       启动 HTTP 服务
   migrate     管理数据库迁移（up / down / status / version）
   admin       管理用户（create-user / reset-password / list-users）
+  openapi     导出 OpenAPI 规范（Console 的 TS 客户端由它生成）
   version     输出版本信息
 
 用 "lumo <命令> -h" 查看具体命令的参数。
@@ -73,6 +74,8 @@ func run(args []string) error {
 		return runMigrate(args[1:])
 	case "admin":
 		return runAdmin(args[1:])
+	case "openapi":
+		return runOpenAPI(args[1:])
 	case keyVersion:
 		return runVersion(args[1:])
 	case "-h", "--help", "help":

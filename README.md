@@ -143,6 +143,11 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 - 列表接口统一 offset 分页：`page`（从 1 起）与 `size`（默认 20，最大 100），响应为 `items` / `page` / `size` / `total`
 - 校验错误的 `errors[].value` 对请求体位置一律剥离，避免登录接口回显口令
 
+Console 的 API 类型由规范生成，不手写：`task console:api` 先用 `lumo openapi` 导出
+`console/openapi/openapi.json`，再由 `openapi-typescript` 生成 `console/src/api/schema.d.ts`，
+运行时经 `openapi-fetch` 取得类型（`console/src/api/client.ts`，自动补 CSRF 头）。
+**规范与生成的类型都进版本库**，前端构建不依赖后端在跑。
+
 根路径上另有四份**非 JSON** 文档，经专用注册口挂载（爬虫只认根路径，故不能放在 API 前缀下）：
 `/robots.txt`、`/sitemap.xml`、`/feed.xml`（RSS 2.0）、`/atom.xml`（Atom 1.0）。
 站点未配置对外地址（`site.url`）时，sitemap 与订阅源明确返回 503，而不是产出相对地址。
@@ -257,6 +262,7 @@ lumo migrate     管理数据库迁移：
                    status           显示各来源每个迁移的应用状态
                    version          显示各来源当前的 schema 版本
                    down [来源]      回滚指定来源（缺省 core）的最后一个迁移，仅开发排错
+lumo openapi     导出 OpenAPI 规范（缺省写标准输出，-o 写文件，-3.0 出降级版本）
 lumo admin       管理用户：
                    create-user      创建用户（-username -email -role [-display-name]）
                    reset-password   重置密码，并使该用户全部会话与令牌失效（-user）
@@ -287,6 +293,8 @@ internal/
   testsupport/     集成测试的整机装配与库名护栏
 migrations/        核心 goose SQL 迁移
 console/           Vite + React + TypeScript 后台前端
+  openapi/         导出的 OpenAPI 规范（生成物，进库）
+  src/api/         从规范生成的类型与 openapi-fetch 客户端
 data/themes/       运行时装第三方主题的位置（不进库，由 workdir 创建）
 deploy/            Dockerfile、docker-compose.yml（阶段 9 起）
 ```

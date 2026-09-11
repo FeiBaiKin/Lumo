@@ -15,7 +15,6 @@ import (
 
 	"github.com/FeiBaiKin/lumo/internal/api"
 	"github.com/FeiBaiKin/lumo/internal/app"
-	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/database"
@@ -94,11 +93,7 @@ func runServe(args []string) error {
 	db.LogInfo(ctx, logger)
 
 	// 认证栈。构造不触库，可以在迁移之前完成。
-	users := auth.NewStore(db.DB)
-	sessions := auth.NewSessionStore(db.DB, cfg.Server.SecureCookies)
-	tokens := auth.NewTokenStore(db.DB)
-	authService := auth.NewService(users, sessions, tokens, logger)
-	authenticator := auth.NewAuthenticator(users, sessions, tokens, logger)
+	core := newCoreStack(db, cfg.Server.SecureCookies, logger)
 
 	if !cfg.Server.SecureCookies {
 		logger.Warn("会话 Cookie 未启用 Secure，仅适用于本地 HTTP 开发；生产环境请设 LUMO_SECURE_COOKIES=true")
@@ -114,7 +109,7 @@ func runServe(args []string) error {
 
 	root, planes := server.NewRouter(&server.Options{
 		Logger:        logger,
-		Authenticator: authenticator,
+		Authenticator: core.Authenticator,
 		ClientIP:      clientIP,
 		Version:       info.Version,
 		MaxBodySize:   cfg.Server.MaxBodySize,
@@ -132,20 +127,8 @@ func runServe(args []string) error {
 		Router: planes,
 	})
 
-	// 认证端点由核心提供：登录走免认证注册面，其余走强制认证注册面。
-	auth.NewHandler(authService, sessions, tokens, logger).Register(planes.ConsolePublic(), planes.Console())
-	// 权限清单由各模块在注册期声明，故用一个延迟读取的闭包：此时模块尚未注册。
-	auth.NewAdminHandler(users, authService, func() []auth.PermissionInfo {
-		// 核心自身引入的权限与各模块声明的合并：前者没有对应的功能模块。
-		declared := append(app.CorePermissions(), application.Permissions()...)
-		out := make([]auth.PermissionInfo, 0, len(declared))
-		for _, p := range declared {
-			out = append(out, auth.PermissionInfo{Key: p.Key, Label: p.Label, Description: p.Description})
-		}
-		return out
-	}).Register(planes.Console())
-
-	if regErr := application.Register(modules()...); regErr != nil {
+	// 核心端点与全部功能模块，与 openapi 命令共用同一条注册路径（见 core.go）。
+	if regErr := core.registerAPI(planes, application, logger); regErr != nil {
 		return regErr
 	}
 
@@ -162,10 +145,10 @@ func runServe(args []string) error {
 	}
 
 	// 内置角色每次启动都以代码为准同步，确保升级后新增权限生效。
-	if seedErr := users.SeedRoles(ctx); seedErr != nil {
+	if seedErr := core.Users.SeedRoles(ctx); seedErr != nil {
 		return seedErr
 	}
-	if count, cErr := users.CountUsers(ctx); cErr == nil && count == 0 {
+	if count, cErr := core.Users.CountUsers(ctx); cErr == nil && count == 0 {
 		logger.Warn("尚无任何用户，请执行 lumo admin create-user 创建初始管理员")
 	}
 
@@ -190,7 +173,7 @@ func runServe(args []string) error {
 	}()
 
 	// 后台定期清理过期会话。
-	go authService.StartSessionCleanup(ctx, time.Hour)
+	go core.Service.StartSessionCleanup(ctx, time.Hour)
 
 	registerHealth(root, db, &info)
 	logger.Info("API 规范与文档已就绪",
