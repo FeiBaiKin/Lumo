@@ -1,6 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/panel";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { CommentsPage } from "@/pages/content/comments";
+import { PagesPage } from "@/pages/content/pages";
+import { PostsPage } from "@/pages/content/posts";
 import { SettingsPage } from "@/pages/settings/settings";
 import { CategoriesPage } from "@/pages/taxonomy/categories";
 import { TagsPage } from "@/pages/taxonomy/tags";
@@ -41,48 +44,19 @@ function Placeholder({
 /**
  * 路由表驱动。
  *
- * 用数组而非手写一堆 `<Route>`：占位页的路径与标题必须与 agent.md §8 的页面地图一致，
- * 集中在一处才看得出漏了哪一页。
+ * 用数组而非手写一堆 `<Route>`：路径必须与 agent.md §8 的页面地图一致，
+ * 集中在一处才看得出漏了哪一页。已实现的页面直接指向组件，
+ * 未实现的走 Placeholder 并写明它接哪个接口。
  */
 export const PLACEHOLDER_ROUTES = [
-  {
-    path: "posts",
-    element: () => (
-      <Placeholder
-        title="文章"
-        group="内容"
-        note="列表、筛选、批量操作与状态流转，接 /api/v1/console/posts"
-      />
-    ),
-  },
-  {
-    path: "pages",
-    element: () => (
-      <Placeholder
-        title="页面"
-        group="内容"
-        note="与文章同构，接 /api/v1/console/pages"
-      />
-    ),
-  },
-  {
-    path: "categories",
-    element: CategoriesPage,
-  },
-  {
-    path: "tags",
-    element: TagsPage,
-  },
-  {
-    path: "comments",
-    element: () => (
-      <Placeholder
-        title="评论"
-        group="内容"
-        note="审核、标垃圾、回复，接 /api/v1/console/comments"
-      />
-    ),
-  },
+  // ---- 内容 ----
+  { path: "posts", element: PostsPage },
+  { path: "pages", element: PagesPage },
+  { path: "categories", element: CategoriesPage },
+  { path: "tags", element: TagsPage },
+  { path: "comments", element: CommentsPage },
+
+  // ---- 媒体 ----
   {
     path: "media",
     element: () => (
@@ -93,6 +67,8 @@ export const PLACEHOLDER_ROUTES = [
       />
     ),
   },
+
+  // ---- 外观 ----
   {
     path: "themes",
     element: () => (
@@ -113,6 +89,8 @@ export const PLACEHOLDER_ROUTES = [
       />
     ),
   },
+
+  // ---- 用户 ----
   {
     path: "users",
     element: () => (
@@ -133,10 +111,12 @@ export const PLACEHOLDER_ROUTES = [
       />
     ),
   },
-  {
-    path: "settings/:group",
-    element: SettingsPage,
-  },
+
+  // ---- 设置 ----
+  { path: "settings/:group", element: SettingsPage },
+  { path: "settings", element: SettingsRedirect },
+
+  // ---- 系统 ----
   {
     path: "about",
     element: () => (
@@ -154,3 +134,8 @@ export const PLACEHOLDER_ROUTES = [
     ),
   },
 ];
+
+/** `/settings` 自身没有内容，跳到第一个分组。 */
+function SettingsRedirect() {
+  return <SettingsPage defaultGroup="site" />;
+}

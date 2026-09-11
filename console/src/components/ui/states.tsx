@@ -48,7 +48,8 @@ export function EmptyState({
   action,
   className,
 }: {
-  icon?: LucideIcon;
+  // 显式 `| undefined`：exactOptionalPropertyTypes 下，透传一个可选值时必须允许 undefined
+  icon?: LucideIcon | undefined;
   title: string;
   description: string;
   action?: ReactNode;

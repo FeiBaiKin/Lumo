@@ -45,7 +45,7 @@ const GROUP_ICONS: Record<string, typeof Mail> = {
   mail: Mail,
 };
 
-export function SettingsPage() {
+export function SettingsPage({ defaultGroup }: { defaultGroup?: string } = {}) {
   const { group } = useParams<{ group: string }>();
   const queryClient = useQueryClient();
 
@@ -64,9 +64,15 @@ export function SettingsPage() {
   });
 
   const groups = query.data ?? [];
+  // 地址里没给分组时用 defaultGroup（`/settings` 这个入口），再退回第一个分组。
+  // 用「第一个分组」兜底而不是报错：分组的集合由后端模块决定，
+  // 前端写死一个名字会在模块被移除时指向一个不存在的分组。
+  const wanted = group ?? defaultGroup;
   const current = useMemo(
-    () => groups.find((item) => item.name === group),
-    [groups, group],
+    () =>
+      groups.find((item) => item.name === wanted) ??
+      (group ? undefined : groups[0]),
+    [groups, wanted, group],
   );
 
   const update = useMutation({
@@ -74,7 +80,7 @@ export function SettingsPage() {
       const { error, response } = await api.PUT(
         "/api/v1/console/settings/{group}",
         {
-          params: { path: { group: group ?? "" } },
+          params: { path: { group: current?.name ?? "" } },
           // 请求体是自由对象（服务端按 additionalProperties: false 校验），
           // 故这里传的就是表单里的全部字段，不做裁剪。
           body: values,

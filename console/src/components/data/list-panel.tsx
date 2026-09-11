@@ -168,13 +168,23 @@ export function ListBody({
 
 /** 列表为空时的默认内容，供各页在同一形态下改文案与动作。 */
 export function ListEmpty({
+  icon,
   title,
   description,
   action,
 }: {
+  /** 覆盖默认的收件箱图标。分类页用文件夹、页面用文件，让空状态也带上语境。 */
+  icon?: import("lucide-react").LucideIcon;
   title: string;
   description: string;
   action?: ReactNode;
 }) {
-  return <EmptyState title={title} description={description} action={action} />;
+  return (
+    <EmptyState
+      icon={icon}
+      title={title}
+      description={description}
+      action={action}
+    />
+  );
 }
