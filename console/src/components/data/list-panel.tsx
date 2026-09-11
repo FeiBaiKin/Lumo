@@ -30,6 +30,7 @@ export type Column = {
 
 export function ListPanel({
   title,
+  badge,
   description,
   actions,
   toolbar,
@@ -38,6 +39,12 @@ export function ListPanel({
   className,
 }: {
   title?: string;
+  /**
+   * 标题旁的状态标记（如角色卡上的「内置」）。
+   * 与 title 分开而不是让调用方拼一个节点：title 保持字符串，
+   * 面板才能保证标题层级与样式在全站一致。
+   */
+  badge?: ReactNode;
   description?: string;
   actions?: ReactNode;
   /** 筛选条，位于表头之上、面板之内。 */
@@ -54,7 +61,10 @@ export function ListPanel({
         <header className="flex min-h-12 flex-wrap items-center justify-between gap-3 px-4 py-2.5">
           <div className="flex min-w-0 flex-col">
             {title ? (
-              <h2 className="text-lg font-semibold text-ink">{title}</h2>
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
+                {title}
+                {badge}
+              </h2>
             ) : null}
             {description ? (
               <p className="text-xs text-ink-muted">{description}</p>

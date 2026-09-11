@@ -3,16 +3,19 @@ import { AppShell } from "@/components/layout/app-shell";
 import { DashboardPage } from "@/pages/dashboard";
 import { LoginPage } from "@/pages/login";
 import { NotFoundPage } from "@/pages/not-found";
-import { PLACEHOLDER_ROUTES } from "@/pages/placeholders";
+import { APP_ROUTES } from "@/pages/routes";
 import { Loader2 } from "lucide-react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 /**
- * 路由表。
+ * 路由装配。
  *
  * 两层：`/login` 独立成页（无外壳），其余全部经 `RequireAuth` 进 `AppShell`。
  * 守卫放在路由层而不是各页面里 —— 新增页面时忘了加守卫是很容易犯的错，
  * 而那样的错意味着整个页面在未登录时可用。
+ *
+ * 页面的路径与组件在 `pages/routes.tsx` 集中登记；本文件只管守卫与外壳，
+ * 这样「加一页」不需要动这里。
  */
 
 function FullPageLoading({ label }: { label: string }) {
@@ -60,13 +63,15 @@ export function App() {
         }
       >
         <Route index element={<DashboardPage />} />
-        {PLACEHOLDER_ROUTES.map((route) => (
-          <Route
-            key={route.path}
-            path={route.path}
-            element={<route.element />}
-          />
-        ))}
+        {APP_ROUTES.map((route) => {
+          if (route.element === null) {
+            return null;
+          }
+          const Page = route.element;
+          return (
+            <Route key={route.path} path={route.path} element={<Page />} />
+          );
+        })}
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
