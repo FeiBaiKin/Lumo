@@ -85,7 +85,9 @@ export function ErrorState({
 }: {
   title?: string;
   message: string;
-  onRetry?: () => void;
+  // 显式 `| undefined`：exactOptionalPropertyTypes 下，调用方常把
+  // 「可能没有重试回调」的可选值直接透传进来
+  onRetry?: (() => void) | undefined;
   className?: string;
 }) {
   return (

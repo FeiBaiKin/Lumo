@@ -218,6 +218,42 @@
     transition-duration: var(--duration-normal);
     transition-timing-function: var(--ease-out);
   }
+
+  /*
+   * 浮层入场动画。
+   *
+   * 只做「淡入 + 极轻微放大」，不做位移 —— 弹窗从屏幕外飞进来会让人等它落定。
+   * 用独立的 `scale` 属性而不是 `transform`：面板的居中已经占用了 transform
+   * （-translate-x-1/2 -translate-y-1/2），两者写在同一个属性上会互相覆盖。
+   * `prefers-reduced-motion` 由文件末尾的全局规则统一压到 1ms。
+   */
+  .overlay-in {
+    animation: lumo-overlay-in var(--duration-normal) var(--ease-out);
+  }
+
+  .panel-in {
+    animation: lumo-panel-in var(--duration-normal) var(--ease-out);
+  }
+}
+
+@keyframes lumo-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes lumo-panel-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
 }
 
 /* 全局遵守 prefers-reduced-motion（agent.md §11.1 硬底线）。

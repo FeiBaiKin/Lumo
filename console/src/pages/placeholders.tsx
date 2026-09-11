@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/panel";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { CategoriesPage } from "@/pages/taxonomy/categories";
+import { TagsPage } from "@/pages/taxonomy/tags";
 import { Construction } from "lucide-react";
 import { Link } from "react-router";
 
@@ -64,19 +66,11 @@ export const PLACEHOLDER_ROUTES = [
   },
   {
     path: "categories",
-    element: () => (
-      <Placeholder
-        title="分类"
-        group="内容"
-        note="树形结构，接 /api/v1/console/categories/tree"
-      />
-    ),
+    element: CategoriesPage,
   },
   {
     path: "tags",
-    element: () => (
-      <Placeholder title="标签" group="内容" note="接 /api/v1/console/tags" />
-    ),
+    element: TagsPage,
   },
   {
     path: "comments",
