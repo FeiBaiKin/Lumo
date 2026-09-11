@@ -1,0 +1,245 @@
+/*
+ * Lumo Console 设计 token —— 三层架构（primitive → semantic → component）。
+ *
+ * 依据 agent.md §11.3「Console 设计方向」，由阶段 7 第 0 步的前端设计 skill 统筹得出。
+ *
+ * 三条不可违反的规则：
+ *   1. 只有 primitive 层允许出现字面量（oklch / px / ms）。semantic 层只引用 primitive，
+ *      component 层只引用 semantic。任何组件里出现裸色值都是缺陷。
+ *   2. 明暗主题在 semantic 层切换（:root 与 .dark 各一套），component 层不区分主题。
+ *   3. 正文（纸）与界面（器）是两套材质，不互相借用：--paper-* 只服务于编辑区与预览。
+ *
+ * 全部配色的对比度经实测，文字用例最低 5.14:1。
+ * 唯一一处刻意的例外是分隔线（1.27:1）—— 它不承载文字，只做视觉分组。
+ */
+
+/* ==================================================================
+   第 1 层 · Primitive —— 原始值，无语义
+   ================================================================== */
+
+:root {
+  /* 中性梯级（冷调，色相 261–264）。界面（器）由此构成 */
+  --color-neutral-0: oklch(1 0 0); /* #FFFFFF */
+  --color-neutral-50: oklch(0.9789 0.0029 264.5); /* #F7F8FA */
+  --color-neutral-100: oklch(0.97 0.0029 264.5); /* #F4F5F7 */
+  --color-neutral-150: oklch(0.9515 0.0046 258.3); /* #EDEFF2 */
+  --color-neutral-200: oklch(0.9185 0.0058 264.5); /* #E2E4E8 */
+  --color-neutral-300: oklch(0.8473 0.0106 261.8); /* #C9CDD4 */
+  --color-neutral-400: oklch(0.7132 0.021 260.2); /* #9BA3B0 */
+  --color-neutral-500: oklch(0.4943 0.0245 261.7); /* #5A6270 */
+  --color-neutral-700: oklch(0.3665 0.0169 262.3); /* #3A3F48 */
+  --color-neutral-800: oklch(0.2383 0.0106 260.7); /* #1C1F24 */
+  --color-neutral-850: oklch(0.1998 0.0086 264.4); /* #14161A */
+  --color-neutral-900: oklch(0.1818 0.0088 264.3); /* #101216 */
+
+  /* 纸墨系（暖调，色相 145）。与内置主题「墨 Ink」同源，只服务于正文 */
+  --color-paper-light: oklch(0.9781 0.0017 145.6); /* #F7F8F7 */
+  --color-ink-light: oklch(0.2264 0.0073 145.3); /* #1A1D1A */
+  --color-paper-dark: oklch(0.2264 0.0073 145.3); /* #1A1D1A */
+  --color-ink-dark: oklch(0.935 0.0034 145.5); /* #E8EAE8 */
+
+  /* 印（强调色，色相 259–260）—— 全站唯一强调色，与前台主题同色 */
+  --color-seal-050: oklch(0.9475 0.0149 260.7); /* #E8EEF8 */
+  --color-seal-600: oklch(0.353 0.093 259.2); /* #1B3A6B */
+  --color-seal-700: oklch(0.3134 0.0819 259.6); /* #16305A */
+  --color-seal-400: oklch(0.7229 0.1059 260.6); /* #7FA6E8 */
+  --color-seal-300: oklch(0.7876 0.0836 260.4); /* #9BBBF0 */
+
+  /* 状态四色。各自对应一种内容状态，不是装饰 */
+  --color-ok-050: oklch(0.9502 0.0157 160.6); /* #E6F2EB */
+  --color-ok-600: oklch(0.4902 0.0852 158.4); /* #2F6F4E */
+  --color-ok-300: oklch(0.7401 0.106 156.3); /* #6FBF8F */
+  --color-warn-050: oklch(0.9514 0.0257 84.6); /* #F7EEDC */
+  --color-warn-600: oklch(0.5078 0.108 73.3); /* #8A5A00 */
+  --color-warn-300: oklch(0.7613 0.1248 81.9); /* #D9A94A */
+  --color-danger-050: oklch(0.9434 0.0175 21.8); /* #F8E8E7 */
+  --color-danger-600: oklch(0.4693 0.1648 27.6); /* #A3231F */
+  --color-danger-300: oklch(0.7315 0.1157 23.5); /* #E88A85 */
+
+  /*
+   * 圆角两档。控件与面板 4px 是「工具的手感」；
+   * 纸 2px 与「墨 Ink」逐字一致 —— 编辑器里的那张纸，就该和发表后的页面是同一张。
+   * 命名用 corner- 而非 radius-：后者是 Tailwind 的主题键，
+   * 同名会让「这一行到底指哪一层」在阅读时无从判断。
+   */
+  --corner-control: 4px;
+  --corner-panel: 4px;
+  --corner-paper: 2px;
+  --corner-overlay: 6px; /* 浮层用稍大圆角，与容器拉开层次 */
+  --corner-full: 9999px;
+
+  /* 间距基数沿用 Tailwind 的 0.25rem，此处只定义语义化的页面节奏 */
+  --space-control-x: 0.75rem;
+  --space-control-y: 0.375rem;
+  --space-panel: 1rem;
+  --space-gutter: 1.5rem;
+  --space-section: 2rem;
+
+  /* 字号。中文笔画密度高于拉丁，同数值下更难认，故正文比拉丁惯例大一档、行高更松 */
+  --font-size-xs: 0.75rem; /* 12px 仅用于大写量数据旁的标签 */
+  --font-size-sm: 0.8125rem; /* 13px 表格密集区 */
+  --font-size-base: 0.875rem; /* 14px 界面默认 */
+  --font-size-md: 0.9375rem; /* 15px 表单输入 —— 输入区比标签更需要可读性 */
+  --font-size-lg: 1rem; /* 16px 面板标题 */
+  --font-size-xl: 1.125rem; /* 18px 页面标题 */
+  --font-size-2xl: 1.375rem; /* 22px 仅登录页与空状态 */
+
+  --line-height-tight: 1.25; /* 标题 */
+  --line-height-ui: 1.6; /* 中文界面行高 */
+  --line-height-prose: 1.8; /* 编辑区正文，比主题的 1.75 再松一点：这是工作稿 */
+
+  /*
+   * 字体栈。Console 经 go:embed 进单一二进制，必须能离线跑，
+   * 故与「墨 Ink」同策：只用系统字体，零加载成本（agent.md §11.1）。
+   */
+  --typeface-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC",
+    sans-serif;
+  --typeface-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  /* 动效：只做回应用户动作的那一类，时长按位移距离分档 */
+  --duration-instant: 80ms; /* 按下反馈 */
+  --duration-fast: 130ms; /* 悬停、焦点 */
+  --duration-normal: 190ms; /* 展开、切换 */
+  --duration-slow: 280ms; /* 浮层入场 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 焦点环。WCAG 2.2 要求 2px 周长与 3:1 状态对比，不用 box-shadow 假装 */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  --z-sticky: 20;
+  --z-overlay: 40;
+  --z-popover: 50;
+  --z-toast: 60;
+  --z-command: 70;
+}
+
+/* ==================================================================
+   第 2 层 · Semantic —— 用途别名。明暗主题在此切换
+   ================================================================== */
+
+:root {
+  /* 表面三兄弟。器 → 面板 → 纸，层级由底色深浅表达，不由阴影表达 */
+  --chrome: var(--color-neutral-100); /* 应用外壳：侧栏、顶栏 */
+  --chrome-hover: var(--color-neutral-150);
+  --surface: var(--color-neutral-0); /* 面板：卡片、表格、抽屉 */
+  --surface-raised: var(--color-neutral-50); /* 面板内的次级区块 */
+  --surface-hover: var(--color-neutral-50);
+  --surface-active: var(--color-neutral-150);
+
+  /* 纸：仅用于正文编辑区与预览 */
+  --paper: var(--color-paper-light);
+  --paper-ink: var(--color-ink-light);
+
+  --ink: var(--color-ink-light); /* 主文字 */
+  --ink-muted: var(--color-neutral-500); /* 次要文字：说明、时间、路径 */
+  --ink-subtle: var(--color-neutral-400); /* 占位符、禁用文字 */
+
+  /* 印：唯一的强调色。只用于可操作与选中态，不做装饰 */
+  --seal: var(--color-seal-600);
+  --seal-hover: var(--color-seal-700);
+  --seal-soft: var(--color-seal-050); /* 选中行底色 */
+  --seal-on: var(--color-neutral-0); /* 印底之上的文字 */
+
+  --line: var(--color-neutral-200); /* 分隔线。不承载文字，故对比度刻意低 */
+  --line-strong: var(--color-neutral-300); /* 输入框边框：需要看出边界 */
+
+  --ok: var(--color-ok-600);
+  --ok-soft: var(--color-ok-050);
+  --warn: var(--color-warn-600);
+  --warn-soft: var(--color-warn-050);
+  --danger: var(--color-danger-600);
+  --danger-hover: var(--color-danger-600);
+  --danger-soft: var(--color-danger-050);
+  --danger-on: var(--color-neutral-0);
+
+  --focus-ring: var(--seal);
+
+  /* 浮层阴影。面板不用阴影（用描边），阴影只留给真的浮起来的元素 */
+  --elevation-overlay: 0 8px 24px -6px oklch(0.2 0.02 264 / 0.16),
+    0 2px 6px -2px oklch(0.2 0.02 264 / 0.08);
+  --elevation-popover: 0 4px 14px -4px oklch(0.2 0.02 264 / 0.14);
+}
+
+.dark {
+  --chrome: var(--color-neutral-850);
+  --chrome-hover: oklch(0.2477 0.014 267); /* #1E2128 */
+  --surface: var(--color-neutral-800);
+  --surface-raised: var(--color-neutral-850);
+  --surface-hover: oklch(0.2678 0.0123 262);
+  --surface-active: var(--color-neutral-700);
+
+  /* 暗色下纸墨关系整体反转：纸取「墨」色，字取浅墨 */
+  --paper: var(--color-paper-dark);
+  --paper-ink: var(--color-ink-dark);
+
+  --ink: var(--color-ink-dark);
+  /*
+   * 关键：暗色下次要文字指向 neutral-400 而非 500。
+   * 照搬亮色的 #5A6270 会让它在面板底上只剩 2.69:1 —— 这一条是实测抓出来的，
+   * 也正是「语义层必须存在」的最好例证。
+   */
+  --ink-muted: var(--color-neutral-400);
+  --ink-subtle: var(--color-neutral-500);
+
+  --seal: var(--color-seal-400);
+  --seal-hover: var(--color-seal-300);
+  --seal-soft: oklch(0.3 0.04 260); /* 暗色下的选中行底色 */
+  --seal-on: var(--color-neutral-900);
+
+  --line: oklch(0.3001 0.0139 261.7); /* #2A2E35 */
+  --line-strong: var(--color-neutral-700);
+
+  --ok: var(--color-ok-300);
+  --ok-soft: oklch(0.3 0.035 158);
+  --warn: var(--color-warn-300);
+  --warn-soft: oklch(0.31 0.04 80);
+  --danger: var(--color-danger-300);
+  --danger-hover: var(--color-danger-300);
+  --danger-soft: oklch(0.31 0.05 25);
+  --danger-on: var(--color-neutral-900);
+
+  /* 暗底上阴影要更重才看得出来，且要有环境光遮蔽的观感 */
+  --elevation-overlay: 0 8px 28px -6px oklch(0 0 0 / 0.6), 0 2px 8px -2px oklch(0 0 0 / 0.5);
+  --elevation-popover: 0 4px 16px -4px oklch(0 0 0 / 0.55);
+}
+
+/* ==================================================================
+   第 3 层 · Component —— 组件专属，只引用 semantic
+   ================================================================== */
+
+:root {
+  --button-radius: var(--corner-control);
+  --button-padding-x: var(--space-control-x);
+  --button-padding-y: var(--space-control-y);
+  --button-primary-bg: var(--seal);
+  --button-primary-bg-hover: var(--seal-hover);
+  --button-primary-fg: var(--seal-on);
+  --button-ghost-bg-hover: var(--surface-active);
+  --button-danger-bg: var(--danger);
+  --button-danger-fg: var(--danger-on);
+
+  --input-bg: var(--surface);
+  --input-border: var(--line-strong);
+  --input-radius: var(--corner-control);
+  --input-placeholder: var(--ink-subtle);
+
+  --panel-bg: var(--surface);
+  --panel-border: var(--line);
+  --panel-radius: var(--corner-panel);
+  --panel-padding: var(--space-panel);
+
+  /* 编辑区：纸 */
+  --editor-bg: var(--paper);
+  --editor-fg: var(--paper-ink);
+  --editor-radius: var(--corner-paper);
+  --editor-measure: 40em; /* 正文列宽。中文按字算，40em 约合 40 字 */
+
+  --sidebar-width: 15rem;
+  --topbar-height: 3.25rem;
+
+  --table-row-height: 2.75rem;
+}

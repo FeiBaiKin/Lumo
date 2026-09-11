@@ -1,8 +1,235 @@
 /*
  * Tailwind CSS v4 入口。
  *
- * agent.md §11.1：设计 token 体系（三层 primitive → semantic → component）
- * 与明暗双主题属于阶段 7 的设计工作，必须先经前端设计 skill 统筹后再落地。
- * 此处刻意只引入 Tailwind 基础层，不预设任何配色或字体，避免产生需要推翻的既成决策。
+ * 分两层：
+ *   tokens.css —— 三层设计 token（primitive → semantic → component），见 agent.md §11.3
+ *   本文件     —— 把 token 映射给 Tailwind，并定义少量全局基础样式
+ *
+ * 映射一律用 `@theme inline`：内联后生成的工具类引用的是 `var(--chrome)` 这类变量本身，
+ * 而不是在构建期把值烤进去 —— 否则 `.dark` 切换语义变量时，工具类不会跟着变。
+ *
+ * 注意：本文件与 tokens.css 被排除在 Biome 的检查范围之外（见 biome.json 的 files.ignore）。
+ * 原因是 Tailwind v4 的 `@theme` 通配清零语法（`--color-*: initial`）不在 Biome 1.9
+ * 的 CSS 解析器能力内，会把整个文件报成语法错误。这两个文件由 vite build 里的
+ * Tailwind 编译器真正校验 —— 语法写错一样会当场失败，只是错误信息来自编译器而非 linter。
  */
+
 @import "tailwindcss";
+@import "./tokens.css";
+
+/* 明暗主题由根元素上的 .dark 类驱动（默认跟随系统，由主题 Provider 落类），
+   而不是 Tailwind 默认的 prefers-color-scheme —— 用户需要能手动覆盖系统设置。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * 清空 Tailwind 的内置主题键。
+ *
+ * 这不是洁癖，是让 agent.md §11.3 那条「组件里出现裸色值就是缺陷」在语法上无法违反：
+ * 清掉之后 `bg-blue-500`、`rounded-lg`、`shadow-md` 都生成不出任何规则，
+ * 写错了不会有编译错误，但页面会明显不对 —— 作者只能回来用 token。
+ * 留 spacing 与字号阶梯不动：字号下方另有覆盖，spacing 不存在「裸值 vs 语义值」的分裂。
+ */
+@theme {
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
+  /* 清零后按需补回少数几个无歧义的原始色 */
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-inherit: inherit;
+  --color-black: #000;
+  --color-white: #fff;
+}
+
+@theme inline {
+  /* 颜色：语义名 → 工具类（bg-chrome / text-ink / border-line …） */
+  --color-chrome: var(--chrome);
+  --color-chrome-hover: var(--chrome-hover);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
+  --color-paper: var(--paper);
+  --color-paper-ink: var(--paper-ink);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-seal: var(--seal);
+  --color-seal-hover: var(--seal-hover);
+  --color-seal-soft: var(--seal-soft);
+  --color-seal-on: var(--seal-on);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-on: var(--danger-on);
+
+  /* 圆角：rounded-control / rounded-panel / rounded-paper / rounded-overlay / rounded-full */
+  --radius-control: var(--corner-control);
+  --radius-panel: var(--corner-panel);
+  --radius-paper: var(--corner-paper);
+  --radius-overlay: var(--corner-overlay);
+  --radius-full: var(--corner-full);
+
+  /* 字体族 */
+  --font-sans: var(--typeface-ui);
+  --font-mono: var(--typeface-mono);
+
+  /* 布局尺寸，供 w-sidebar / h-topbar 使用 */
+  --spacing-sidebar: var(--sidebar-width);
+  --spacing-topbar: var(--topbar-height);
+
+  /* 阴影只有两档，都属浮层。面板用描边，不用阴影 */
+  --shadow-overlay: var(--elevation-overlay);
+  --shadow-popover: var(--elevation-popover);
+}
+
+/*
+ * 字号阶梯。
+ *
+ * 覆盖 Tailwind 默认值有两个理由，都是中文界面特有的：
+ *   1. 默认的 text-sm（14px）在中文里偏小，且默认行高 1.25 只适合拉丁 —— 中文笔画密，
+ *      同一字号下需要更大的实际字面与更松的行距才认得快。故整体上移半档、行高给到 1.6。
+ *   2. 默认阶梯有十一档，后台用不到这么多。收敛成七档后，「这个标题该用哪档」不必现场判断。
+ */
+@theme {
+  --text-*: initial;
+
+  --text-xs: var(--font-size-xs); /* 12px — 仅用于大写量数据旁的标签 */
+  --text-xs--line-height: 1.5;
+  --text-sm: var(--font-size-sm); /* 13px — 表格密集区 */
+  --text-sm--line-height: 1.6;
+  --text-base: var(--font-size-base); /* 14px — 界面默认 */
+  --text-base--line-height: 1.6;
+  --text-md: var(--font-size-md); /* 15px — 表单输入 */
+  --text-md--line-height: 1.6;
+  --text-lg: var(--font-size-lg); /* 16px — 面板标题 */
+  --text-lg--line-height: 1.5;
+  --text-xl: var(--font-size-xl); /* 18px — 页面标题 */
+  --text-xl--line-height: 1.4;
+  --text-2xl: var(--font-size-2xl); /* 22px — 登录页、空状态 */
+  --text-2xl--line-height: 1.3;
+}
+
+/* ── 全局基础样式 ───────────────────────────────────────────────── */
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    /* 中文界面在 14px 下笔画密，禁用合成加粗会让标题发糊 */
+    -webkit-font-smoothing: antialiased;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--chrome);
+    color: var(--ink);
+    font-family: var(--typeface-ui);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-ui);
+  }
+
+  /* 焦点环。全站唯一写法，任何组件都不得用 outline-none 抹掉它。
+     WCAG 2.2：至少 2px 周长与 3:1 状态对比，不用 box-shadow 假装 */
+  :focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* 数字一律等宽对齐 —— 后台到处是计数、日期、字数、ID，
+     比例数字会让表格列对不齐 */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 表单控件默认继承字体（浏览器给 input 的是系统 UI 字体，中英混排会跳） */
+  :where(input, textarea, select, button) {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* 长 token 不得撑破布局：URL、slug、文件名、API 地址在后台随处可见 */
+  :where(code, kbd, samp) {
+    font-family: var(--typeface-mono);
+    font-size: 0.9em;
+    overflow-wrap: anywhere;
+  }
+
+  ::selection {
+    background-color: var(--seal-soft);
+  }
+
+  /* 滚动条与界面同调，不用系统默认的亮灰 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+@layer utilities {
+  /* 屏幕阅读器专用文本 */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* 长 token 专用：slug、URL、对象键、校验和 */
+  .token {
+    overflow-wrap: anywhere;
+    min-inline-size: 0;
+  }
+
+  /*
+   * 全站唯一的过渡写法。
+   *
+   * 不给每个组件写 `transition-colors duration-150`：那样时长会各处漂移，
+   * 而「悬停反馈该多快」在 token 里已经定为 --duration-fast。
+   * transform 与 opacity 一并列出，是为浮层入场复用同一条曲线。
+   */
+  .transition-ui {
+    transition-property: color, background-color, border-color, outline-color, fill, stroke,
+      opacity, box-shadow, transform;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-out);
+  }
+
+  /* 浮层入场比控件反馈慢一档：位移距离更大，同速会显得急 */
+  .transition-overlay {
+    transition-property: opacity, transform;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: var(--ease-out);
+  }
+}
+
+/* 全局遵守 prefers-reduced-motion（agent.md §11.1 硬底线）。
+   注意：这里只是把动效压到 1ms，而不是 none —— 某些库的过渡回调依赖 transitionend，
+   设为 none 会让它们永远不触发。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

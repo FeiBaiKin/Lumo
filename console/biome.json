@@ -9,9 +9,9 @@
     "ignore": [
       "dist",
       "node_modules",
-      "src/components/ui",
       "openapi",
-      "src/api/schema.d.ts"
+      "src/api/schema.d.ts",
+      "src/styles"
     ]
   },
   "formatter": {
