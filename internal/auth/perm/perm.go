@@ -39,6 +39,8 @@ const (
 	ThemesManage   Permission = "themes:manage"
 	SettingsManage Permission = "settings:manage"
 
+	ExtensionsManage Permission = "extensions:manage"
+
 	SiteDelete   Permission = "site:delete"
 	SiteTransfer Permission = "site:transfer"
 )
@@ -55,6 +57,7 @@ var All = []Permission{
 	RolesManage,
 	ThemesManage,
 	SettingsManage,
+	ExtensionsManage,
 	SiteDelete, SiteTransfer,
 }
 
@@ -139,6 +142,7 @@ var BuiltinRoles = map[string][]Permission{
 		RolesManage,
 		ThemesManage,
 		SettingsManage,
+		ExtensionsManage,
 	},
 
 	// 内容全权（含发布、删任何人的内容）；不碰用户/角色/设置/主题/菜单。

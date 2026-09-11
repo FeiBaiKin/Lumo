@@ -132,7 +132,7 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 |---|---|---|
 | Console | `/api/v1/console/**` | 会话或 PAT，**默认强制认证**，免认证端点须显式注册 |
 | Public | `/api/v1/public/**` | 匿名可读已发布内容、发表评论 |
-| Extension | `/apis/{group}/{version}/{kind}` | 强制认证，v1 内部使用，为插件预留 |
+| Extension | `/apis/{group}/{version}/{资源段}` | 强制认证，v1 内部使用，为插件预留 |
 
 所有接口经 [huma](https://huma.rocks) 注册，请求校验与文档由代码直接生成：
 
@@ -147,7 +147,11 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 `/robots.txt`、`/sitemap.xml`、`/feed.xml`（RSS 2.0）、`/atom.xml`（Atom 1.0）。
 站点未配置对外地址（`site.url`）时，sitemap 与订阅源明确返回 503，而不是产出相对地址。
 
-功能接口位于 Console 与 Public 两个平面；Extension 平面已建好但尚无模块注册，随阶段 5 启用。
+Extension 平面自阶段 5 起由 `internal/extension` 提供通用 CRUD，全部要求 `extensions:manage`：
+`GET|POST /apis/{分组}/{版本}/{资源段}` 与 `GET|PUT|DELETE /apis/{分组}/{版本}/{资源段}/{名称}`。
+分组为反向域名（核心用 `io.github.feibaiikin.lumo`），版本 v1 统一 `v1alpha1`，
+kind 为单数 PascalCase 而地址段用它的小写复数形式（`Post` 对应 `posts`），名称为 DNS-1123。
+`spec` 是自由 JSON，服务端只存取不解释；列表支持 `where=键=值`（可重复）按 spec 顶层字段筛选，走 GIN 索引。
 
 ## 认证与安全
 
@@ -231,7 +235,7 @@ Console 目前只有脚手架（Vite 6 + React 19 + TS strict + Tailwind v4 + sh
 
 每个模块自带迁移（模块目录下 `migrations/*.sql`，经 `go:embed` 收进二进制），
 版本表为 `goose_db_version_<模块>`，**迁移编号只需在模块内递增**，不必全局唯一。
-当前共 8 个迁移来源：core 2，settings / media / taxonomy / content / comment / menu / theme 各 1
+当前共 9 个迁移来源：core 2，settings / media / taxonomy / content / comment / menu / extension / theme 各 1
 （seo 与 mail 无数据表，故不出现）。
 
 ### 构建标签与静态性
@@ -277,6 +281,7 @@ internal/
   config/ database/ migrate/ logging/ httpx/ server/ workdir/ version/ slug/
   console/         SPA 的 go:embed 目标（dist/ 不进库）
   media/ taxonomy/ content/ settings/ comment/ mail/ menu/ seo/   功能模块
+  extension/       Extension 平面的通用 CRUD，给插件预留的自定义模型
   theme/           主题系统：模板引擎、主题包、前台路由、主题设置
     builtin/ink/   内置默认主题「墨」，go:embed 进二进制，同时是所有主题的回退
   testsupport/     集成测试的整机装配与库名护栏
