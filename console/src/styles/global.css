@@ -199,6 +199,170 @@
   }
 
   /*
+   * 编辑区的正文排版（TipTap 与 Milkdown 共用同一个类名）。
+   *
+   * 这是 Console 里**唯一**一处「纸」：外壳走冷调中性色，只有正在写的这张区域
+   * 用主题的纸色与 2px 圆角（agent.md §11.3）。故这里的排版规则也刻意贴近
+   * 前台「墨 Ink」的正文：行高 1.8（工作稿比成稿再松一点）、
+   * 中文优先的字体栈、段落间距大于行距。
+   *
+   * 用普通后代选择器而不是 Tailwind 的 prose 插件：需要的规则不到二十条，
+   * 引一个排版插件会带来一整套需要再覆盖的默认值。
+   */
+  .prose-editor {
+    color: var(--paper-ink);
+    font-size: var(--font-size-md);
+    line-height: var(--line-height-prose);
+    overflow-wrap: anywhere;
+  }
+
+  .prose-editor > * + * {
+    margin-top: 1em;
+  }
+
+  .prose-editor h1,
+  .prose-editor h2,
+  .prose-editor h3 {
+    font-weight: 600;
+    line-height: 1.35;
+    margin-top: 1.6em;
+    margin-bottom: 0.5em;
+  }
+
+  .prose-editor h1 {
+    font-size: 1.5em;
+  }
+  .prose-editor h2 {
+    font-size: 1.25em;
+  }
+  .prose-editor h3 {
+    font-size: 1.1em;
+  }
+  .prose-editor > :first-child {
+    margin-top: 0;
+  }
+
+  .prose-editor ul,
+  .prose-editor ol {
+    padding-left: 1.5em;
+  }
+  .prose-editor ul {
+    list-style: disc;
+  }
+  .prose-editor ol {
+    list-style: decimal;
+  }
+  .prose-editor li + li {
+    margin-top: 0.35em;
+  }
+  /* 嵌套列表不要再拉一层间距，否则深层列表会散开 */
+  .prose-editor li > ul,
+  .prose-editor li > ol {
+    margin-top: 0.35em;
+  }
+
+  .prose-editor blockquote {
+    border-left: 3px solid var(--line-strong);
+    padding-left: 1em;
+    color: var(--ink-muted);
+  }
+
+  .prose-editor code {
+    background-color: var(--surface-active);
+    border-radius: 3px;
+    padding: 0.1em 0.35em;
+    font-size: 0.9em;
+  }
+
+  .prose-editor pre {
+    background-color: var(--surface-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--corner-control);
+    padding: 0.85em 1em;
+    overflow-x: auto;
+  }
+  .prose-editor pre code {
+    background: none;
+    padding: 0;
+    font-size: 0.875em;
+  }
+
+  .prose-editor hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: 2em 0;
+  }
+
+  .prose-editor img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--corner-control);
+  }
+
+  .prose-editor a {
+    color: var(--seal);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .prose-editor table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95em;
+  }
+  .prose-editor th,
+  .prose-editor td {
+    border: 1px solid var(--line);
+    padding: 0.45em 0.7em;
+    text-align: left;
+    vertical-align: top;
+  }
+  .prose-editor th {
+    background-color: var(--surface-raised);
+    font-weight: 600;
+  }
+
+  /*
+   * TipTap 的空段落占位（Placeholder 扩展）。
+   * 只在第一个空段落上显示，否则文档中间的每个空行都会顶着一行提示文字。
+   */
+  .prose-editor p.is-editor-empty:first-child::before,
+  .prose-editor .is-empty::before {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+    color: var(--ink-subtle);
+  }
+
+  /*
+   * 编辑器的选区与光标。用主题的墨色而不是浏览器默认的亮蓝 ——
+   * 在纸色底上一道亮蓝会显得像另一个应用。
+   */
+  .prose-editor ::selection {
+    background-color: var(--seal-soft);
+  }
+
+  .prose-editor .ProseMirror-selectednode {
+    outline: 2px solid var(--seal);
+    outline-offset: 1px;
+  }
+
+  /* 表格列宽拖拽手柄（TipTap 的 table resizable） */
+  .prose-editor .column-resize-handle {
+    background-color: var(--seal);
+    width: 2px;
+  }
+  .prose-editor .selectedCell::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-color: var(--seal-soft);
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  /*
    * 全站唯一的过渡写法。
    *
    * 不给每个组件写 `transition-colors duration-150`：那样时长会各处漂移，
