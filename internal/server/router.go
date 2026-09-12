@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -113,12 +114,12 @@ func NewRouter(opts *Options) (root chi.Router, planes *api.Planes) {
 	planes = api.NewPlanes(root, planeOpts)
 
 	if opts.UploadsDir != "" {
-		root.Mount(UploadsPath, uploadsHandler(opts.UploadsDir))
+		mountCanonical(root, UploadsPath+"/", uploadsHandler(opts.UploadsDir))
 	}
 
 	// Console SPA。根路径不在这里注册：阶段 4 起它属于主题渲染的访客前台，
 	// 由 theme 模块在全部模块注册之后挂载（见 serve.go）。
-	root.Mount(console.MountPath, console.Handler())
+	mountCanonical(root, console.MountPath, console.Handler())
 	if opts.FallbackRootToConsole {
 		root.Get("/", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, console.MountPath, http.StatusFound)
@@ -184,6 +185,28 @@ func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 
 // UploadsPath 是本地存储附件的对外访问前缀。
 const UploadsPath = "/uploads"
+
+// mountCanonical 把 handler 挂到 mountPath 下，并让不带末尾斜杠的写法重定向过去。
+//
+// chi 的 Mount 只对**不以斜杠结尾**的 pattern 额外注册裸路径（见 chi mux.go 的
+// Mount），而 console 这类挂载点的 pattern 天然带斜杠（base 就是 "/console/"）。
+// 于是 /console 不会被任何一个 console 路由接住，直接漏给后注册的兜底路由：
+// 生产环境里被主题的 /{slug} 当成名为 console 的独立页面，访客看到的是 404 页，
+// 而不是后台。这里显式补一条重定向，让 /console 与 /console/ 都进后台。
+//
+// 用 301 而非 302：挂载点是静态约定，不存在临时跳转的语义。
+func mountCanonical(r chi.Router, mountPath string, handler http.Handler) {
+	canonical := mountPath
+	if !strings.HasSuffix(canonical, "/") {
+		canonical += "/"
+	}
+	if bare := strings.TrimSuffix(canonical, "/"); bare != "" {
+		r.Get(bare, func(w http.ResponseWriter, req *http.Request) {
+			http.Redirect(w, req, canonical, http.StatusMovedPermanently)
+		})
+	}
+	r.Mount(canonical, handler)
+}
 
 // orDefault 返回 value，非正数时返回 fallback。
 func orDefault(value, fallback int64) int64 {

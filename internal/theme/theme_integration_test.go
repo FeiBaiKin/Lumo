@@ -237,6 +237,18 @@ func TestFrontendDoesNotShadowCoreRoutes(t *testing.T) {
 			t.Errorf("已构建前端时应返回 Console 页面，实际 %.200s", body)
 		}
 	})
+
+	// /console 不带末尾斜杠时必须跳转到 /console/，而不是被 /{slug} 当成
+	// 名为 console 的独立页面（那次回归的表现就是后台地址提示「页面不存在」）。
+	t.Run("/console", func(t *testing.T) {
+		rec := stack.Do(t, &testsupport.Request{Method: http.MethodGet, Path: "/console"})
+		if rec.Code != http.StatusMovedPermanently {
+			t.Fatalf("状态码 = %d，期望 301：%.200s", rec.Code, rec.Body.String())
+		}
+		if loc := rec.Header().Get("Location"); loc != "/console/" {
+			t.Errorf("Location = %q，期望 /console/", loc)
+		}
+	})
 }
 
 // TestFrontendCategoryAndTag 验证分类页与标签页。
@@ -772,6 +784,36 @@ func TestFrontendEscapesTitles(t *testing.T) {
 	}
 	if !strings.Contains(body, "&lt;script&gt;") {
 		t.Error("应能看到转义后的标题")
+	}
+}
+
+// TestFrontendSanitizesUnprivilegedBody 是端到端回归测试：
+// 站点的「XSS 出口」就在前台渲染这一步 —— 前台与 Console 同源，
+// 正文里的一段脚本会在任何访客（可能是管理员）的浏览器里以本站身份运行，
+// 从而绕过编辑与管理员之间的权限隔离。
+//
+// 没有 content:unsafe_html 的编辑者，正文在保存时就已被净化；
+// 管理员（持有该权限）的正文原样输出，保留 iframe 嵌入与自定义 HTML 块的能力。
+func TestFrontendSanitizesUnprivilegedBody(t *testing.T) {
+	stack, _ := newThemeStack(t)
+	editor := stack.Bearer(t, "editor-sanitize", "editor")
+	admin := stack.Bearer(t, "admin-sanitize", "admin")
+
+	const risky = `<p>正文</p><script>alert('xss')</script><img src="/uploads/a.png" onerror="alert('xss')">`
+
+	seedPost(t, stack, editor, "编辑者的文章", "editor-body", risky)
+	_, body := get(t, stack, "/posts/editor-body")
+	if strings.Contains(body, "alert('xss')") {
+		t.Fatal("编辑者的正文未被净化，前台出现了可执行脚本")
+	}
+	if !strings.Contains(body, "正文") {
+		t.Error("净化不应把正常内容一起丢掉")
+	}
+
+	seedPost(t, stack, admin, "管理员的文章", "admin-body", risky)
+	_, body = get(t, stack, "/posts/admin-body")
+	if !strings.Contains(body, "alert('xss')") {
+		t.Error("持有 content:unsafe_html 的角色，正文应原样输出")
 	}
 }
 
