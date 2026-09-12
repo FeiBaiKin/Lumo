@@ -150,6 +150,23 @@ docker compose exec -it lumo /lumo admin create-user   -username admin -email yo
 而不是 exec 进去翻文件；也无法在容器内做 HEALTHCHECK，探活请从外部请求
 `/healthz`（进程存活）或 `/readyz`（额外探测数据库，可用于负载均衡摘流）。
 
+### 不装 Docker 也能验证镜像构建
+
+改了 `deploy/` 下的 Dockerfile、又不想在本机装 Docker 时，让 CI 代跑一次：
+在 GitHub 的 **Actions → Release → Run workflow** 里保持 `snapshot` 选项打开即可。
+它会跑完整的多架构构建与装箱，但**不推 GHCR、不建 Release**，
+二进制归档留在该次运行的 artifact 里（保留 7 天）。命令行等价写法：
+
+```bash
+gh workflow run release.yml -f snapshot=true
+gh run watch
+```
+
+要留意的是：`dockers_v2` 的镜像在 publish 阶段才构建，所以 `goreleaser build`
+和 `release --skip=publish` 都不会碰 Dockerfile —— 验证必须走上面这条
+`release --snapshot` 的路径。snapshot 模式下 buildx 不建多架构清单，
+改出两个带平台后缀的本地镜像（`...-amd64` 与 `...-arm64`）。
+
 ## 后台 Console
 
 后台是 React SPA，构建产物经 `go:embed` 进二进制，访问 `/console/`。
