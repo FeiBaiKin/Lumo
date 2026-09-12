@@ -12,6 +12,7 @@ import { MediaPage } from "@/pages/media/media";
 import { ProfilePage } from "@/pages/profile";
 import { SettingsPage } from "@/pages/settings/settings";
 import { AboutPage } from "@/pages/system/about";
+import { PluginsPage } from "@/pages/system/plugins";
 import { CategoriesPage } from "@/pages/taxonomy/categories";
 import { TagsPage } from "@/pages/taxonomy/tags";
 import { RolesPage } from "@/pages/users/roles";
@@ -125,6 +126,7 @@ export const APP_ROUTES = [
 
   // ---- 系统 ----
   { path: "about", element: AboutPage },
+  { path: "plugins", element: PluginsPage },
   {
     path: "logs",
     element: () => (
