@@ -24,11 +24,27 @@ var retryDelays = []time.Duration{2 * time.Second, 10 * time.Second, 30 * time.S
 // sendTimeout 是单次发信的超时。
 const sendTimeout = 30 * time.Second
 
+// drainPollInterval 是停机等待队列排空时的轮询间隔。
+const drainPollInterval = 20 * time.Millisecond
+
 // Service 是发信队列：Enqueue 立即返回，后台单协程按序发送并重试。
 type Service struct {
 	settings *settings.Service
 	logger   *slog.Logger
 	queue    chan *Message
+
+	// closing 为真后拒绝新入队（停机第二阶段）。
+	closing atomic.Bool
+	// stop 由 Shutdown 关闭，通知消费协程退出（停机最后阶段）。
+	stop chan struct{}
+	// done 在 Run 返回时关闭。
+	done chan struct{}
+	// stopOnce 保证停止流程只执行一次。
+	stopOnce sync.Once
+	// inFlight 指向当前正在发送的邮件，用于统计停机时未投递的数量。
+	inFlight atomic.Pointer[Message]
+	// undelivered 是停机时快照下来的未投递数量。
+	undelivered atomic.Int64
 
 	// 发信器按配置缓存，设置改动后自动重建。
 	mu       sync.Mutex
@@ -49,6 +65,8 @@ func NewService(svc *settings.Service, logger *slog.Logger) *Service {
 		settings:  svc,
 		logger:    logger,
 		queue:     make(chan *Message, queueSize),
+		stop:      make(chan struct{}),
+		done:      make(chan struct{}),
 		newSender: NewSMTPSender,
 	}
 }
@@ -76,8 +94,15 @@ func (s *Service) Enabled(ctx context.Context) bool {
 // Enqueue 把邮件放入队列，立即返回。
 //
 // 未启用发信时静默丢弃：站点没配 SMTP 是常态，不该让每次评论都在日志里刷错误。
+// 停机开始后同样拒绝入队，但会记一条调试日志，便于排查停机窗口内的丢信。
 func (s *Service) Enqueue(ctx context.Context, msg *Message) {
 	if msg == nil || !s.Enabled(ctx) {
+		return
+	}
+	if s.closing.Load() {
+		if s.logger != nil {
+			s.logger.Debug("邮件队列正在停机，拒绝新邮件", slog.String("subject", msg.Subject))
+		}
 		return
 	}
 	if err := msg.Validate(); err != nil {
@@ -106,20 +131,75 @@ func (s *Service) Send(ctx context.Context, msg *Message) error {
 	return sender.Send(ctx, msg)
 }
 
-// Run 启动后台发送协程，ctx 取消时退出。
+// Run 运行后台发送协程，直到 Shutdown 停止服务。
+//
+// ctx 只用于单封邮件的发送超时，不作为退出信号：进程收到 SIGTERM 后 HTTP
+// 还要排空，在途请求仍可能入队，消费者若随之退出，这些邮件就无人消费。
+// 退出统一走 Shutdown（由 app.Closer 在 HTTP 排空之后调用），
+// 由它保证「先排空、后停止」的顺序。
 func (s *Service) Run(ctx context.Context) {
+	defer close(s.done)
 	for {
 		select {
-		case <-ctx.Done():
-			return
 		case msg := <-s.queue:
 			s.deliver(ctx, msg)
+		case <-s.stop:
+			return
 		}
 	}
 }
 
+// Shutdown 有序停止发信队列：拒绝新入队 → 在 ctx 期限内排空 → 停止消费协程。
+//
+// 必须在 HTTP 服务器排空之后调用（app.Closer 的时机），此时不会再有业务请求
+// 入队。ctx 由 app 的 ShutdownTimeout 约束，等待有界，不会拖住进程退出。
+// 未投递数量在停止时快照，由 Undelivered 读取；调用方负责记录。
+func (s *Service) Shutdown(ctx context.Context) {
+	s.closing.Store(true)
+
+	ticker := time.NewTicker(drainPollInterval)
+	defer ticker.Stop()
+	for s.pending() > 0 {
+		select {
+		case <-ctx.Done():
+			s.stopConsumer()
+			return
+		case <-ticker.C:
+		}
+	}
+	s.stopConsumer()
+}
+
+// stopConsumer 关闭消费协程，幂等。
+func (s *Service) stopConsumer() {
+	s.stopOnce.Do(func() {
+		// 快照此刻仍未发出的数量。停机后 Enqueue 已被拒绝，队列不再增长；
+		// 正在发送的那一封若随后侥幸成功会多计 1，宁可多报不可漏报。
+		s.undelivered.Store(int64(s.pending()))
+		close(s.stop)
+	})
+}
+
+// Done 在消费协程退出后关闭，供停机流程等待其收尾。
+func (s *Service) Done() <-chan struct{} { return s.done }
+
+// Undelivered 返回停机时未能投递的邮件数；Shutdown 完成后调用才有意义。
+func (s *Service) Undelivered() int { return int(s.undelivered.Load()) }
+
+// pending 返回当前尚未发出的邮件数：队列中排着的，加上正在发送的一封。
+func (s *Service) pending() int {
+	n := len(s.queue)
+	if s.inFlight.Load() != nil {
+		n++
+	}
+	return n
+}
+
 // deliver 发送一封邮件，失败时按 retryDelays 重试。
 func (s *Service) deliver(ctx context.Context, msg *Message) {
+	s.inFlight.Store(msg)
+	defer s.inFlight.Store(nil)
+
 	var lastErr error
 	for attempt := 0; attempt <= len(retryDelays); attempt++ {
 		if attempt > 0 {

@@ -138,11 +138,23 @@ func (s *Store) Items(ctx context.Context, menuID int64) ([]Item, error) {
 // items 须为深度优先序（父项一定排在其子项之前），parents[i] 给出第 i 项在
 // items 中的父项下标，-1 表示一级条目。父项的行号只有在插入后才能拿到，
 // 所以按下标而不是按客户端给的 ID 建立父子关系。
+//
+// 事务开头先对菜单父行加行锁（SELECT ... FOR UPDATE），把同一菜单的整树替换串行化：
+// 两个并发事务若都先 DELETE 再各自 INSERT，最终表里会同时留下两棵树
+// （DELETE 看不见对方尚未提交的插入），而两个请求都返回成功。
 func (s *Store) ReplaceItems(ctx context.Context, menuID int64, items []Item, parents []int) error {
 	if len(items) != len(parents) {
 		return fmt.Errorf("%w：条目数与父项数不一致", ErrInvalid)
 	}
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		// 锁必须在 DELETE 之前拿到；行不存在时返回 ErrNotFound，
+		// 与处理器先做的存在性检查互为兜底。
+		var locked int64
+		if err := tx.NewRaw("SELECT id FROM menus WHERE id = ? FOR UPDATE", menuID).
+			Scan(ctx, &locked); err != nil {
+			return translate(fmt.Errorf("锁定菜单: %w", err))
+		}
+
 		if _, err := tx.NewDelete().Model((*Item)(nil)).Where("menu_id = ?", menuID).Exec(ctx); err != nil {
 			return fmt.Errorf("清空菜单条目: %w", err)
 		}

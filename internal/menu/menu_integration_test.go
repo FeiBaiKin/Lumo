@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
@@ -151,6 +152,13 @@ func TestMenuEndToEnd(t *testing.T) {
 	})
 
 	t.Run("校验：层级、空白标题、缺 targetId", func(t *testing.T) {
+		// 恰好三级、第三级没有 children 的合法菜单必须能保存：
+		// 递归曾经在检查空数组之前就进入下一层，把这种菜单判成四级而拒绝。
+		mustStatus(t, req(t, s, http.MethodPut, menuPath+"/items",
+			`{"items":[{"label":"一级","type":"custom","url":"/","children":[{"label":"二级","type":"custom","url":"/a",
+			   "children":[{"label":"三级","type":"custom","url":"/b"}]}]}]}`,
+			admin), http.StatusOK)
+
 		mustStatus(t, req(t, s, http.MethodPut, menuPath+"/items",
 			`{"items":[{"label":"一级","type":"custom","url":"/","children":[{"label":"二级","type":"custom","url":"/a",
 			   "children":[{"label":"三级","type":"custom","url":"/b",
@@ -198,4 +206,52 @@ func TestMenuEndToEnd(t *testing.T) {
 		mustStatus(t, req(t, s, http.MethodDelete, consolePrefix+"/menus/"+id, "", admin), http.StatusNoContent)
 		mustStatus(t, req(t, s, http.MethodGet, consolePrefix+"/menus/"+id, "", admin), http.StatusNotFound)
 	})
+}
+
+// TestReplaceItemsIsSerialized 覆盖并发整树替换：两个事务若都先 DELETE 再各自 INSERT，
+// 结果表里可能同时留下两棵树，而两个请求都返回成功。
+//
+// 起点选空菜单是有意的：对空表的 DELETE 不产生行锁，两个事务因此不会互相阻塞，
+// 修复前它们各自的 INSERT 都会落库。修复后事务开头会锁住 menus 父行，
+// 同一菜单的替换被串行化，最终只会留下其中一棵树。
+func TestReplaceItemsIsSerialized(t *testing.T) {
+	s := newStack(t)
+	store := menu.NewStore(s.DB.DB)
+	ctx := t.Context()
+
+	created := &menu.Menu{Name: "并发菜单", Slug: "并发菜单"}
+	if err := store.Create(ctx, created); err != nil {
+		t.Fatalf("创建菜单失败: %v", err)
+	}
+
+	const writers = 4
+	var wg sync.WaitGroup
+	errs := make([]error, writers)
+	start := make(chan struct{})
+	for i := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs[i] = store.ReplaceItems(ctx, created.ID, []menu.Item{
+				{Label: "唯一一条", Type: menu.TypeCustom, URL: "/", Visible: true},
+			}, []int{-1})
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("第 %d 个写入失败: %v", i, err)
+		}
+	}
+
+	items, err := store.Items(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("查询条目失败: %v", err)
+	}
+	if len(items) != 1 {
+		t.Errorf("整树替换必须串行化，条目数 = %d，期望 1（多出来的说明两棵树合并了）", len(items))
+	}
 }

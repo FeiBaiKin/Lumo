@@ -102,10 +102,20 @@ tasks:
     cmds:
       - npm run dev
 
+  # 清空 dist 但保留 .gitkeep，否则 go:embed 会编译失败。
+  # 单独成任务，是为了让 console:build 每次构建前都先清一次：
+  # vite 的 emptyOutDir: false 只保住了 .gitkeep，旧 bundle 得在这里删掉。
+  console:clean:
+    desc: 清理 Console 旧构建产物（保留 .gitkeep）
+    cmds:
+      - cmd: '{{if eq OS "windows"}}powershell -NoProfile -Command "Get-ChildItem -Path {{.DIST_DIR}} -Exclude .gitkeep -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue"{{else}}find {{.DIST_DIR}} -mindepth 1 -not -name .gitkeep -delete{{end}}'
+        ignore_error: true
+
   console:build:
-    desc: 构建 Console 产物到 internal/console/dist
+    desc: 构建 Console 产物到 internal/console/dist（构建前先清理旧产物）
     dir: "{{.CONSOLE_DIR}}"
     cmds:
+      - task: console:clean
       - npm run build
 
   console:api:
@@ -163,6 +173,4 @@ tasks:
         ignore_error: true
       - cmd: '{{if eq OS "windows"}}powershell -NoProfile -Command "Remove-Item -Force -ErrorAction SilentlyContinue {{.BINARY}}, coverage.out"{{else}}rm -f {{.BINARY}} coverage.out{{end}}'
         ignore_error: true
-      # 清空 dist 但保留 .gitkeep，否则 go:embed 会编译失败。
-      - cmd: '{{if eq OS "windows"}}powershell -NoProfile -Command "Get-ChildItem -Path {{.DIST_DIR}} -Exclude .gitkeep -Force | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue"{{else}}find {{.DIST_DIR}} -mindepth 1 -not -name .gitkeep -delete{{end}}'
-        ignore_error: true
+      - task: console:clean

@@ -25,12 +25,23 @@ type Service struct {
 	sessions *SessionStore
 	tokens   *TokenStore
 	logger   *slog.Logger
+	// limiter 限制登录失败频率；为 nil 时不限流（仅供测试）。
+	limiter *LoginLimiter
 }
 
 // NewService 构造 Service。
 func NewService(users *Store, sessions *SessionStore, tokens *TokenStore, logger *slog.Logger) *Service {
-	return &Service{users: users, sessions: sessions, tokens: tokens, logger: logger}
+	return &Service{
+		users:    users,
+		sessions: sessions,
+		tokens:   tokens,
+		logger:   logger,
+		limiter:  NewLoginLimiter(),
+	}
 }
+
+// SetLoginLimiter 替换限流器，供测试注入可控制时间的实例。
+func (s *Service) SetLoginLimiter(limiter *LoginLimiter) { s.limiter = limiter }
 
 // dummyHash 用于在账号不存在时仍执行一次哈希校验。
 //
@@ -56,7 +67,15 @@ type LoginParams struct {
 }
 
 // Login 校验凭据并签发会话。
+//
+// 失败尝试按账号与客户端 IP 两个维度计数（见 LoginLimiter）。计数在
+// **任何数据库访问之前**判定：被限流的请求不该再去花一次 64 MiB 的 argon2 开销，
+// 否则限流本身就成了一条放大路径。
 func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession, *User, error) {
+	if err := s.limiter.Allow(params.Login, params.IP); err != nil {
+		return nil, nil, err
+	}
+
 	user, err := s.users.FindUserByLogin(ctx, params.Login)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -64,6 +83,7 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession
 			if dummyHash != "" {
 				_ = password.Verify(params.Password, dummyHash)
 			}
+			s.limiter.RecordFailure(params.Login, params.IP)
 			return nil, nil, ErrInvalidCredentials
 		}
 		return nil, nil, err
@@ -71,7 +91,12 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession
 
 	if verifyErr := password.Verify(params.Password, user.PasswordHash); verifyErr != nil {
 		if errors.Is(verifyErr, password.ErrMismatch) || errors.Is(verifyErr, password.ErrInvalidHash) {
+			s.limiter.RecordFailure(params.Login, params.IP)
 			return nil, nil, ErrInvalidCredentials
+		}
+		if errors.Is(verifyErr, password.ErrBusy) {
+			// 并发额度已满：不是凭据错误，也不该计入失败次数。
+			return nil, nil, verifyErr
 		}
 		return nil, nil, verifyErr
 	}
@@ -80,6 +105,10 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession
 	if user.Disabled {
 		return nil, nil, ErrAccountDisabled
 	}
+
+	// 成功登录清空账号维度的失败计数，避免用户改对密码后仍被自己之前的
+	// 手误锁在门外。
+	s.limiter.ResetAccount(params.Login)
 
 	// 明文在手，是唯一能升级哈希强度的时机。
 	if password.NeedsRehash(user.PasswordHash) {
@@ -133,6 +162,27 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, oldPlain, ne
 		return err
 	}
 	return s.ResetPassword(ctx, userID, newPlain)
+}
+
+// VerifyPassword 校验用户当前的口令，供敏感操作的二次确认使用。
+//
+// 自己重新查一次用户而不是复用调用者的 User：调用链上拿到的用户来自鉴权中间件，
+// 其字段集合是「按需加载」的，这里需要的是口令哈希，显式查库更稳。
+func (s *Service) VerifyPassword(ctx context.Context, userID int64, plain string) error {
+	if userID == 0 {
+		return ErrNotFound
+	}
+	user, err := s.users.FindUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if err := password.Verify(plain, user.PasswordHash); err != nil {
+		if errors.Is(err, password.ErrMismatch) || errors.Is(err, password.ErrInvalidHash) {
+			return ErrInvalidCredentials
+		}
+		return err
+	}
+	return nil
 }
 
 // ResetPassword 强制设置新密码并使既有凭据全部失效。

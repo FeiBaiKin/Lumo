@@ -85,15 +85,14 @@ func TestTokenPrincipalCannotEscalate(t *testing.T) {
 		}
 	})
 
-	t.Run("scope 为空表示继承用户全部权限", func(t *testing.T) {
+	t.Run("scope 为空表示没有任何权限", func(t *testing.T) {
 		t.Parallel()
 		p := auth.NewTokenPrincipal(user, &auth.AccessToken{ID: 9, UserID: 1})
 
-		if !p.Has(perm.PostsWrite) || !p.Has(perm.MediaWrite) {
-			t.Error("空 scope 应继承用户全部权限")
-		}
-		if p.Has(perm.UsersManage) {
-			t.Error("继承不应超出用户自身权限")
+		// 这是安全语义：空 scopes 若解释为「继承账号全部权限」，
+		// 一行被改空或按旧语义创建的数据就等于账号无限权限。
+		if len(p.Permissions()) != 0 {
+			t.Errorf("空 scope 的有效权限应为空，实际 %v", p.Permissions().List())
 		}
 	})
 }

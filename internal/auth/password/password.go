@@ -64,7 +64,47 @@ var (
 	ErrInvalidHash = errors.New("哈希串格式非法")
 	// ErrEmptyPassword 表示密码为空。
 	ErrEmptyPassword = errors.New("密码不能为空")
+	// ErrBusy 表示哈希并发额度已满，稍后重试即可。
+	ErrBusy = errors.New("密码校验繁忙，请稍后重试")
 )
+
+// 进程级哈希并发闸门。
+//
+// argon2id 按当前参数一次要 64 MiB，而匿名登录请求**即使账号不存在**也会
+// 走一次等价开销的校验（抹平时间差）。没有闸门时，几百个并发登录请求
+// 就是几百份 64 MiB —— 小请求即可把内存打满。
+//
+// 并发度按 CPU 核数取，并封顶 8：再多也不会更快，只是排队更长。
+// 真正的防护是 auth 包的登录限流，这里兜住的是「限流被绕过或尚未触发」时的峰值。
+var hashSlots = func() chan struct{} {
+	limit := runtime.NumCPU()
+	if limit > 8 {
+		limit = 8
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	return make(chan struct{}, limit)
+}()
+
+// HashSlots 返回进程级并发哈希额度的总量，供运维观测与容量估算。
+func HashSlots() int { return cap(hashSlots) }
+
+// acquire 申请一个哈希额度；额度用尽时返回 ErrBusy 而不是无限等待。
+//
+// Wait 有上限：宁可让极少数请求快速失败并返回 503/429，
+// 也不让它们堆在队列里占着连接与内存，把整站拖垮。
+func acquire() error {
+	select {
+	case hashSlots <- struct{}{}:
+		return nil
+	default:
+		return ErrBusy
+	}
+}
+
+// release 归还哈希额度。
+func release() { <-hashSlots }
 
 // MinLength 是密码最小长度。
 //
@@ -105,6 +145,11 @@ func HashWithParams(plain string, p Params) (string, error) {
 		return "", fmt.Errorf("密码长度超过 %d 字节", MaxLength)
 	}
 
+	if err := acquire(); err != nil {
+		return "", err
+	}
+	defer release()
+
 	salt := make([]byte, p.SaltLength)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("生成盐失败: %w", err)
@@ -128,6 +173,11 @@ func Verify(plain, encoded string) error {
 	if err != nil {
 		return err
 	}
+
+	if err := acquire(); err != nil {
+		return err
+	}
+	defer release()
 
 	got := argon2.IDKey([]byte(plain), salt, p.Iterations, p.Memory, p.Parallelism, p.KeyLength)
 

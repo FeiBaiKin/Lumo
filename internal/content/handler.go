@@ -316,7 +316,7 @@ func (h *Handler) create(k *kind) func(context.Context, *createInput) (*postOutp
 	return func(ctx context.Context, in *createInput) (*postOutput, error) {
 		principal := auth.MustFromContext(ctx)
 		post := &Post{Type: k.typ, Status: StatusDraft, AuthorID: principal.UserID()}
-		if err := applyBody(post, &in.Body, k); err != nil {
+		if err := applyBody(post, &in.Body, k, canWriteUnsafeHTML(principal)); err != nil {
 			return nil, err
 		}
 		s, err := h.resolveSlug(ctx, in.Body.Slug, post.Title, "")
@@ -342,7 +342,7 @@ func (h *Handler) update(k *kind) func(context.Context, *updateInput) (*postOutp
 			return nil, err
 		}
 		before := *post
-		if applyErr := applyBody(post, &in.Body, k); applyErr != nil {
+		if applyErr := applyBody(post, &in.Body, k, canWriteUnsafeHTML(principal)); applyErr != nil {
 			return nil, applyErr
 		}
 		s, err := h.resolveSlug(ctx, in.Body.Slug, post.Title, before.Slug)
@@ -444,7 +444,13 @@ func (h *Handler) deletePermanently(k *kind) func(context.Context, *idInput) (*s
 		if post.Status != StatusTrashed {
 			return nil, huma.Error409Conflict("只能彻底删除回收站中的内容")
 		}
-		if err := h.store.DeletePermanently(ctx, k.typ, post.ID); err != nil {
+		// 真正的守卫在存储层的删除条件里；这里的预检查只是为了给出更友好的提示。
+		err = h.store.DeletePermanently(ctx, k.typ, post.ID)
+		switch {
+		case err == nil:
+		case errors.Is(err, ErrNotTrashed):
+			return nil, huma.Error409Conflict("内容已不在回收站（可能刚被恢复），请刷新后重试")
+		default:
 			return nil, mapError(err)
 		}
 		return nil, nil //nolint:nilnil // 无响应体，huma 按 DefaultStatus 返回 204
@@ -491,6 +497,9 @@ func (h *Handler) restoreRevision(k *kind) func(context.Context, *revisionInput)
 			return nil, mapError(err)
 		}
 		post.Title, post.RawType, post.Raw, post.Content, post.Excerpt = rev.Title, rev.RawType, rev.Raw, rev.Content, rev.Excerpt
+		// 恢复的修订可能由更高权限的账号保存过（含未净化正文），
+		// 所以这里按**当前调用者**的权限再过一次。
+		post.Content = sanitizeForWriter(post.Content, canWriteUnsafeHTML(principal))
 		if err := h.store.Update(ctx, post, ids(post.Categories), tagIDs(post.Tags), true, principal.UserID()); err != nil {
 			return nil, mapError(err)
 		}
@@ -554,6 +563,11 @@ func (h *Handler) load(ctx context.Context, k *kind, id int64, allowed func(*aut
 	return post, nil
 }
 
+// canWriteUnsafeHTML 报告调用者能否让正文原样输出到前台。
+func canWriteUnsafeHTML(p *auth.Principal) bool {
+	return p.Has(perm.ContentUnsafeHTML)
+}
+
 // authorID 把用户名解析为用户 ID；用户不存在时返回一个不可能匹配的 ID，让列表为空而非报错。
 func (h *Handler) authorID(ctx context.Context, username string) (int64, error) {
 	user, err := h.store.users.FindUserByLogin(ctx, username)
@@ -567,7 +581,12 @@ func (h *Handler) authorID(ctx context.Context, username string) (int64, error) 
 }
 
 // applyBody 把请求体写到实体上：渲染正文、处理摘要与缺省值。
-func applyBody(post *Post, b *body, k *kind) error {
+//
+// unsafeHTML 为真时原样保留渲染结果（调用者持有 content:unsafe_html）；
+// 否则按允许列表净化——正文是站点同源输出的，未净化的脚本会在
+// 任何访客（可能是管理员）的浏览器里以本站身份运行（见 sanitize.go）。
+// 净化只作用于渲染产物 content：raw 原稿保持作者写的原文，编辑器往返不丢东西。
+func applyBody(post *Post, b *body, k *kind, unsafeHTML bool) error {
 	title := strings.TrimSpace(b.Title)
 	if title == "" {
 		return huma.Error400BadRequest("标题不能为空白")
@@ -580,6 +599,7 @@ func applyBody(post *Post, b *body, k *kind) error {
 	if err != nil {
 		return huma.Error400BadRequest(err.Error())
 	}
+	content = sanitizeForWriter(content, unsafeHTML)
 
 	post.Title = title
 	post.RawType = rawType

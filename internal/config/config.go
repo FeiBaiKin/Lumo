@@ -63,6 +63,11 @@ type DatabaseConfig struct {
 	MaxOpenConns    int           `yaml:"maxOpenConns"`
 	MaxIdleConns    int           `yaml:"maxIdleConns"`
 	ConnMaxLifetime time.Duration `yaml:"connMaxLifetime"`
+	// MigrationLockTimeout 是等待迁移 advisory lock 的上限。
+	//
+	// 多个实例同时启动时，未拿到锁的实例必须等待而不是跳过迁移；但等待不能
+	// 无限期（数据库黑洞、残留会话等都会让它永久挂起），超时即报错退出。
+	MigrationLockTimeout time.Duration `yaml:"migrationLockTimeout"`
 	// AutoMigrate 控制启动时是否自动执行迁移，可被 --no-migrate 关闭。
 	AutoMigrate bool `yaml:"autoMigrate"`
 }
@@ -88,10 +93,11 @@ func Default() Config {
 			MaxUploadSize:     64 << 20,
 		},
 		Database: DatabaseConfig{
-			MaxOpenConns:    25,
-			MaxIdleConns:    5,
-			ConnMaxLifetime: time.Hour,
-			AutoMigrate:     true,
+			MaxOpenConns:         25,
+			MaxIdleConns:         5,
+			ConnMaxLifetime:      time.Hour,
+			MigrationLockTimeout: 2 * time.Minute,
+			AutoMigrate:          true,
 		},
 		Log: LogConfig{
 			Level:  "info",
@@ -210,8 +216,9 @@ func applyEnv(cfg *Config, env getenv) error {
 	}
 
 	durations := map[string]*time.Duration{
-		"DATABASE_CONN_MAX_LIFETIME": &cfg.Database.ConnMaxLifetime,
-		"SHUTDOWN_TIMEOUT":           &cfg.Server.ShutdownTimeout,
+		"DATABASE_CONN_MAX_LIFETIME":      &cfg.Database.ConnMaxLifetime,
+		"DATABASE_MIGRATION_LOCK_TIMEOUT": &cfg.Database.MigrationLockTimeout,
+		"SHUTDOWN_TIMEOUT":                &cfg.Server.ShutdownTimeout,
 	}
 	for key, target := range durations {
 		v := env(EnvPrefix + key)
@@ -298,6 +305,10 @@ func (c *Config) Validate() error {
 	if c.Database.MaxIdleConns > c.Database.MaxOpenConns {
 		errs = append(errs, fmt.Errorf("database.maxIdleConns(%d) 不能大于 maxOpenConns(%d)",
 			c.Database.MaxIdleConns, c.Database.MaxOpenConns))
+	}
+	if c.Database.MigrationLockTimeout <= 0 {
+		errs = append(errs, fmt.Errorf("database.migrationLockTimeout 必须为正数，实际 %v",
+			c.Database.MigrationLockTimeout))
 	}
 
 	return errors.Join(errs...)

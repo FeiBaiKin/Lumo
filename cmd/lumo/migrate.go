@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"time"
 
@@ -73,7 +74,16 @@ func runMigrate(args []string) error {
 	if regErr := application.Register(modules()...); regErr != nil {
 		return regErr
 	}
-	migrator, err := migrate.New(db.SQLDB(), migrationSources(application), logger)
+
+	lockDB, err := openMigrationLockDB(ctx, cfg.Database)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lockDB.Close() }()
+
+	migrator, err := migrate.New(db.SQLDB(), migrationSources(application), logger,
+		migrate.WithLockTimeout(cfg.Database.MigrationLockTimeout),
+		migrate.WithLockDB(lockDB.SQLDB()))
 	if err != nil {
 		return err
 	}
@@ -102,6 +112,36 @@ func runMigrate(args []string) error {
 		fmt.Fprint(os.Stderr, migrateUsage)
 		return fmt.Errorf("未知子命令 %q", action)
 	}
+}
+
+// openMigrationLockDB 打开迁移锁专用的独立连接池。
+//
+// advisory lock 必须固定在一条会话上，而 goose 只接受 *sql.DB；若锁与迁移
+// 共用主池，主池容量为 1 时二者会互相等待。锁改走容量 1 的独立小池后，
+// 无论主池怎么配都不会死锁（见 internal/migrate.WithLockDB）。
+func openMigrationLockDB(ctx context.Context, cfg config.DatabaseConfig) (*database.DB, error) {
+	lockCfg := cfg
+	lockCfg.MaxOpenConns = 1
+	lockCfg.MaxIdleConns = 1
+	return database.Open(ctx, lockCfg, false)
+}
+
+// runMigrations 用独立锁池执行全部来源的 Up，结束后关闭锁池。
+func runMigrations(ctx context.Context, db *database.DB, sources []migrate.Source,
+	cfg config.DatabaseConfig, logger *slog.Logger) error {
+	lockDB, err := openMigrationLockDB(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lockDB.Close() }()
+
+	migrator, err := migrate.New(db.SQLDB(), sources, logger,
+		migrate.WithLockTimeout(cfg.MigrationLockTimeout),
+		migrate.WithLockDB(lockDB.SQLDB()))
+	if err != nil {
+		return err
+	}
+	return migrator.Up(ctx)
 }
 
 // printMigrationStatus 以表格打印各来源每个迁移的应用状态。

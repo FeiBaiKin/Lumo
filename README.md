@@ -141,14 +141,143 @@ docker compose exec -it lumo /lumo admin create-user   -username admin -email yo
 | `LUMO_SECURE_COOKIES=false` | 纯 HTTP 下开它会让登录「成功后立刻失效」；**上了 HTTPS 必须改成 true** |
 | `LUMO_TRUSTED_PROXIES` 为空 | 不采信任何 `X-Forwarded-For`。不填的话日志与评论限流看到的都是反代的 IP |
 
-**数据都在 `/data` 卷里**——主题、上传、缓存、日志、备份。删容器不丢，删卷才丢。
+**数据分两处**：应用文件（主题、上传、插件、缓存、日志）在 `lumodata` 卷（容器内 `/data`），
+数据库在 `pgdata` 卷。删容器不丢，删卷才丢。`/data/backups` 只是应用预留的目录，
+**不等于已经做了备份**——数据库、应用卷与密钥三样都要自己备，流程见「[备份与恢复](#备份与恢复)」。
 
-**数据库口令别用特殊字符**：它会被拼进 DSN 的 URL，含 `@ : / ? # %` 时必须先做百分号编码，
-否则表现为「口令明明是对的却连不上」。`.env.example` 里附了一条生成 URL 安全口令的命令。
+**数据库口令含特殊字符（`@ : / ? # %` 等）时要分开填两个变量**：`POSTGRES_PASSWORD` 保持
+原始口令（PostgreSQL 直接用它的字面值建角色），`LUMO_DATABASE_DSN` 里填**只对口令段做百分号
+编码**的完整 URL。把编码后的串填进 `POSTGRES_PASSWORD` 会让库保存编码串、客户端用解码值去连，
+首次部署必然失败——`deploy/.env.example` 里有对照示例与两种数据卷场景的说明。
+不想操心就用它附的那条命令生成 URL 安全口令。
 
 运行镜像是 distroless，**没有 shell 也没有包管理器**。因此排障靠 `docker compose logs`
 而不是 exec 进去翻文件；也无法在容器内做 HEALTHCHECK，探活请从外部请求
 `/healthz`（进程存活）或 `/readyz`（额外探测数据库，可用于负载均衡摘流）。
+
+### 备份与恢复
+
+数据分两处：应用文件在 `lumodata` 卷（容器内 `/data`，含 `uploads/`、`themes/`、`plugins/`），
+数据库在 `pgdata` 卷。compose 顶层项目名是 `lumo`，所以宿主机上这两个卷叫 `lumo_lumodata`
+与 `lumo_pgdata`（`docker volume ls` 可确认；改过项目名就以实际前缀为准）。
+`/data/backups` 只是应用启动时建的空目录，应用不会往里写任何东西——**备份要自己按下面做**，
+数据库、应用卷、密钥三样一样都不能少。以下命令都在 `deploy/` 下执行。
+
+**数据库：pg_dump / pg_restore**
+
+```bash
+# 逻辑备份，自定义格式（-Fc），配 pg_restore 使用。-T 关掉 TTY 才能重定向到宿主机文件；
+# 用户与库名从容器内的环境变量取，跟随 .env 的配置，不必手抄。
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+  > lumo-db-$(date +%Y%m%d-%H%M%S).dump
+```
+
+pg_dump 本身跑在可重复读事务里，单看数据库是自洽的；但库与上传文件分属两处存储，
+要让两者落在同一时点，先停应用再做整套备份：
+
+```bash
+docker compose stop lumo
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > lumo-db.dump
+# 接着做下面的卷备份，然后再启动
+docker compose start lumo
+```
+
+恢复时删库重建，而不是只加 `--clean`：`--clean` 只清理备份中出现过的对象，
+上一版本新建的表会在库里残留。
+
+```bash
+docker compose stop lumo
+docker compose exec -T postgres sh -c 'dropdb --force -U "$POSTGRES_USER" "$POSTGRES_DB" && createdb -U "$POSTGRES_USER" "$POSTGRES_DB"'
+docker compose exec -T postgres sh -c 'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < lumo-db.dump
+docker compose start lumo
+```
+
+用 postgres 容器自带的 pg_dump / pg_restore（与库同为 17），别用宿主机上版本不一致的客户端。
+dump 里有口令哈希与会话 / 令牌哈希，按密钥对待：不要放进公开目录，传输与长期保存都要加密。
+
+**应用文件：lumodata 卷**
+
+运行镜像是 distroless，没有 tar 可用，借一个临时 alpine 容器挂卷打包：
+
+```bash
+# 备份：卷以只读挂载，避免边写边打包。uploads / themes / plugins 就是需要备份的全部内容，
+# cache 可重建、logs 属排障、backups 是空目录，都不进归档。
+docker run --rm -v lumo_lumodata:/data:ro -v "$PWD":/backup alpine:3 \
+  tar czf /backup/lumodata-$(date +%Y%m%d-%H%M%S).tar.gz -C /data uploads themes plugins
+```
+
+```bash
+# 恢复：先停应用，清掉旧内容再解开。应用以 nonroot（65532）运行，
+# 解包后必须把属主改回去，否则文件写不进去。
+docker compose stop lumo
+docker run --rm -v lumo_lumodata:/data -v "$PWD":/backup alpine:3 \
+  sh -c 'rm -rf /data/uploads /data/themes /data/plugins && tar xzf /backup/lumodata-20260912-120000.tar.gz -C /data && chown -R 65532:65532 /data/uploads /data/themes /data/plugins'
+docker compose start lumo
+```
+
+把示例归档名换成实际文件名；`$PWD` 是宿主机上存放备份的目录（Windows 的 Git Bash 会改写
+`-v` 里的路径，挂载失败时加 `MSYS_NO_PATHCONV=1`，或在 PowerShell 下用 `${PWD}`）。
+
+**环境变量与密钥：deploy/.env**
+
+库和卷都有了还差启动参数：`POSTGRES_PASSWORD`、`LUMO_SMTP_PASSWORD`、
+`LUMO_S3_ACCESS_KEY` / `LUMO_S3_SECRET_KEY` 按设计只存在于 `deploy/.env`（与进程环境）里，
+数据库和卷里都没有：
+
+- `.env` 丢了，DSN 就拼不出来，应用连不上已有的 `pgdata`——角色口令只在首次初始化数据目录时
+  写入，之后改环境变量不会改它，只能另想办法重设；
+- SMTP / S3 凭据丢了，邮件发不出、对象存储读写不了，只能去服务商重新签发。
+
+`.env` 已被 `.gitignore` 排除，不随仓库走，**必须单独备份**（密码管理器或密钥保险箱），
+并且不要和数据库 dump 放在一起。若某处部署额外挂了 `config.yaml`，它同样要备份（compose 默认没挂）。
+
+**附件存在 S3 时**
+
+后台「设置 → 附件存储」切到 S3 后，上传文件与缩略图都在对象存储的桶里，`lumodata`
+卷只剩缓存与日志——只备卷等于没备附件。二选一或都做：
+
+- 给桶开**版本控制**并设足够长的保留期，保证数据库备份对应的对象版本还在；
+- 定期导出一份：`aws s3 sync s3://<桶>/<前缀> ./s3-backup/`（用单独的备份凭据，别复用应用的密钥）。
+
+数据库里存的是桶设置与对象键，恢复时桶里的内容必须与 dump 对应同一时点。
+
+**固定版本升级与回滚**
+
+先钉版本再升级：compose 里默认是 `:latest`，把 `image:` 改成具体版本或摘要，
+
+```yaml
+# deploy/docker-compose.yml
+image: ghcr.io/feibaikin/lumo:1.0.0        # Release 镜像的版本 tag（不带 v）
+# image: ghcr.io/feibaikin/lumo@sha256:... # 更严格：摘要不会被移动
+```
+
+```bash
+cd deploy
+# 升级前：备份数据库 + 卷 + .env（见上），并记录当前镜像摘要，回滚时按它钉回
+docker image inspect ghcr.io/feibaikin/lumo:latest --format '{{index .RepoDigests 0}}'
+
+# 升级：固定 tag 后拉取重建，只动 lumo，pgdata / lumodata 不动
+docker compose pull lumo
+docker compose up -d lumo
+docker compose logs -f lumo          # 看迁移与启动日志
+curl -fsS http://127.0.0.1:8080/readyz
+```
+
+回滚分两种：
+
+- **只回滚镜像**：新版本还没跑过迁移时，把 `image:` 改回上一版 tag 或摘要，
+  `docker compose up -d lumo` 即可。
+- **连数据一起回滚**：新版本一旦执行迁移，就不能只靠旧镜像退回（迁移只向前）。
+  停应用，恢复升级前的数据库 dump 与卷归档，再切回旧镜像启动；
+  顺序是停 → 换镜像 → 恢复库 → 恢复卷 → 起。
+
+**恢复后检查**（演练也照这份清单走）：
+
+1. `curl -fsS http://127.0.0.1:8080/healthz` 与 `/readyz` 都返回 200，`docker compose logs lumo` 无迁移报错。
+2. 打开 `/console/`，用原有账号能登录（用户、角色、会话都在数据库里）。
+3. 随机抽一篇已发布文章，前台页面正常渲染，主题样式与字体加载正常。
+4. 附件可访问（本地存储看 `/uploads/...`，S3 确认桶里对象仍可读），后台媒体库能列出。
+5. 文章下的评论正常显示。
 
 ### 不装 Docker 也能验证镜像构建
 
@@ -299,6 +428,16 @@ kind 为单数 PascalCase 而地址段用它的小写复数形式（`Post` 对�
   调整默认参数不会使既有哈希失效，并会在用户下次登录时透明升级
 - **令牌 scope 只能收窄权限**：始终取「用户权限 ∩ scope」，写入超出用户自身权限的
   scope 不会获得任何额外能力
+- **令牌签发需要会话 + 重新输入密码**：令牌不能签发令牌，且省略 scope 表示继承当前全部权限
+  （服务端展开为显式清单落库）。**空 scope 表示没有任何权限**，不再表示账号无限权限——
+  升级后按旧语义（空 scope）创建的令牌会失效，需要重新签发
+- **正文按权限净化**：正文是站点同源输出的，而 Console 与管理 API 在同一个源上。
+  没有 `content:unsafe_html` 的角色（默认只有 `admin` / `super-admin`），正文在保存时按允许列表
+  净化：保留排版、表格、代码块、`class`/`id`/`data-*`、行内表现性样式与远程 http(s) 的 iframe，
+  去掉脚本、事件属性、`javascript:`/`data:` 协议、表单与 `srcdoc`。原稿（`raw`）不净化，
+  编辑器往返不丢内容。把该权限授予 editor 等于把它提升到「可对管理员执行脚本」的信任级别
+- **登录限流与哈希并发预算**：失败尝试按账号（15 分钟 8 次）与客户端 IP（15 分钟 40 次）
+  两个维度计数，超出返回 429；argon2 校验受进程级并发闸门约束，额度用满返回 503
 - **改密码 / 重置口令 / 停用账号**会立即清除该用户的全部会话与令牌
 - **上传安全**：附件类型由扩展名白名单与内容嗅探双向印证决定，客户端声明的 `Content-Type` 一概不采信；
   文件名随机化；本地附件经带 `X-Content-Type-Options: nosniff` 与 sandbox CSP 的静态路由提供
@@ -359,9 +498,10 @@ task console:test   # Vitest
 task console:api    # 重新导出 OpenAPI 规范并生成 TS 类型（需 LUMO_DATABASE_DSN）
 ```
 
-`internal/console/dist` **构建前建议先 `task clean`**：`vite.config.ts` 为保住 `.gitkeep`
-设了 `emptyOutDir: false`（否则全新克隆时 `go:embed all:dist` 会编译失败），
-代价是每次构建都留下上一次的 bundle，而 `go:embed all:dist` 会把它们全部嵌进二进制。
+`internal/console/dist` **由 `task console:build` 在构建前自动清理**：Taskfile 先删旧产物、
+保留 `.gitkeep`，再跑 Vite。`vite.config.ts` 的 `emptyOutDir: false` 是为了不动 `.gitkeep`
+（否则全新克隆时 `go:embed all:dist` 会编译失败）；直接 `npm run build` 会绕过这道清理，
+构建 Console 请走 Task 任务。
 
 集成测试直连本机 PostgreSQL 的独立测试库，DSN 走 `LUMO_TEST_DSN`；未设置时自动跳过。
 库名必须含 `test`，护栏在代码层面拦截误连 —— 测试会删除并重建 schema。

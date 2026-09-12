@@ -449,6 +449,7 @@ function CreateTokenDialog({
   onIssued: (name: string, plaintext: string) => void;
 }) {
   const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [limitScopes, setLimitScopes] = useState(false);
   const [scopes, setScopes] = useState<string[]>([]);
@@ -467,7 +468,12 @@ function CreateTokenDialog({
 
   const create = useMutation({
     mutationFn: async () => {
-      const body: components["schemas"]["TokenRequest"] = { name: name.trim() };
+      // 服务端要求重新验证密码：令牌能脱离浏览器长期使用，
+      // 光有会话不足以证明操作者就是账号本人。
+      const body: components["schemas"]["TokenRequest"] = {
+        name: name.trim(),
+        password,
+      };
       const iso = fromLocalInput(expiresAt);
       if (iso) {
         body.expiresAt = iso;
@@ -488,6 +494,7 @@ function CreateTokenDialog({
     onSuccess: (data) => {
       onIssued(data.token.name, data.plaintext);
       setName("");
+      setPassword("");
       setExpiresAt("");
       setLimitScopes(false);
       setScopes([]);
@@ -515,6 +522,10 @@ function CreateTokenDialog({
               setError("收窄权限时至少要选一项，否则这枚令牌什么都做不了");
               return;
             }
+            if (!password) {
+              setError("请输入当前账号密码以确认身份");
+              return;
+            }
             create.mutate();
           }}
         >
@@ -522,6 +533,7 @@ function CreateTokenDialog({
             <DialogTitle>新建访问令牌</DialogTitle>
             <DialogDescription>
               明文只在签发时显示一次；令牌的权限是你自己权限的子集。
+              签发需要重新输入密码确认身份。
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="flex flex-col gap-4">
@@ -538,6 +550,20 @@ function CreateTokenDialog({
                 autoFocus
               />
               <FieldDescription>只用来在列表里认出它。</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="token-password">当前密码</FieldLabel>
+              <Input
+                id="token-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <FieldDescription>
+                令牌可以脱离浏览器长期使用，所以要再确认一次是你本人。
+              </FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="token-expires">过期时间</FieldLabel>
@@ -595,7 +621,7 @@ function CreateTokenDialog({
               type="submit"
               variant="primary"
               loading={create.isPending}
-              disabled={!name.trim()}
+              disabled={!name.trim() || !password}
             >
               签发令牌
             </Button>

@@ -17,7 +17,8 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "../internal/console/dist"),
     // 不清空目录：.gitkeep 必须保留，否则 go:embed all:dist 编译失败。
-    // 需要彻底清理时执行 `task clean`。
+    // 旧产物的清理交给 Taskfile 的 console:clean（task console:build 会先跑它），
+    // 直接 npm run build / vite build 会绕过清理，构建 Console 请走 task。
     emptyOutDir: false,
     sourcemap: false,
     chunkSizeWarningLimit: 1024,

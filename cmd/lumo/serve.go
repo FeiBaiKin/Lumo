@@ -21,7 +21,6 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 	"github.com/FeiBaiKin/lumo/internal/logging"
 	"github.com/FeiBaiKin/lumo/internal/media"
-	"github.com/FeiBaiKin/lumo/internal/migrate"
 	"github.com/FeiBaiKin/lumo/internal/server"
 	"github.com/FeiBaiKin/lumo/internal/theme"
 	"github.com/FeiBaiKin/lumo/internal/version"
@@ -133,11 +132,7 @@ func runServe(args []string) error {
 	}
 
 	if cfg.Database.AutoMigrate {
-		migrator, migErr := migrate.New(db.SQLDB(), migrationSources(application), logger)
-		if migErr != nil {
-			return migErr
-		}
-		if upErr := migrator.Up(ctx); upErr != nil {
+		if upErr := runMigrations(ctx, db, migrationSources(application), cfg.Database, logger); upErr != nil {
 			return upErr
 		}
 	} else {
@@ -164,6 +159,10 @@ func runServe(args []string) error {
 		themes.MountFrontend(root)
 		logger.Info("访客前台已挂载", slog.String("theme", themes.Registry().ActiveName()))
 	}
+	// 停机顺序：srv.Run 收到信号后先停止接收新请求并排空 HTTP（最多
+	// ShutdownTimeout），返回后才执行本 defer 的模块关闭；邮件队列等模块
+	// 到这里才停止入队并做限时排空。deploy/docker-compose.yml 的
+	// stop_grace_period 按「HTTP 排空 + 模块清理」的总预算取值。
 	defer func() {
 		closeCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 		defer cancel()
@@ -175,7 +174,7 @@ func runServe(args []string) error {
 	// 后台定期清理过期会话。
 	go core.Service.StartSessionCleanup(ctx, time.Hour)
 
-	registerHealth(root, db, &info)
+	registerHealth(root, db, &info, readinessProbeTimeout)
 	logger.Info("API 规范与文档已就绪",
 		slog.String("openapi", api.OpenAPIPath+".json"),
 		slog.String("docs", api.DocsPath))
@@ -188,11 +187,25 @@ func runServe(args []string) error {
 	return nil
 }
 
+// readinessProbeTimeout 是 /readyz 数据库探测的独立期限（审查建议 2–3 秒，取中值）。
+//
+// 不能只依赖请求 context 或 HTTP WriteTimeout：数据库黑洞或连接池耗尽时
+// PingContext 会一直等待，探针永远不返回 503，负载均衡无法摘流，
+// 停机排空也会被拖长。超时按数据库不可用处理（503）。
+const readinessProbeTimeout = 3 * time.Second
+
+// pinger 是健康探测所需的数据库能力。抽象成接口便于测试注入阻塞探针，
+// 验证超时路径；生产装配传 *database.DB。
+type pinger interface {
+	PingContext(ctx context.Context) error
+}
+
 // registerHealth 挂载健康检查端点。
 //
-// /healthz 只报进程存活；/readyz 额外探测数据库，用于负载均衡摘流判断。
+// /healthz 只报进程存活，不触库；/readyz 额外探测数据库，用于负载均衡摘流判断。
 // 它们是运维探针而非业务接口，故不进 OpenAPI 文档。
-func registerHealth(root chi.Router, db *database.DB, info *version.Info) {
+// readyTimeout 独立于请求 context，测试可传短期限验证超时行为。
+func registerHealth(root chi.Router, db pinger, info *version.Info, readyTimeout time.Duration) {
 	root.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteJSON(w, r, http.StatusOK, map[string]any{
 			keyStatus:  "ok",
@@ -201,7 +214,11 @@ func registerHealth(root chi.Router, db *database.DB, info *version.Info) {
 	})
 
 	root.Get("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := db.PingContext(r.Context()); err != nil {
+		// 在请求 context 之上再叠一层独立期限：请求取消能提前结束探测，
+		// 但探测本身绝不会超过 readyTimeout。
+		ctx, cancel := context.WithTimeout(r.Context(), readyTimeout)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
 			httpx.WriteProblem(w, r, &httpx.Problem{
 				Status: http.StatusServiceUnavailable,
 				Title:  "Service Unavailable",

@@ -4,6 +4,8 @@
 #   cp .env.example .env      # 然后把 POSTGRES_PASSWORD 填上
 #   docker compose up -d
 #
+# 口令含 @ : / ? # % 等特殊字符时还需填 LUMO_DATABASE_DSN（见 .env.example）。
+#
 #   docker compose exec -it lumo /lumo admin create-user \
 #     -username admin -email you@example.com -role super-admin
 #
@@ -46,13 +48,27 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile
     restart: unless-stopped
+    # stop_grace_period 必须严格大于应用的停机总预算，否则正常部署重启时
+    # Compose 会在优雅关闭完成前发 SIGKILL。预算按代码里的值算：
+    #   HTTP 排空   = server.shutdownTimeout 默认 15s（internal/config/config.go）
+    #   模块清理    = app.Close 的 15s（cmd/lumo/serve.go 用同一 ShutdownTimeout，
+    #                 邮件队列在这段期限内限时排空）
+    #   合计上限    = 15s + 15s = 30s，另留 10s 余量 → 40s
+    # 若调大 LUMO_SHUTDOWN_TIMEOUT，这里需同步调大（至少 2×该值 + 余量）。
+    stop_grace_period: 40s
     depends_on:
       postgres:
         condition: service_healthy
     environment:
       # DSN 只走环境变量，口令一律不进配置文件（agent.md §9）。
-      # 注意口令会被拼进 URL，特殊字符需要百分号编码，见 .env.example 的说明。
-      LUMO_DATABASE_DSN: postgres://${POSTGRES_USER:-lumo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lumo}?sslmode=disable
+      #
+      # 口令分两个变量保存：POSTGRES_PASSWORD 是原始口令，原样交给 PostgreSQL
+      # 初始化；LUMO_DATABASE_DSN 是应用用的完整 URL，其中的口令段必须百分号
+      # 编码。不填 LUMO_DATABASE_DSN 时按组件拼默认值，仅适用于字母、数字等
+      # URL 安全口令（快速开始路径）；含 @ : / ? # % 时必须单独提供 DSN，
+      # 否则库保存的是编码后的串、客户端却用解码值，首次部署就连不上。
+      # 详见 .env.example。
+      LUMO_DATABASE_DSN: ${LUMO_DATABASE_DSN:-postgres://${POSTGRES_USER:-lumo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lumo}?sslmode=disable}
       # 站点对外地址，用于 canonical / sitemap / 订阅源的绝对链接。
       # 留空时 sitemap 与订阅源明确返回 503，而不是产出相对地址。
       LUMO_EXTERNAL_URL: ${LUMO_EXTERNAL_URL:-}

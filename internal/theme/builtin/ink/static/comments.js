@@ -37,6 +37,28 @@
     return body.detail || body.title || "";
   }
 
+  /*
+   * 当前会话的 CSRF 令牌（双提交模式）。
+   *
+   * Public 平面同样校验 CSRF：已登录的用户在访客页发评论时会自动带上会话 Cookie，
+   * 没有这个头就会被 403 挡下。匿名访客没有 Cookie，服务端直接放行。
+   * Cookie 名在 HTTPS 下带 __Host- 前缀，两种都要找。
+   */
+  function csrfToken() {
+    var names = ["lumo_csrf", "__Host-lumo_csrf"];
+    var jar = document.cookie || "";
+    for (var i = 0; i < names.length; i++) {
+      var parts = jar.split(";");
+      for (var j = 0; j < parts.length; j++) {
+        var item = parts[j].trim();
+        if (item.indexOf(names[i] + "=") === 0) {
+          return decodeURIComponent(item.slice(names[i].length + 1));
+        }
+      }
+    }
+    return "";
+  }
+
   form.addEventListener("submit", function (event) {
     event.preventDefault();
 
@@ -61,9 +83,13 @@
     button.disabled = true;
     setStatus("提交中…");
 
+    var headers = { "Content-Type": "application/json" };
+    var csrf = csrfToken();
+    if (csrf) headers["X-CSRF-Token"] = csrf;
+
     fetch("/api/v1/public/posts/" + encodeURIComponent(postId) + "/comments", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers,
       body: JSON.stringify(payload),
     })
       .then(function (res) {

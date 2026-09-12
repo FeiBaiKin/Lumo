@@ -5,7 +5,8 @@ import { DashboardPage } from "@/pages/dashboard";
 import { LoginPage } from "@/pages/login";
 import { NotFoundPage } from "@/pages/not-found";
 import { APP_ROUTES } from "@/pages/routes";
-import { Navigate, Route, Routes, useLocation } from "react-router";
+import type { RouteObject } from "react-router";
+import { Navigate, useLocation } from "react-router";
 
 /**
  * 路由装配。
@@ -16,6 +17,9 @@ import { Navigate, Route, Routes, useLocation } from "react-router";
  *
  * 页面的路径与组件在 `pages/routes.tsx` 集中登记；本文件只管守卫与外壳，
  * 这样「加一页」不需要动这里。
+ *
+ * 导出的是**路由对象**而不是 `<Routes>` 元素：未保存修改的保护要用 useBlocker
+ * 拦截站内导航，而它只在数据路由（createBrowserRouter）下可用。
  */
 
 function FullPageLoading({ label }: { label: string }) {
@@ -50,30 +54,29 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return children;
 }
 
-export function App() {
-  return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
+/** 应用路由表；由 main.tsx 交给 createBrowserRouter。 */
+export function appRoutes(): RouteObject[] {
+  const pages = APP_ROUTES.map((route): RouteObject | null => {
+    if (route.element === null) {
+      return null;
+    }
+    const Page = route.element;
+    return { path: route.path, element: <Page /> };
+  }).filter((route): route is RouteObject => route !== null);
 
-      <Route
-        element={
-          <RequireAuth>
-            <AppShell />
-          </RequireAuth>
-        }
-      >
-        <Route index element={<DashboardPage />} />
-        {APP_ROUTES.map((route) => {
-          if (route.element === null) {
-            return null;
-          }
-          const Page = route.element;
-          return (
-            <Route key={route.path} path={route.path} element={<Page />} />
-          );
-        })}
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
-  );
+  return [
+    { path: "/login", element: <LoginPage /> },
+    {
+      element: (
+        <RequireAuth>
+          <AppShell />
+        </RequireAuth>
+      ),
+      children: [
+        { index: true, element: <DashboardPage /> },
+        ...pages,
+        { path: "*", element: <NotFoundPage /> },
+      ],
+    },
+  ];
 }

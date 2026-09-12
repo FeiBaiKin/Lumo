@@ -44,16 +44,17 @@ func NewSessionPrincipal(user *User) *Principal {
 //
 // 令牌 scope 只能收窄权限、不能放大：有效权限取用户权限与 scope 的交集。
 // 否则一个 author 的令牌若被写入 users:manage，就会凭空获得越权能力。
+//
+// **空 scope 表示没有任何权限**，不表示「继承账号全部权限」：后者会让
+// 一行被改空（或历史上按旧语义创建）的 scopes 直接变成账号全权限。
+// 签发时表示「继承全部」的空值已在 resolveScopes 里显式展开。
 func NewTokenPrincipal(user *User, token *AccessToken) *Principal {
-	effective := user.Permissions()
-	if len(token.Scopes) > 0 {
-		narrowed := make(perm.Set, len(token.Scopes))
-		for _, scope := range token.Scopes {
-			if effective.Has(scope) {
-				narrowed[scope] = struct{}{}
-			}
+	effective := make(perm.Set, len(token.Scopes))
+	granted := user.Permissions()
+	for _, scope := range token.Scopes {
+		if granted.Has(scope) {
+			effective[scope] = struct{}{}
 		}
-		effective = narrowed
 	}
 	return &Principal{
 		User:        user,

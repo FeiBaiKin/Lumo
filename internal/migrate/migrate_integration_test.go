@@ -2,9 +2,13 @@ package migrate_test
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
+	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/database"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
 	"github.com/FeiBaiKin/lumo/internal/testsupport"
@@ -277,6 +281,121 @@ func TestModuleSourcesHaveIndependentVersionTables(t *testing.T) {
 	// 未知来源应报错而非静默忽略。
 	if err := migrator.Down(ctx, "nope"); err == nil {
 		t.Error("未知来源应报错")
+	}
+}
+
+// openSingleConnDB 用容量为 1 的连接池连接本包独占 schema。
+// 测试库的校验与 schema 创建由 openTestDB 负责，本函数只负责「单连接」这一变量。
+func openSingleConnDB(t *testing.T) *database.DB {
+	t.Helper()
+
+	dsn := os.Getenv(testsupport.DSNEnv)
+	if dsn == "" {
+		t.Skipf("未设置 %s，跳过集成测试", testsupport.DSNEnv)
+	}
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+
+	cfg := config.Default()
+	cfg.Database.DSN = dsn + separator + "search_path=" + testSchema
+	cfg.Database.MaxOpenConns = 1
+	cfg.Database.MaxIdleConns = 1
+
+	db, err := database.Open(context.Background(), cfg.Database, false)
+	if err != nil {
+		t.Fatalf("以单连接池连接测试库失败: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// upWithin 在期限内执行迁移：超时说明发生了死锁（迁移应完成或快速报错）。
+func upWithin(t *testing.T, migrator *migrate.Migrator, limit time.Duration) {
+	t.Helper()
+
+	done := make(chan error, 1)
+	go func() { done <- migrator.Up(context.Background()) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("迁移失败: %v", err)
+		}
+	case <-time.After(limit):
+		t.Fatalf("单连接池下迁移卡死：应完成或快速报错，而不是永久等待（超过 %v）", limit)
+	}
+}
+
+// TestSingleConnPoolMigrationDoesNotHang 复现「单连接池 + 迁移锁」的死锁场景：
+// 锁与 goose 争抢同一个池的唯一槽位。修复后 migrate 内部会临时把上限提到 2，
+// 迁移必须正常完成。
+func TestSingleConnPoolMigrationDoesNotHang(t *testing.T) {
+	openTestDB(t) // 校验测试库并准备独占 schema；下面的单连接池负责实际迁移
+	db := openSingleConnDB(t)
+
+	migrator := newMigrator(t, db, coreSources())
+	upWithin(t, migrator, 15*time.Second)
+
+	assertTableExists(t, db, "extensions")
+	if v, err := migrator.Version(context.Background(), ""); err != nil || v < 1 {
+		t.Fatalf("单连接池迁移后版本 = %d（错误 %v），应至少为 1", v, err)
+	}
+}
+
+// TestSingleConnPoolWithDedicatedLockDB 验证首选方案：锁走独立连接池时，
+// 主池即使容量为 1 也不受锁占用影响（cmd/lumo 的启动迁移即用此形态）。
+func TestSingleConnPoolWithDedicatedLockDB(t *testing.T) {
+	openTestDB(t)
+	db := openSingleConnDB(t)
+	lockDB := openSingleConnDB(t)
+
+	migrator, err := migrate.New(db.SQLDB(), coreSources(), nil,
+		migrate.WithLockTimeout(30*time.Second),
+		migrate.WithLockDB(lockDB.SQLDB()))
+	if err != nil {
+		t.Fatalf("构造 Migrator 失败: %v", err)
+	}
+	upWithin(t, migrator, 15*time.Second)
+
+	assertTableExists(t, db, "extensions")
+}
+
+// TestLockWaitHonorsTimeout 验证锁被其他会话占住时，等待会在配置的期限内
+// 以明确错误结束，而不是永久挂起。
+func TestLockWaitHonorsTimeout(t *testing.T) {
+	db := openTestDB(t)
+	ctx := context.Background()
+
+	// 直接在一条独立连接上占住迁移锁，模拟另一个实例正在迁移。
+	// 0x4C554D4F4D4947 与 migrate 包内 advisoryLockID 一致（"LUMOMIG"）。
+	holder, err := db.SQLDB().Conn(ctx)
+	if err != nil {
+		t.Fatalf("获取占锁连接失败: %v", err)
+	}
+	defer func() { _ = holder.Close() }()
+	if _, lockErr := holder.ExecContext(ctx, "SELECT pg_advisory_lock($1)", int64(0x4C554D4F4D4947)); lockErr != nil {
+		t.Fatalf("占用迁移锁失败: %v", lockErr)
+	}
+
+	migrator, err := migrate.New(db.SQLDB(), coreSources(), nil,
+		migrate.WithLockTimeout(300*time.Millisecond))
+	if err != nil {
+		t.Fatalf("构造 Migrator 失败: %v", err)
+	}
+
+	start := time.Now()
+	upErr := migrator.Up(ctx)
+	elapsed := time.Since(start)
+
+	if upErr == nil {
+		t.Fatal("锁被占用时应等待超时并报错，实际为 nil")
+	}
+	if !strings.Contains(upErr.Error(), "等待迁移锁超时") {
+		t.Errorf("错误信息未点明锁等待超时: %v", upErr)
+	}
+	if elapsed > 5*time.Second {
+		t.Errorf("锁等待超时未在期限内生效，实际耗时 %v", elapsed)
 	}
 }
 

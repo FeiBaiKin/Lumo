@@ -31,6 +31,7 @@ import { SearchInput } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { StatusDot } from "@/components/ui/status-dot";
 import { absoluteDate, relativeTime } from "@/lib/format";
+import { flattenCategories, useTaxonomyOptions } from "@/lib/taxonomy";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useDebouncedSearch, useListParams } from "@/lib/use-list-params";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -50,7 +51,7 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
@@ -89,18 +90,13 @@ const STATUS_OPTIONS: FilterOption[] = [
 ];
 
 /** 把分类树摊平成带缩进的筛选项，值是 slug（接口的 category 参数按 slug 匹配）。 */
-function flattenCategories(
-  nodes: components["schemas"]["CategoryNode"][],
-  depth = 0,
+function categoryFilterOptions(
+  categories: components["schemas"]["CategoryNode"][],
 ): FilterOption[] {
-  const out: FilterOption[] = [];
-  for (const node of nodes) {
-    out.push({ value: node.slug, label: `${"　".repeat(depth)}${node.name}` });
-    if (node.children?.length) {
-      out.push(...flattenCategories(node.children, depth + 1));
-    }
-  }
-  return out;
+  return flattenCategories(categories).map((category) => ({
+    value: category.slug,
+    label: `${"　".repeat(category.depth)}${category.name}`,
+  }));
 }
 
 export type BulkAction =
@@ -370,7 +366,6 @@ export function PostsPage() {
   const status = list.filter("status") as Status | "";
   const trashedView = status === "trashed";
   const [selected, setSelected] = useState<Set<number>>(new Set());
-
   const query = useQuery({
     queryKey: ["posts", list.page, list.size, list.filters],
     queryFn: async () => {
@@ -396,24 +391,25 @@ export function PostsPage() {
     },
   });
 
-  /** 筛选项候选：分类树与标签。失败不影响列表本身，只是少两个筛选项。 */
-  const taxonomy = useQuery({
-    queryKey: ["taxonomy-options"],
-    staleTime: 60_000,
-    queryFn: async () => {
-      const [categories, tags] = await Promise.all([
-        api.GET("/api/v1/console/categories/tree"),
-        api.GET("/api/v1/console/tags", { params: { query: { size: 100 } } }),
-      ]);
-      return {
-        categories: flattenCategories(categories.data?.items ?? []),
-        tags: (tags.data?.items ?? []).map((tag) => ({
-          value: tag.slug,
-          label: tag.name,
-        })),
-      };
-    },
-  });
+  /**
+   * 筛选项候选：分类树与标签。失败不影响列表本身，只是少两个筛选项。
+   *
+   * 缓存里是原始 DTO，这里再摊成筛选项 —— 编辑器读的是同一份缓存，
+   * 两边各自转换而不是各自写入不同结构（见 lib/taxonomy.ts 的说明）。
+   */
+  const taxonomy = useTaxonomyOptions();
+  const categoryOptions = useMemo(
+    () => categoryFilterOptions(taxonomy.data?.categories ?? []),
+    [taxonomy.data],
+  );
+  const tagOptions: FilterOption[] = useMemo(
+    () =>
+      (taxonomy.data?.tags ?? []).map((tag) => ({
+        value: tag.slug,
+        label: tag.name,
+      })),
+    [taxonomy.data],
+  );
 
   const items = query.data?.items ?? [];
   const total = query.data?.total ?? 0;
@@ -536,19 +532,13 @@ export function PostsPage() {
                   <FilterMenu
                     label="分类"
                     value={list.filter("category")}
-                    options={[
-                      { value: "", label: "全部" },
-                      ...(taxonomy.data?.categories ?? []),
-                    ]}
+                    options={[{ value: "", label: "全部" }, ...categoryOptions]}
                     onChange={(value) => list.setFilter("category", value)}
                   />
                   <FilterMenu
                     label="标签"
                     value={list.filter("tag")}
-                    options={[
-                      { value: "", label: "全部" },
-                      ...(taxonomy.data?.tags ?? []),
-                    ]}
+                    options={[{ value: "", label: "全部" }, ...tagOptions]}
                     onChange={(value) => list.setFilter("tag", value)}
                   />
                 </>

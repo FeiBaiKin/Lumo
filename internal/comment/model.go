@@ -52,6 +52,26 @@ type PostRef struct {
 	Title    string `json:"title"`
 	Slug     string `json:"slug"`
 	AuthorID int64  `json:"authorId"`
+	// Status 与 Visibility 供前台接口复刻正文的可见性规则。
+	Status     string `json:"-"`
+	Visibility string `json:"-"`
+}
+
+// 内容状态与可见性的取值。与 content 模块的常量同义，但这里不引那个包：
+// 模块之间只允许经 App 交互（见 store.go 的说明），两个字符串不值得开一个依赖。
+const (
+	postStatusPublished  = "published"
+	postVisibilityPublic = "public"
+)
+
+// PubliclyVisible 报告内容是否对访客可见，判据与主题前台的 publicFilter 完全一致：
+// 已发布且公开。
+//
+// 这里刻意不接受「作者可见自己的私密内容」：Public 平面是访客平面，
+// 草稿、私密与回收站中的内容一律不对外提供服务，其存在性也不该被探知。
+// 作者要看自己未公开内容的评论，走 Console。
+func (r *PostRef) PubliclyVisible() bool {
+	return r.Status == postStatusPublished && r.Visibility == postVisibilityPublic
 }
 
 // PublicView 是前台可见的评论，**不含**邮箱、IP 与 UA。

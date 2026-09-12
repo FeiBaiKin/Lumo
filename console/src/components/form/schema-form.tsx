@@ -14,6 +14,7 @@ import {
   sectionsOf,
   validateGroup,
 } from "@/components/form/schema";
+import { UnsavedChangesGuard } from "@/components/navigation/unsaved-guard";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -219,6 +220,16 @@ export function SchemaForm({
       className={cn("flex flex-col gap-5", className)}
       noValidate
     >
+      {/*
+        站内导航的未保存提醒。设置页字段多、改动分散，误点侧栏丢掉一整页修改
+        是很实际的损失；上面那个 beforeunload 只覆盖刷新与关标签页。
+      */}
+      <UnsavedChangesGuard
+        when={() => dirtyRef.current}
+        title="离开前要先保存吗？"
+        consequence={<p>这个表单有尚未保存的修改，离开后改动会丢失。</p>}
+      />
+
       {/*
         错误摘要。
         role="alert"（由 Alert 的 danger 语气给出）让它在出现时被播报；

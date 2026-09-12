@@ -27,6 +27,12 @@ import (
 type Limits struct {
 	// MaxFiles 是包内文件数上限。
 	MaxFiles int
+	// MaxEntries 是「文件 + 落盘目录」的总条目数上限。
+	//
+	// 单看文件数不够：目录条目不占字节、也不计入文件数，一个只含几万个空目录的
+	// 几十 KB 压缩包能绕过 MaxFiles/MaxTotalSize，耗尽 inode 与磁盘元数据。
+	// 非正数时退回 MaxFiles，保持旧调用方的行为不变。
+	MaxEntries int
 	// MaxFileSize 是单个文件解压后的字节上限。
 	MaxFileSize int64
 	// MaxTotalSize 是整包解压后的字节上限。
@@ -85,10 +91,9 @@ func DetectPrefix(zr *zip.Reader, manifestName string) (string, error) {
 
 // Extract 把 zip 内容安全地解压到 dest，逐项施加限额与白名单。
 func Extract(zr *zip.Reader, dest, prefix string, opts Options) error {
-	var (
-		fileCount int
-		totalSize int64
-	)
+	b := newBudget(opts.Limits)
+	var totalSize int64
+
 	for _, f := range zr.File {
 		name := f.Name
 		if prefix != "" {
@@ -108,9 +113,14 @@ func Extract(zr *zip.Reader, dest, prefix string, opts Options) error {
 		if rel == "" {
 			continue
 		}
+		rel = filepath.ToSlash(rel)
 
 		info := f.FileInfo()
 		if info.IsDir() {
+			// 目录同样要计入条目预算：它不占字节，但会占 inode 与文件系统元数据。
+			if budgetErr := b.addDir(rel); budgetErr != nil {
+				return budgetErr
+			}
 			if mkErr := os.MkdirAll(filepath.Join(dest, rel), opts.DirPerm); mkErr != nil {
 				return fmt.Errorf("创建目录 %s: %w", rel, mkErr)
 			}
@@ -124,11 +134,14 @@ func Extract(zr *zip.Reader, dest, prefix string, opts Options) error {
 			return fmt.Errorf("不允许的文件类型 %s（%s）", ext, rel)
 		}
 
-		fileCount++
-		if fileCount > opts.Limits.MaxFiles {
-			return fmt.Errorf("文件数超过 %d 个", opts.Limits.MaxFiles)
+		// 落盘前先入账：文件本身与它隐含创建的父目录都要占额度。
+		if budgetErr := b.addDir(path.Dir(rel)); budgetErr != nil {
+			return budgetErr
 		}
-		written, err := extractFile(f, filepath.Join(dest, rel), rel, opts)
+		if budgetErr := b.addFile(); budgetErr != nil {
+			return budgetErr
+		}
+		written, err := extractFile(f, filepath.Join(dest, filepath.FromSlash(rel)), rel, opts)
 		if err != nil {
 			return err
 		}
@@ -137,8 +150,64 @@ func Extract(zr *zip.Reader, dest, prefix string, opts Options) error {
 			return fmt.Errorf("解压后总大小超过 %d 字节", opts.Limits.MaxTotalSize)
 		}
 	}
-	if fileCount == 0 {
+	if b.files == 0 {
 		return errors.New("包内没有任何文件")
+	}
+	return nil
+}
+
+// budget 统计落盘条目：文件与目录（显式的目录条目、以及文件路径隐含创建的父目录）。
+//
+// 目录去重后计数：同一个父目录被多个文件隐含创建时只算一次，
+// 否则一个正常的深层包会被重复计账而误判。
+type budget struct {
+	files   int
+	dirs    map[string]bool
+	maxFile int
+	maxAll  int
+}
+
+func newBudget(limits Limits) *budget {
+	maxAll := limits.MaxEntries
+	if maxAll <= 0 {
+		// 旧调用方没给总条目额度时退回文件数上限，行为与过去一致。
+		maxAll = limits.MaxFiles
+	}
+	return &budget{dirs: map[string]bool{}, maxFile: limits.MaxFiles, maxAll: maxAll}
+}
+
+// addFile 记一个文件。
+func (b *budget) addFile() error {
+	b.files++
+	if b.files > b.maxFile {
+		return fmt.Errorf("文件数超过 %d 个", b.maxFile)
+	}
+	return b.check()
+}
+
+// addDir 记一个目录及其全部上级目录（rel 为空或 "." 时忽略）。
+func (b *budget) addDir(rel string) error {
+	rel = strings.Trim(path.Clean(rel), "/")
+	for rel != "" && rel != "." {
+		if !b.dirs[rel] {
+			b.dirs[rel] = true
+			if err := b.check(); err != nil {
+				return err
+			}
+		}
+		parent := path.Dir(rel)
+		if parent == rel {
+			break
+		}
+		rel = parent
+	}
+	return nil
+}
+
+// check 校验总条目额度。
+func (b *budget) check() error {
+	if b.files+len(b.dirs) > b.maxAll {
+		return fmt.Errorf("包内条目数超过 %d 个", b.maxAll)
 	}
 	return nil
 }

@@ -47,7 +47,9 @@ type IssuedToken struct {
 type CreateTokenParams struct {
 	UserID int64
 	Name   string
-	// Scopes 为空表示继承用户的全部权限。
+	// Scopes 是令牌的权限清单，**必须是已经解析好的显式列表**：
+	// 空列表表示这枚令牌没有任何权限，而不是「继承全部」。
+	// 「继承账号全部权限」由 handlers 的 resolveScopes 展开后再传进来。
 	Scopes []perm.Permission
 	// ExpiresAt 为 nil 表示永不过期。
 	ExpiresAt *time.Time
@@ -73,6 +75,8 @@ func (s *TokenStore) Create(ctx context.Context, params *CreateTokenParams) (*Is
 	}
 	plaintext := TokenPrefix + secret
 
+	// 只存显式清单：scopes 列的 NULL/空数组在鉴权时表示「无权限」（fail-closed），
+	// 不像过去那样表示「账号全部权限」。
 	scopes := params.Scopes
 	if scopes == nil {
 		scopes = []perm.Permission{}

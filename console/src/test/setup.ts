@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { transferableAbortController } from "node:util";
 import { afterEach, vi } from "vitest";
 
 /**
@@ -39,3 +40,20 @@ if (!globalThis.ResizeObserver) {
 afterEach(() => {
   localStorage.clear();
 });
+
+/**
+ * 换回 Node 原生的 AbortController / AbortSignal。
+ *
+ * jsdom 提供的是自己的一套实现，而 `Request` 来自 Node（undici），它要求
+ * signal 必须是 Node 的 AbortSignal 实例。数据路由在每次导航时都会
+ * `new Request(url, { signal })`，于是必然抛
+ * "Expected signal (...) to be an instance of AbortSignal"。
+ *
+ * Node 没法直接 new 出 AbortSignal，但 util.transferableAbortController()
+ * 返回的就是原生控制器，取它的 constructor 即可拿回原生类。
+ */
+const nativeController = transferableAbortController();
+globalThis.AbortController =
+  nativeController.constructor as typeof AbortController;
+globalThis.AbortSignal = nativeController.signal
+  .constructor as typeof AbortSignal;

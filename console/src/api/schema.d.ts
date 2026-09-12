@@ -35,7 +35,7 @@ export interface paths {
         put?: never;
         /**
          * 登录
-         * @description 校验用户名或邮箱与密码，签发服务端会话并经 Set-Cookie 下发。响应体中的 csrfToken 须在后续非安全方法请求的 X-CSRF-Token 头中回传。
+         * @description 校验用户名或邮箱与密码，签发服务端会话并经 Set-Cookie 下发。响应体中的 csrfToken 须在后续非安全方法请求的 X-CSRF-Token 头中回传。失败的尝试按账号与客户端 IP 两个维度限流，超出后返回 429。
          */
         post: operations["auth-login"];
         delete?: never;
@@ -99,7 +99,7 @@ export interface paths {
         put?: never;
         /**
          * 创建访问令牌
-         * @description 签发 Personal Access Token。明文只在本响应中返回一次；scope 与用户权限取交集，只能收窄不能放大。
+         * @description 签发 Personal Access Token，**只能用会话登录调用**，且须重新输入当前账号密码。明文只在本响应中返回一次。scope 是你当前权限的子集，留空表示继承当前全部权限（服务端会展开为显式清单后落库）。
          */
         post: operations["auth-create-token"];
         delete?: never;
@@ -2694,7 +2694,9 @@ export interface components {
             expiresAt?: string;
             /** @description 令牌名称，仅用于区分 */
             name: string;
-            /** @description 权限串子集；留空表示继承用户全部权限 */
+            /** @description 当前账号密码，用于二次确认 */
+            password: string;
+            /** @description 权限串子集；留空表示继承调用者当前的全部权限 */
             scopes?: string[] | null;
         };
         TreeOutputBody: {
@@ -2885,8 +2887,26 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3006,6 +3026,15 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -11,6 +11,7 @@ import {
 import { HtmlEditor } from "@/components/editor/html-editor";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
 import { PageHeader } from "@/components/layout/page-header";
+import { UnsavedChangesGuard } from "@/components/navigation/unsaved-guard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +48,7 @@ import {
   relativeTime,
   toLocalInput,
 } from "@/lib/format";
+import { flattenCategories, useTaxonomyOptions } from "@/lib/taxonomy";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -87,10 +89,14 @@ import { toast } from "sonner";
  * 拆成多个路由会让「改完标题再点发布」变成两次导航。
  *
  * **两个编辑器产出同一对字段**：`raw` + `rawType`（agent.md §3.4）。
- * 切换**不是无损的**：HTML 转 Markdown 会丢结构，故切换时弹确认并把这句话
- * 如实说出来。空内容时切换不弹窗 —— 那时确实无损。
+ * 切换**不是无损的**：格式标记一变，原稿就会被另一种编辑器按自己的语法重新解析，
+ * 故切换时弹确认把这件事说清楚。但**绝不会清空正文**——过去的实现在切到
+ * Markdown 时直接把 raw 置空，等于一键删掉整篇内容。
+ *
+ * 外层按 `kind + id` 加 key：从文章 A 跳到文章 B 时组件必须重建，
+ * 否则表单里还留着 A 的内容、loaded 也是 true，B 的数据到了会被丢掉，
+ * 下一次保存就把 A 的正文写到了 B 上。
  */
-
 type ContentType = "post" | "page";
 type Post = components["schemas"]["Post"];
 type RevisionSummary = components["schemas"]["RevisionSummary"];
@@ -172,6 +178,12 @@ function charCount(text: string): number {
 
 export function ContentEditor({ kind }: { kind: ContentType }) {
   const params = useParams<{ id: string }>();
+  return <EditorSession key={`${kind}:${params.id ?? "new"}`} kind={kind} />;
+}
+
+/** 一次编辑会话；外层 key 变化即整体重建。 */
+function EditorSession({ kind }: { kind: ContentType }) {
+  const params = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { can } = useAuth();
 
@@ -196,6 +208,18 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
   const [publishAt, setPublishAt] = useState("");
   const [loaded, setLoaded] = useState(isNew);
   const [dirty, setDirty] = useState(false);
+  /**
+   * 脏状态的同步副本。
+   *
+   * setState 是异步的，而保存成功的回调里要紧接着 navigate（新建后换地址），
+   * 那一刻 dirty 还是旧值；导航拦截器读的必须是「此刻」的值，所以用 ref。
+   */
+  const dirtyRef = useRef(false);
+  /** 同时更新状态与 ref：脏状态的每一次变更都必须走这里。 */
+  const setDirtyFlag = useCallback((value: boolean) => {
+    dirtyRef.current = value;
+    setDirty(value);
+  }, []);
   const [switchOpen, setSwitchOpen] = useState(false);
   const [pendingType, setPendingType] = useState<RawType | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -269,6 +293,8 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
   }, [query.data, loaded, fillFrom]);
 
   // ---- 离开前提醒 ----
+  // 刷新与关闭标签页走 beforeunload；站内导航（Link、navigate、浏览器后退）
+  // 不会触发它，由下方渲染的 UnsavedChangesGuard 负责。
   useEffect(() => {
     if (!dirty) {
       return;
@@ -280,23 +306,18 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
-  const markDirty = useCallback(() => setDirty(true), []);
+  const markDirty = useCallback(() => setDirtyFlag(true), [setDirtyFlag]);
 
   // ---- 分类与标签候选 ----
-  const taxonomy = useQuery({
-    queryKey: ["taxonomy-options"],
-    enabled: kind === "post",
-    queryFn: async () => {
-      const [categories, tags] = await Promise.all([
-        api.GET("/api/v1/console/categories/tree"),
-        api.GET("/api/v1/console/tags", { params: { query: { size: 100 } } }),
-      ]);
-      return {
-        categories: flattenCategories(categories.data?.items ?? []),
-        tags: tags.data?.items ?? [],
-      };
-    },
-  });
+  // 与文章列表共用同一份缓存（lib/taxonomy.ts）：缓存里是原始 DTO，
+  // 各页面自己转换。曾经两边共用同一个 key 却写入不同结构，
+  // 结果编辑器拿到的是列表页的 { value, label }，分类 ID 变成 undefined。
+  const taxonomy = useTaxonomyOptions(kind === "post");
+  const categoryOptions = useMemo(
+    () => flattenCategories(taxonomy.data?.categories ?? []),
+    [taxonomy.data],
+  );
+  const tagOptions = useMemo(() => taxonomy.data?.tags ?? [], [taxonomy.data]);
 
   /** 页面模板候选：来自当前主题提供的 page-*.html。 */
   const pageTemplates = useQuery({
@@ -390,7 +411,7 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
       return data;
     },
     onSuccess: (data) => {
-      setDirty(false);
+      setDirtyFlag(false);
       // 新建后把地址换成 /posts/<id>，否则再点保存会又建一篇
       if (id === null && data?.id) {
         navigate(`${listPath}/${data.id}`, { replace: true });
@@ -406,10 +427,12 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
   });
 
   const publish = useMutation({
-    mutationFn: async (action: "publish" | "unpublish") => {
-      if (id === null) {
-        return;
-      }
+    // 目标 ID 由调用方给出而不是读闭包：新建内容要先保存拿到 ID 才能发布。
+    mutationFn: async (vars: {
+      action: "publish" | "unpublish";
+      id: number;
+    }) => {
+      const { action, id: targetID } = vars;
       const scheduled =
         action === "publish" && publishAt && new Date(publishAt) > new Date();
       const iso = scheduled ? fromLocalInput(publishAt) : undefined;
@@ -421,19 +444,19 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
         action === "publish"
           ? kind === "post"
             ? await api.POST("/api/v1/console/posts/{id}/publish", {
-                params: { path: { id } },
+                params: { path: { id: targetID } },
                 body: publishBody,
               })
             : await api.POST("/api/v1/console/pages/{id}/publish", {
-                params: { path: { id } },
+                params: { path: { id: targetID } },
                 body: publishBody,
               })
           : kind === "post"
             ? await api.POST("/api/v1/console/posts/{id}/unpublish", {
-                params: { path: { id } },
+                params: { path: { id: targetID } },
               })
             : await api.POST("/api/v1/console/pages/{id}/unpublish", {
-                params: { path: { id } },
+                params: { path: { id: targetID } },
               });
       if (!response.ok) {
         throw new Error(problemMessage(error));
@@ -455,6 +478,91 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
     onError: (err) =>
       toast.error(err instanceof Error ? err.message : "操作失败"),
   });
+
+  /**
+   * 写操作闸门。
+   *
+   * `mutate` 在 pending 期间再调用会**再发一个请求**，而按钮的 disabled 依赖
+   * `isPending`——state 更新是异步的，同一帧里的连点（或在慢网下反复点）
+   * 全部会在闸门生效前穿过去，结果是重复创建内容、重复发布。
+   * 这里用 ref 做同步判定，和按钮的 loading 一起构成两道闸门。
+   */
+  const writeRef = useRef(false);
+
+  /** 保存；失败时静默返回（错误提示由 save.onError 负责）。 */
+  const saveNow = useCallback(async () => {
+    if (writeRef.current) {
+      return;
+    }
+    writeRef.current = true;
+    try {
+      await save.mutateAsync();
+    } catch {
+      // 已经 toast 过了，这里只需要「不再往下走」。
+    } finally {
+      writeRef.current = false;
+    }
+  }, [save]);
+
+  /** 发起发布或撤回；闸门占用中则忽略本次调用。 */
+  const runPublish = useCallback(
+    (action: "publish" | "unpublish", targetID: number) => {
+      if (writeRef.current) {
+        return;
+      }
+      writeRef.current = true;
+      publish.mutate(
+        { action, id: targetID },
+        {
+          onSettled: () => {
+            writeRef.current = false;
+          },
+        },
+      );
+    },
+    [publish],
+  );
+
+  /**
+   * 先保存再发布。
+   *
+   * 两步必须是一个整体：过去保存的异常被 `.catch(() => {})` 吞掉后仍然继续发布，
+   * 于是「slug 撞车导致保存 409」会变成「发布了服务器上那份旧内容」——
+   * 用户看到的是发布成功，站点上是另一篇文章。
+   */
+  const saveAndPublish = useCallback(async () => {
+    if (writeRef.current) {
+      return;
+    }
+    writeRef.current = true;
+
+    let saved: Post | undefined;
+    if (dirtyRef.current || isNew) {
+      try {
+        saved = await save.mutateAsync();
+      } catch {
+        // 保存失败：错误已由 save.onError 提示，必须在此终止，
+        // 不能退回「发布服务器上的旧内容」这条更糟的路径。
+        writeRef.current = false;
+        return;
+      }
+    }
+
+    // 新建内容的 id 在此刻才存在，用闭包里的旧 id 发布等于什么都没做。
+    const targetID = saved?.id ?? id;
+    if (targetID === null) {
+      writeRef.current = false;
+      return;
+    }
+    publish.mutate(
+      { action: "publish", id: targetID },
+      {
+        onSettled: () => {
+          writeRef.current = false;
+        },
+      },
+    );
+  }, [id, isNew, save, publish]);
 
   const restore = useMutation({
     mutationFn: async (revisionId: number) => {
@@ -483,7 +591,7 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
         fillFrom(data);
         setEditorKey((k) => k + 1);
       }
-      setDirty(false);
+      setDirtyFlag(false);
       setRestoring(null);
       setRevisionsOpen(false);
       void query.refetch();
@@ -576,6 +684,9 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
   const status = (post?.status ?? "draft") as Status;
   const meta = STATUS_META[status];
   const canPublish = can(kind === "post" ? "posts:publish" : "pages:publish");
+  // 没有这个权限时，正文保存到服务端会被按允许列表净化（见 internal/content/sanitize.go）。
+  // 编辑器里不拦人，但要说清楚，否则作者会以为「iframe 明明写进去了」。
+  const canUnsafeHTML = can("content:unsafe_html");
   const scheduledLater = Boolean(publishAt) && new Date(publishAt) > new Date();
   const previewHref =
     !isNew && post?.slug
@@ -637,9 +748,9 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => save.mutate()}
+              onClick={() => void saveNow()}
               loading={save.isPending}
-              disabled={!title.trim()}
+              disabled={!title.trim() || publish.isPending}
             >
               <Save aria-hidden="true" />
               {dirty ? "保存" : "已保存"}
@@ -659,7 +770,11 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => publish.mutate("unpublish")}
+                  onClick={() => {
+                    if (id !== null) {
+                      runPublish("unpublish", id);
+                    }
+                  }}
                   loading={publish.isPending}
                   disabled={dirty}
                   title={dirty ? "先保存再撤回" : "撤回为草稿"}
@@ -671,16 +786,11 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={async () => {
-                    // 先保存再发布：直接发布会让「改了标题但没保存就发布」
-                    // 得到一篇标题是旧的线上文章
-                    if (dirty || isNew) {
-                      await save.mutateAsync().catch(() => {});
-                    }
-                    publish.mutate("publish");
-                  }}
-                  loading={publish.isPending}
-                  disabled={!title.trim()}
+                  onClick={() => void saveAndPublish()}
+                  // 保存阶段也要显示进行中：否则点完发布按钮看起来毫无反应，
+                  // 用户会再点一次。
+                  loading={save.isPending || publish.isPending}
+                  disabled={!title.trim() || (!dirty && !isNew && id === null)}
                 >
                   {scheduledLater ? (
                     <>
@@ -911,7 +1021,7 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
                       <FieldLabel>分类</FieldLabel>
                       {taxonomy.isLoading ? (
                         <Skeleton className="h-20 w-full" />
-                      ) : (taxonomy.data?.categories.length ?? 0) === 0 ? (
+                      ) : categoryOptions.length === 0 ? (
                         <p className="text-xs text-ink-muted">
                           还没有分类。
                           <Link
@@ -923,7 +1033,7 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
                         </p>
                       ) : (
                         <div className="-mx-2 flex max-h-56 flex-col overflow-y-auto">
-                          {(taxonomy.data?.categories ?? []).map((category) => (
+                          {categoryOptions.map((category) => (
                             <div
                               key={category.id}
                               style={{
@@ -966,7 +1076,7 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
                         </p>
                       ) : (
                         <div className="flex flex-wrap gap-1.5">
-                          {(taxonomy.data?.tags ?? []).map((tag) => {
+                          {tagOptions.map((tag) => {
                             const active = tagIds.includes(tag.id);
                             return (
                               <button
@@ -1058,6 +1168,19 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
               description="可见性、置顶与发布时间"
               className="pt-5"
             >
+              {canUnsafeHTML ? null : (
+                <SettingRow>
+                  <Field>
+                    <FieldLabel>正文净化</FieldLabel>
+                    <FieldDescription>
+                      你的角色没有「发布未净化的正文」权限：保存时脚本、事件属性与站内
+                      iframe 会被移除，正常排版不受影响。这里的原稿不会被改动。
+                      需要嵌入视频或保留自定义 HTML，请让管理员授予该权限。
+                    </FieldDescription>
+                  </Field>
+                </SettingRow>
+              )}
+
               <SettingRow>
                 <Field>
                   <FieldLabel htmlFor="content-visibility">可见性</FieldLabel>
@@ -1254,7 +1377,23 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
         }}
       />
 
-      {/* 格式切换确认。如实说明「不可逆」而不是假装能来回换。 */}
+      {/*
+        未保存修改的导航保护。放在页面里而不是 AppShell：只有真正持有表单
+        状态的页面才知道自己脏不脏。beforeunload 管刷新与关标签页，
+        这里管站内导航（侧栏、命令面板、浏览器后退）。
+      */}
+      <UnsavedChangesGuard
+        when={() => dirtyRef.current}
+        title="离开前要先保存吗？"
+        consequence={
+          <p>
+            这篇内容有尚未保存的修改，离开后这些修改会丢失。
+            已保存的版本与修订历史不受影响。
+          </p>
+        }
+      />
+
+      {/* 格式切换确认。如实说明会发生什么，而不是假装能无损来回换。 */}
       <Dialog open={switchOpen} onOpenChange={setSwitchOpen}>
         <DialogContent size="sm">
           <DialogHeader>
@@ -1262,26 +1401,28 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
               切换到{pendingType === "markdown" ? " Markdown" : "富文本"}？
             </DialogTitle>
             <DialogDescription>
-              当前正文会按现有内容重新解析。这一步不是无损的。
+              正文**不会被清空**：原稿原样交给另一个编辑器重新解析。
+              但解析结果不是无损的。
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
             <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-ink-muted">
               {pendingType === "markdown" ? (
                 <>
-                  <li>自定义 HTML 块与其中的 data-* 属性会丢失</li>
-                  <li>复杂的表格（合并单元格）会被拆成普通表格</li>
-                  <li>行内样式会被丢弃</li>
+                  <li>HTML 标签会作为原始 HTML 保留在 Markdown 源里</li>
+                  <li>富文本编辑器里的排版调整会退化成标签本身</li>
+                  <li>行内样式与 data-* 属性按原样保留</li>
                 </>
               ) : (
                 <>
-                  <li>Markdown 的原始写法会变成等价的 HTML，源码不再保留</li>
-                  <li>之后再切回 Markdown，排版细节可能与原来不同</li>
+                  <li>Markdown 的标记（#、*、[ ]）会被当成普通文字显示</li>
+                  <li>保存后这些标记就固定成文字，不再具有 Markdown 语义</li>
+                  <li>再切回 Markdown 需要手动改回写法</li>
                 </>
               )}
             </ul>
             <p className="mt-3 text-sm text-ink-muted">
-              建议先保存一份，再切换。
+              建议先保存一份，再切换 —— 每次保存都会留下一个修订版本。
             </p>
           </DialogBody>
           <DialogFooter>
@@ -1294,11 +1435,11 @@ export function ContentEditor({ kind }: { kind: ContentType }) {
                 if (!pendingType) {
                   return;
                 }
-                // 这里只做格式标记的切换与编辑器重建。真正的转换由编辑器完成：
-                // TipTap 会把 Markdown 文本按字面当段落（安全，不猜作者意图），
-                // Milkdown 会把 HTML 当 Markdown 解析。两者都不假装理解对方的格式。
+                // 只换格式标记并重建编辑器，**不动 raw**。
+                // 真正的解析由新编辑器完成：TipTap 会把 Markdown 文本按字面
+                // 当段落（安全，不猜作者意图），Milkdown 把 HTML 当原始 HTML 保留。
+                // 过去的实现在切到 Markdown 时把 raw 置空，等于一键删掉整篇正文。
                 setRawType(pendingType);
-                setRaw(pendingType === "markdown" ? "" : raw);
                 setEditorKey((k) => k + 1);
                 setSwitchOpen(false);
                 setPendingType(null);
@@ -1350,19 +1491,4 @@ function SettingGroup({
 /** 组内的一行字段。 */
 function SettingRow({ children }: { children: ReactNode }) {
   return <div className="py-4 first:pt-0 last:pb-0">{children}</div>;
-}
-
-/** 分类树摊平成带缩进的选项。 */
-function flattenCategories(
-  nodes: components["schemas"]["CategoryNode"][],
-  depth = 0,
-): { id: number; name: string; depth: number }[] {
-  const out: { id: number; name: string; depth: number }[] = [];
-  for (const node of nodes) {
-    out.push({ id: node.id, name: node.name, depth });
-    if (node.children?.length) {
-      out.push(...flattenCategories(node.children, depth + 1));
-    }
-  }
-  return out;
 }

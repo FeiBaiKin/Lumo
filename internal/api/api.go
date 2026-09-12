@@ -71,7 +71,7 @@ type Planes struct {
 // 鉴权策略（agent.md §6）：
 //   - Console：解析凭据 + CSRF + **强制已认证**；细粒度权限由各操作声明
 //   - ConsolePublic：只解析凭据，仅供登录一类极少数免认证端点
-//   - Public：解析凭据但不强制，匿名可读已发布内容
+//   - Public：解析凭据但不强制，匿名可读已发布内容；会话身份的写请求要过 CSRF
 //   - Extension：解析凭据 + CSRF + 强制已认证
 //
 // 中间件挂在分组上，模块注册的每个操作自动继承，不存在「漏挂」的可能。
@@ -95,10 +95,16 @@ func NewPlanes(root chi.Router, opts *Options) *Planes {
 	}
 	// CSRF 置于 RequireAuth 之前：CSRF 中间件对匿名请求放行，
 	// 于是匿名写请求得到 401（未登录）而非 403（CSRF 失败），客户端才知道该去登录。
+	//
+	// Public 平面同样挂 CSRF：它是匿名可读可写的，但**已登录访客**在 Public 平面
+	// 发评论时会自动带上会话 Cookie，若不校验就留下一个同站点跨源页面
+	// 借受害者会话写评论的口子（评论还可能因为作者身份被自动通过审核）。
+	// 匿名请求不带 Cookie，中间件直接放行，不影响访客评论。
 	if opts.CSRF != nil {
 		csrf := HTTPMiddleware(opts.CSRF)
 		p.console.UseMiddleware(csrf)
 		p.extension.UseMiddleware(csrf)
+		p.public.UseMiddleware(csrf)
 	}
 	if opts.RequireAuth != nil {
 		requireAuth := HTTPMiddleware(opts.RequireAuth)

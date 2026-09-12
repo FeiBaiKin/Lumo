@@ -3,6 +3,7 @@ package pkgzip
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -213,6 +214,37 @@ func TestExtractEnforcesLimits(t *testing.T) {
 		err := Extract(buildZip(t, entry{name: "a/b/c/d.html", body: "x"}), t.TempDir(), "", opts)
 		if err == nil || !strings.Contains(err.Error(), "层级过深") {
 			t.Errorf("期望因层级过深报错，实际 %v", err)
+		}
+	})
+
+	// 目录条目过去直接 MkdirAll 后 continue：既不计数也不计字节，
+	// 一个只含几万个空目录的小压缩包因此能绕过文件数与总大小两道限额。
+	t.Run("目录条目计入总条目上限", func(t *testing.T) {
+		t.Parallel()
+		opts := testOptions()
+		opts.Limits.MaxEntries = 10
+		entries := make([]entry, 0, 30)
+		for i := range 30 {
+			entries = append(entries, entry{name: fmt.Sprintf("d%02d/", i)})
+		}
+		err := Extract(buildZip(t, entries...), t.TempDir(), "", opts)
+		if err == nil || !strings.Contains(err.Error(), "条目数超过") {
+			t.Errorf("空目录洪水应被总条目上限挡下，实际 %v", err)
+		}
+	})
+
+	t.Run("文件隐含创建的父目录只算一次", func(t *testing.T) {
+		t.Parallel()
+		opts := testOptions()
+		// 3 个文件 + 2 个目录（a、a/b）= 5，正好在额度内。
+		opts.Limits.MaxEntries = 5
+		err := Extract(buildZip(t,
+			entry{name: "a/x.html", body: "x"},
+			entry{name: "a/y.html", body: "x"},
+			entry{name: "a/b/z.html", body: "x"},
+		), t.TempDir(), "", opts)
+		if err != nil {
+			t.Errorf("目录去重后不应超限，实际 %v", err)
 		}
 	})
 }

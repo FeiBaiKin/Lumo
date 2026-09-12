@@ -360,6 +360,12 @@ func flatten(nodes []menuItemInput) ([]Item, []int, error) {
 	var walk func(nodes []menuItemInput, parent int, depth int) error
 
 	walk = func(nodes []menuItemInput, parent, depth int) error {
+		// 空数组必须**先**返回：调用方在这一层没有子节点，不代表层级超限。
+		// 少了这一句，恰好三级、且第三级没有 children 的合法菜单会以 depth=4
+		// 递归进来，被下面的检查判成四级而拒绝。
+		if len(nodes) == 0 {
+			return nil
+		}
 		if depth > maxItemDepth {
 			return huma.Error400BadRequest("菜单层级最多 " + strconv.Itoa(maxItemDepth) + " 级")
 		}

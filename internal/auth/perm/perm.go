@@ -33,6 +33,13 @@ const (
 	MediaWrite     Permission = "media:write"
 	MediaDeleteAny Permission = "media:delete_any"
 
+	// ContentUnsafeHTML 允许正文中的任意 HTML 原样输出到前台（含 iframe 与脚本钩子）。
+	//
+	// 这是高风险权限，默认只给管理员及以上：未净化的正文会在**站点同源**执行，
+	// 而管理 API 与访客页面同源，一段脚本就能以访客（可能是管理员）的身份
+	// 调用管理接口。没有这个权限的编辑者，正文在保存时会被允许列表净化。
+	ContentUnsafeHTML Permission = "content:unsafe_html"
+
 	MenusManage    Permission = "menus:manage"
 	UsersManage    Permission = "users:manage"
 	RolesManage    Permission = "roles:manage"
@@ -53,6 +60,7 @@ var All = []Permission{
 	TaxonomiesManage,
 	CommentsManage, CommentsManageAny,
 	MediaWrite, MediaDeleteAny,
+	ContentUnsafeHTML,
 	MenusManage,
 	UsersManage,
 	RolesManage,
@@ -139,6 +147,7 @@ var BuiltinRoles = map[string][]Permission{
 		TaxonomiesManage,
 		CommentsManage, CommentsManageAny,
 		MediaWrite, MediaDeleteAny,
+		ContentUnsafeHTML,
 		MenusManage,
 		UsersManage,
 		RolesManage,
@@ -149,6 +158,10 @@ var BuiltinRoles = map[string][]Permission{
 	},
 
 	// 内容全权（含发布、删任何人的内容）；不碰用户/角色/设置/主题/菜单。
+	//
+	// **不含 ContentUnsafeHTML**：编辑与管理员是不同的信任级别。
+	// 正文原样输出等于在站点同源执行任意脚本，拥有它就能以管理员的身份
+	// 调用管理 API —— 那正是「编辑」这个角色不该有的能力。
 	RoleEditor: {
 		PostsWrite, PostsWriteAny, PostsPublish, PostsDeleteAny,
 		PagesWrite, PagesWriteAny, PagesPublish, PagesDeleteAny,

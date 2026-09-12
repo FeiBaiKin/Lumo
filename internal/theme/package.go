@@ -16,6 +16,12 @@ import (
 const (
 	// maxPackageFiles 是包内文件数上限。
 	maxPackageFiles = 2000
+	// maxPackageEntries 是包内「文件 + 目录」的总条目数上限。
+	//
+	// 比文件数上限宽裕一些（正常的主题包目录不多），但它必须存在：
+	// 目录条目不占字节也不计入文件数，只有文件上限时，一个几十 KB 的
+	// 「几万个空目录」压缩包就能耗尽 inode。
+	maxPackageEntries = 2500
 	// maxFileSize 是单个文件解压后的字节上限。
 	maxFileSize int64 = 8 << 20
 	// maxTotalSize 是整包解压后的字节上限。
@@ -39,6 +45,7 @@ func pkgOptions() pkgzip.Options {
 	return pkgzip.Options{
 		Limits: pkgzip.Limits{
 			MaxFiles:     maxPackageFiles,
+			MaxEntries:   maxPackageEntries,
 			MaxFileSize:  maxFileSize,
 			MaxTotalSize: maxTotalSize,
 			MaxPathDepth: maxPathDepth,

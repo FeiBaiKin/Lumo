@@ -19,7 +19,12 @@ import (
 func (e *env) bearer(t *testing.T, username, role string) string {
 	t.Helper()
 	user := e.createUser(t, username, role)
-	issued, err := e.tokens.Create(t.Context(), &auth.CreateTokenParams{UserID: user.ID, Name: "test"})
+	// scope 必须显式给出：空 scopes 现在表示「没有任何权限」。
+	issued, err := e.tokens.Create(t.Context(), &auth.CreateTokenParams{
+		UserID: user.ID,
+		Name:   "test",
+		Scopes: user.Permissions().List(),
+	})
 	if err != nil {
 		t.Fatalf("签发令牌失败: %v", err)
 	}

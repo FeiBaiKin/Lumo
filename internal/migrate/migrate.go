@@ -35,6 +35,12 @@ const advisoryLockID int64 = 0x4C554D4F4D4947 // "LUMOMIG"
 // 它的版本表沿用 goose 默认名 goose_db_version，以兼容阶段 1、2 已迁移过的库。
 const CoreName = "core"
 
+// DefaultLockTimeout 是未显式配置时等待迁移锁的上限。
+//
+// 等待是必要语义（多实例并发迁移必须串行），但必须有上限：数据库黑洞或
+// 遗留会话会让 pg_advisory_lock 永久挂起，进而卡死整个启动流程。
+const DefaultLockTimeout = 2 * time.Minute
+
 const (
 	coreTable         = "goose_db_version"
 	moduleTablePrefix = "goose_db_version_"
@@ -62,13 +68,37 @@ type Status struct {
 
 // Migrator 按来源顺序执行迁移。
 type Migrator struct {
-	db      *sql.DB
-	sources []Source
-	logger  *slog.Logger
+	db          *sql.DB
+	sources     []Source
+	logger      *slog.Logger
+	lockTimeout time.Duration
+	// lockDB 是仅用于持有 advisory lock 的独立连接池，可为 nil（表示与迁移共用主池）。
+	lockDB *sql.DB
+}
+
+// Option 是 Migrator 的可选配置。
+type Option func(*Migrator)
+
+// WithLockTimeout 覆盖等待迁移锁的上限；d <= 0 时保持默认值。
+func WithLockTimeout(d time.Duration) Option {
+	return func(m *Migrator) {
+		if d > 0 {
+			m.lockTimeout = d
+		}
+	}
+}
+
+// WithLockDB 指定一个仅用于持有迁移 advisory lock 的独立连接池（容量 1 即可）。
+//
+// goose 的 Provider 只接受 *sql.DB，无法让锁与迁移共用同一条会话；锁与迁移
+// 若从同一池取连接，池容量为 1 时会互相等待。独立池把两者彻底隔开，
+// 是单连接池部署的首选解法。
+func WithLockDB(db *sql.DB) Option {
+	return func(m *Migrator) { m.lockDB = db }
 }
 
 // New 构造 Migrator。sources 按给定顺序执行，核心应放在最前；logger 可为 nil。
-func New(db *sql.DB, sources []Source, logger *slog.Logger) (*Migrator, error) {
+func New(db *sql.DB, sources []Source, logger *slog.Logger, opts ...Option) (*Migrator, error) {
 	if db == nil {
 		return nil, errors.New("migrate: db 不能为 nil")
 	}
@@ -88,7 +118,13 @@ func New(db *sql.DB, sources []Source, logger *slog.Logger) (*Migrator, error) {
 		}
 		seen[src.Name] = true
 	}
-	return &Migrator{db: db, sources: sources, logger: logger}, nil
+	m := &Migrator{db: db, sources: sources, logger: logger, lockTimeout: DefaultLockTimeout}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(m)
+		}
+	}
+	return m, nil
 }
 
 // TableName 返回来源对应的版本表名。
@@ -257,20 +293,30 @@ func (m *Migrator) find(name string) (Source, error) {
 // withLock 在持有 advisory lock 的独占连接上执行 fn。
 //
 // 用 pg_advisory_lock 而非 pg_try_advisory_lock：拿不到锁时应当等待其他实例
-// 完成迁移，而不是放弃后在旧 schema 上启动。等待上限由 ctx 控制。
+// 完成迁移，而不是放弃后在旧 schema 上启动。等待上限由 lockTimeout 控制：
+// 超时返回明确错误，绝不无限挂起。
 func (m *Migrator) withLock(ctx context.Context, fn func() error) error {
-	// advisory lock 是会话级的，必须锁定到同一条连接上，否则解锁会打在别的会话。
-	conn, err := m.db.Conn(ctx)
+	// 锁等待单独计时：迁移本身仍用原始 ctx，不受该期限限制。
+	lockCtx, cancel := context.WithTimeout(ctx, m.lockTimeout)
+	defer cancel()
+
+	conn, release, err := m.lockConn(lockCtx)
 	if err != nil {
-		return fmt.Errorf("获取迁移专用连接: %w", err)
+		return err
 	}
-	defer func() { _ = conn.Close() }()
+	defer release()
 
 	if m.logger != nil {
 		m.logger.Debug("正在获取迁移锁", slog.Int64("lockId", advisoryLockID))
 	}
 	start := time.Now()
-	if _, err := conn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", advisoryLockID); err != nil {
+	if _, err := conn.ExecContext(lockCtx, "SELECT pg_advisory_lock($1)", advisoryLockID); err != nil {
+		// 父 ctx 自身取消/到期不算锁超时，原样报出，避免错误归因。
+		if errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+			return fmt.Errorf(
+				"等待迁移锁超时（%s）：可能有其他实例正在迁移；如确认没有，请检查数据库连接或调大 LUMO_DATABASE_MIGRATION_LOCK_TIMEOUT",
+				m.lockTimeout)
+		}
 		return fmt.Errorf("获取迁移锁: %w", err)
 	}
 	if waited := time.Since(start); waited > time.Second && m.logger != nil {
@@ -290,4 +336,42 @@ func (m *Migrator) withLock(ctx context.Context, fn func() error) error {
 	}()
 
 	return fn()
+}
+
+// lockConn 取一条用于持有 advisory lock 的连接，并返回释放函数。
+//
+// 配置了独立锁池时直接用锁池。否则退回主池，并在主池容量 < 2 时临时把上限
+// 提到 2：advisory lock 会一直占住连接直到解锁，容量为 1 时 goose 再也取不到
+// 连接，迁移会永久等待。临时提高只影响本次迁移，结束后恢复原值。
+func (m *Migrator) lockConn(ctx context.Context) (*sql.Conn, func(), error) {
+	if m.lockDB != nil {
+		conn, err := m.lockDB.Conn(ctx)
+		if err != nil {
+			return nil, nil, fmt.Errorf("获取迁移锁专用连接: %w", err)
+		}
+		return conn, func() { _ = conn.Close() }, nil
+	}
+
+	maxOpen := m.db.Stats().MaxOpenConnections
+	raised := maxOpen == 1
+	if raised {
+		m.db.SetMaxOpenConns(2)
+	}
+	conn, err := m.db.Conn(ctx)
+	if err != nil {
+		if raised {
+			m.db.SetMaxOpenConns(maxOpen)
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, nil, fmt.Errorf("等待可用数据库连接超时（%s）：连接池已被占满", m.lockTimeout)
+		}
+		return nil, nil, fmt.Errorf("获取迁移专用连接: %w", err)
+	}
+	release := func() {
+		_ = conn.Close()
+		if raised {
+			m.db.SetMaxOpenConns(maxOpen)
+		}
+	}
+	return conn, release, nil
 }

@@ -20,6 +20,10 @@ const Name = "mail"
 type Module struct {
 	service *Service
 	logger  *slog.Logger
+
+	// cancel 取消消费协程的 run context，Start 时创建；消费协程的退出经
+	// Service.Done 观察。
+	cancel context.CancelFunc
 }
 
 // New 构造模块。
@@ -59,9 +63,41 @@ func (m *Module) Routes(r app.Router) {
 	}, m.sendTest)
 }
 
-// Start 实现 app.Starter：启动后台发信协程，ctx 取消时退出。
+// Start 实现 app.Starter：启动后台发信协程。
+//
+// 消费协程刻意不直接绑定信号 ctx：SIGTERM 到达后 HTTP 才开始排空，在途请求
+// 仍会入队，此时消费者必须继续工作，直到 Close 在 HTTP 排空后有序停止它。
+// 这里用 WithoutCancel 断开取消传播，改由 Close 负责取消。
 func (m *Module) Start(ctx context.Context) error {
-	go m.service.Run(ctx)
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	m.cancel = cancel
+	go m.service.Run(runCtx)
+	return nil
+}
+
+// Close 实现 app.Closer：有序停止邮件队列。
+//
+// app.Close 在 HTTP 排空之后执行（cmd/lumo/serve.go 的 defer），到这里不会
+// 再有业务请求入队。Service.Shutdown 在 ctx 期限内排空剩余邮件，随后取消
+// 消费协程；仍未投递的数量写入日志，便于评估停机窗口内丢失的邮件。
+func (m *Module) Close(ctx context.Context) error {
+	if m.cancel == nil {
+		// Start 未执行（如仅注册模块的 migrate 命令），没有消费者需要停止。
+		return nil
+	}
+	m.service.Shutdown(ctx)
+	m.cancel()
+	select {
+	case <-m.service.Done():
+	case <-ctx.Done():
+	}
+	if m.logger != nil {
+		if n := m.service.Undelivered(); n > 0 {
+			m.logger.Warn("停机时仍有邮件未投递", slog.Int("undelivered", n))
+		} else {
+			m.logger.Info("邮件发送队列已排空", slog.Int("undelivered", 0))
+		}
+	}
 	return nil
 }
 

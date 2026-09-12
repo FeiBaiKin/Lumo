@@ -140,7 +140,7 @@ func (s *Store) LastByIP(ctx context.Context, ip string) (time.Time, error) {
 func (s *Store) PostRef(ctx context.Context, id int64) (*PostRef, error) {
 	ref := new(PostRef)
 	err := s.db.NewRaw(
-		"SELECT id, type, title, slug, author_id FROM posts WHERE id = ?", id).Scan(ctx, ref)
+		"SELECT id, type, title, slug, author_id, status, visibility FROM posts WHERE id = ?", id).Scan(ctx, ref)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrPostNotFound
 	}
@@ -208,7 +208,8 @@ func (s *Store) attachPosts(ctx context.Context, items []Comment) error {
 
 	var refs []PostRef
 	if err := s.db.NewRaw(
-		"SELECT id, type, title, slug, author_id FROM posts WHERE id IN (?)", bun.List(uniqueIDs(ids)),
+		"SELECT id, type, title, slug, author_id, status, visibility FROM posts WHERE id IN (?)",
+		bun.List(uniqueIDs(ids)),
 	).Scan(ctx, &refs); err != nil {
 		return fmt.Errorf("查询评论目标: %w", err)
 	}

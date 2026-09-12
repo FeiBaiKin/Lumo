@@ -1,7 +1,10 @@
 name: CI
 
-# 不再随推送/PR 自动触发：验证改在本机完成（Taskfile 的 check / test）。
-# 需要跑完整流水线时，在 Actions 页面手动 Run workflow。
+# 入口工作流：手动触发，随后调用可复用的 verify.yml。
+#
+# 作业定义在 verify.yml 里，与 Release 共用同一套——发布前的验证因此不可能
+# 比手动验证更宽松。需要恢复「推送与 PR 自动执行」时，在下面的 on 里加回
+# push / pull_request 即可，作业本身不用动。
 on:
   workflow_dispatch:
 
@@ -13,151 +16,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  GO_VERSION: "1.26.4"
-  NODE_VERSION: "24"
-  CGO_ENABLED: "0"
-
 jobs:
-  console:
-    name: Console（lint / typecheck / test / build）
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: console/package-lock.json
-
-      - name: 安装依赖
-        working-directory: console
-        run: npm ci
-
-      - name: Biome 检查
-        working-directory: console
-        run: npm run lint
-
-      - name: 类型检查
-        working-directory: console
-        run: npm run typecheck
-
-      - name: 单元测试
-        working-directory: console
-        run: npm run test
-
-      - name: 构建
-        working-directory: console
-        run: npm run build
-
-      # 供 build 作业复用，验证 go:embed 能嵌入真实产物。
-      - name: 上传 Console 产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: console-dist
-          path: internal/console/dist
-          retention-days: 1
-
-  lint:
-    name: Go lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: 校验 go.mod 已整理
-        run: |
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.13.2
-
-  test:
-    name: Go 测试
-    runs-on: ubuntu-latest
-    # 集成测试需要 PostgreSQL；agent.md §12 要求直连独立测试库。
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          # 库名必须含 test：集成测试的安全护栏会拒绝非测试库
-          POSTGRES_DB: lumo_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
-      # 库名含 test，与集成测试内的安全护栏一致（agent.md §13.2）
-      LUMO_TEST_DSN: postgres://postgres:postgres@127.0.0.1:5432/lumo_test?sslmode=disable
-      # -race 依赖 cgo，故在本作业覆盖全局的 CGO_ENABLED=0。
-      # 交付二进制仍是纯静态（见 build 与 cross-build 作业）。
-      CGO_ENABLED: "1"
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: 测试（含集成测试）
-        run: go test -tags nodynamic -race -coverprofile=coverage.out ./...
-
-  build:
-    name: 构建（含嵌入 Console）
-    runs-on: ubuntu-latest
-    needs: console
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: 取回 Console 产物
-        uses: actions/download-artifact@v4
-        with:
-          name: console-dist
-          path: internal/console/dist
-
-      - name: 构建
-        run: go build -tags nodynamic -trimpath -ldflags="-s -w" -o lumo ./cmd/lumo
-
-      - name: 冒烟检查
-        run: ./lumo version
-
-  cross-build:
-    name: 交叉编译检查
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        goos: [linux, windows, darwin]
-        goarch: [amd64, arm64]
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: 构建 ${{ matrix.goos }}/${{ matrix.goarch }}
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: go build -tags nodynamic -trimpath -o /dev/null ./cmd/lumo
+  verify:
+    uses: ./.github/workflows/verify.yml

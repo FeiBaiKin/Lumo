@@ -1,7 +1,7 @@
 import type { components } from "@/api/schema";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -281,7 +281,7 @@ vi.mock("@/api/client", () => ({
 }));
 
 // 必须在 mock 声明之后动态取用：静态 import 会被提升到 vi.mock 之前。
-const { App } = await import("@/app");
+const { appRoutes } = await import("@/app");
 const { AuthProvider } = await import("@/components/auth/auth-provider");
 const { ThemeProvider } = await import("@/components/theme/theme-provider");
 
@@ -289,14 +289,15 @@ function renderApp() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // 用数据路由而不是 MemoryRouter + <Routes>：应用本身跑在 createBrowserRouter
+  // 之下（useBlocker 需要它），测试环境要保持同一种路由形态。
+  const router = createMemoryRouter(appRoutes(), { initialEntries: ["/"] });
   return render(
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter initialEntries={["/"]}>
-          <AuthProvider>
-            <App />
-          </AuthProvider>
-        </MemoryRouter>
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>,
   );

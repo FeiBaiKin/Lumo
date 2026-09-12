@@ -2,6 +2,7 @@ package content_test
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -275,6 +276,117 @@ func TestPostsEndToEnd(t *testing.T) {
 		after := mustStatus(t, req(t, s, http.MethodGet, consolePrefix+"/posts/"+itoa(editorPostID)+"/revisions", "", editor), http.StatusOK)
 		if items, _ := after["items"].([]any); len(items) != 3 {
 			t.Errorf("恢复应记录新修订，实际 %d 条", len(items))
+		}
+	})
+}
+
+// TestDeletePermanentlyIsAtomic 是审查发现的竞态的回归测试：
+// 「读取并检查是否在回收站」与「DELETE」之间没有约束，另一请求在这期间恢复内容，
+// 原删除请求仍会执行，把刚恢复的内容连同修订、评论一起不可逆删除。
+//
+// 这里不复现真实的并发时序，而是直接构造「检查之后内容已被恢复」的状态：
+// 先 trash 再 restore，然后绕过处理器直接调用存储层的彻底删除。
+// 修复前它会把内容删掉，修复后条件不满足，返回 ErrNotTrashed。
+func TestDeletePermanentlyIsAtomic(t *testing.T) {
+	s, _ := newStack(t)
+	editor := s.Bearer(t, "editor-race", perm.RoleEditor)
+	store := content.NewStore(s.DB.DB, s.Users)
+
+	created := mustStatus(t, req(t, s, http.MethodPost, consolePrefix+"/posts",
+		`{"title":"恢复后不该被删除","raw":"正文","rawType":"markdown"}`, editor), http.StatusCreated)
+	postID := idOf(t, created)
+
+	mustStatus(t, req(t, s, http.MethodDelete, consolePrefix+"/posts/"+itoa(postID), "", editor), http.StatusNoContent)
+	mustStatus(t, req(t, s, http.MethodPost, consolePrefix+"/posts/"+itoa(postID)+"/restore", "", editor), http.StatusOK)
+
+	err := store.DeletePermanently(t.Context(), content.TypePost, postID)
+	if !errors.Is(err, content.ErrNotTrashed) {
+		t.Fatalf("已恢复的内容不应被彻底删除，err = %v", err)
+	}
+	// 内容必须还在，且状态是恢复后的草稿。
+	body := mustStatus(t, req(t, s, http.MethodGet, consolePrefix+"/posts/"+itoa(postID), "", editor), http.StatusOK)
+	if body["status"] != "draft" {
+		t.Errorf("内容状态 = %v，期望 draft", body["status"])
+	}
+
+	// 再次移入回收站后，彻底删除应当成功——修复不能把正常路径一起堵死。
+	mustStatus(t, req(t, s, http.MethodDelete, consolePrefix+"/posts/"+itoa(postID), "", editor), http.StatusNoContent)
+	mustStatus(t, req(t, s, http.MethodDelete, consolePrefix+"/posts/"+itoa(postID)+"/permanent", "", editor), http.StatusNoContent)
+	mustStatus(t, req(t, s, http.MethodGet, consolePrefix+"/posts/"+itoa(postID), "", editor), http.StatusNotFound)
+}
+
+// TestBodySanitizationIsPermissionGated 是审查发现的同源脚本执行问题的回归测试：
+// 正文不做净化、且由主题原样输出，而前台与 Console 同源 —— 攻击者只要拥有
+// 内容写入与发布权限（例如 editor），发一篇带脚本的文章，管理员一访问就以
+// 管理员的身份执行了那段脚本，编辑与管理员之间的隔离随之消失。
+//
+// 修复方式：content:unsafe_html 是独立的高危权限，只授予管理员及以上；
+// 没有它的作者，正文（渲染产物 content）在保存时按允许列表净化。
+// raw 原稿不动，作者在编辑器里看到的仍是自己写的内容。
+func TestBodySanitizationIsPermissionGated(t *testing.T) {
+	s, _ := newStack(t)
+	editor := s.Bearer(t, "editor-san", perm.RoleEditor)
+	admin := s.Bearer(t, "admin-san", perm.RoleAdmin)
+
+	const rawWithScript = `<p>正文</p><script>alert(1)</script><img src="/uploads/a.png" onerror="alert(2)">`
+
+	create := func(authz, title string) map[string]any {
+		t.Helper()
+		return mustStatus(t, req(t, s, http.MethodPost, consolePrefix+"/posts",
+			`{"title":"`+title+`","rawType":"html","raw":`+strconv.Quote(rawWithScript)+`}`, authz),
+			http.StatusCreated)
+	}
+
+	t.Run("没有高危权限的作者：正文被净化、原稿保留", func(t *testing.T) {
+		body := create(editor, "编辑的文章")
+		rendered, _ := body["content"].(string)
+		if strings.Contains(strings.ToLower(rendered), "<script") || strings.Contains(rendered, "alert(1)") {
+			t.Errorf("渲染产物里不应留下脚本：%s", rendered)
+		}
+		if strings.Contains(rendered, "onerror") {
+			t.Errorf("渲染产物里不应留下事件属性：%s", rendered)
+		}
+		if !strings.Contains(rendered, "正文") {
+			t.Errorf("正常内容应保留：%s", rendered)
+		}
+		// 原稿不动：编辑器往返不该丢东西，作者也得看得见自己写了什么。
+		if raw, _ := body["raw"].(string); raw != rawWithScript {
+			t.Errorf("raw 原稿应原样保留，实际 %s", raw)
+		}
+	})
+
+	t.Run("持有高危权限的管理员：正文原样输出", func(t *testing.T) {
+		body := create(admin, "管理员的文章")
+		rendered, _ := body["content"].(string)
+		if !strings.Contains(rendered, "<script>alert(1)</script>") {
+			t.Errorf("管理员应能保留脚本（iframe 嵌入与自定义块依赖它）：%s", rendered)
+		}
+	})
+
+	t.Run("恢复修订时按当前调用者的权限重新净化", func(t *testing.T) {
+		// 编辑者自己开一篇文章，再由管理员（有 write_any）写入含脚本的正文，
+		// 于是修订历史里留下了一份未净化的快照。
+		editorPost := create(editor, "编辑者的文章")
+		editorPostID := idOf(t, editorPost)
+		mustStatus(t, req(t, s, http.MethodPut, consolePrefix+"/posts/"+itoa(editorPostID),
+			`{"title":"编辑者的文章","rawType":"html","raw":`+strconv.Quote(rawWithScript)+`}`, admin),
+			http.StatusOK)
+
+		revs := mustStatus(t, req(t, s, http.MethodGet,
+			consolePrefix+"/posts/"+itoa(editorPostID)+"/revisions", "", admin), http.StatusOK)
+		items, _ := revs["items"].([]any)
+		if len(items) == 0 {
+			t.Fatal("应有至少一个修订")
+		}
+		riskyRevisionID := idOf(t, items[0].(map[string]any))
+
+		// 恢复的是历史内容，但权限判定必须用**当前调用者**的：
+		// 否则「先让有权限的人写进去、再由编辑恢复」就是一条洗权限的路径。
+		restored := mustStatus(t, req(t, s, http.MethodPost,
+			consolePrefix+"/posts/"+itoa(editorPostID)+"/revisions/"+itoa(riskyRevisionID)+"/restore",
+			"", editor), http.StatusOK)
+		if restoredHTML, _ := restored["content"].(string); strings.Contains(restoredHTML, "alert(1)") {
+			t.Errorf("编辑者恢复含脚本的修订后必须再次净化：%s", restoredHTML)
 		}
 	})
 }

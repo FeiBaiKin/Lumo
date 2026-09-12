@@ -2,6 +2,7 @@ package testsupport
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -109,13 +110,19 @@ func (s *Stack) Bearer(t *testing.T, username, role string) string {
 	user, err := s.Users.CreateUser(ctx, &auth.CreateUserParams{
 		Username: username,
 		Email:    username + "@example.com",
-		Password: "test-password-123",
+		Password: Password,
 		Roles:    []string{role},
 	})
 	if err != nil {
 		t.Fatalf("创建用户 %s 失败: %v", username, err)
 	}
-	issued, err := s.Tokens.Create(ctx, &auth.CreateTokenParams{UserID: user.ID, Name: "test"})
+	// scope 必须显式给出：空 scopes 表示「没有任何权限」，
+	// 这里按账号当前权限展开，等价于「全权限令牌」。
+	issued, err := s.Tokens.Create(ctx, &auth.CreateTokenParams{
+		UserID: user.ID,
+		Name:   "test",
+		Scopes: user.Permissions().List(),
+	})
 	if err != nil {
 		t.Fatalf("签发令牌失败: %v", err)
 	}
@@ -132,6 +139,10 @@ type Request struct {
 	ContentType string
 	// Auth 非空时写入 Authorization 头。
 	Auth string
+	// Cookies 随请求发送，供需要会话身份的场景使用（CSRF、已登录访客等）。
+	Cookies []*http.Cookie
+	// Headers 是额外的请求头。
+	Headers map[string]string
 }
 
 // Do 发起请求并返回记录器。
@@ -150,10 +161,46 @@ func (s *Stack) Do(t *testing.T, r *Request) *httptest.ResponseRecorder {
 		}
 		req.Header.Set("Content-Type", contentType)
 	}
+	for _, cookie := range r.Cookies {
+		req.AddCookie(cookie)
+	}
+	for name, value := range r.Headers {
+		req.Header.Set(name, value)
+	}
 	if r.Auth != "" {
 		req.Header.Set("Authorization", r.Auth)
 	}
 	rec := httptest.NewRecorder()
 	s.Root.ServeHTTP(rec, req)
 	return rec
+}
+
+// Password 是测试账号统一使用的口令，与 Bearer 创建用户时一致。
+const Password = "test-password-123"
+
+// Session 以给定账号登录，返回会话 Cookie 与 CSRF 令牌。
+//
+// 供「已登录访客」一类场景使用：Public 平面的写请求要过 CSRF 双提交，
+// 光有 Cookie 会被 403 挡下。
+func (s *Stack) Session(t *testing.T, username string) (cookies []*http.Cookie, csrfToken string) {
+	t.Helper()
+
+	rec := s.Do(t, &Request{
+		Method: http.MethodPost,
+		Path:   "/api/v1/console/auth/login",
+		Body:   `{"login":"` + username + `","password":"` + Password + `"}`,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("登录 %s 失败: %d %s", username, rec.Code, rec.Body.String())
+	}
+	var body struct {
+		CSRFToken string `json:"csrfToken"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("登录响应不是合法 JSON: %v", err)
+	}
+	if body.CSRFToken == "" {
+		t.Fatal("登录响应缺少 csrfToken")
+	}
+	return rec.Result().Cookies(), body.CSRFToken
 }

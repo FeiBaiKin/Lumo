@@ -21,16 +21,17 @@ func TestApplyEnv(t *testing.T) {
 	t.Parallel()
 
 	env := map[string]string{
-		"LUMO_ADDR":                       ":9000",
-		"LUMO_LOG_LEVEL":                  "debug",
-		"LUMO_LOG_FORMAT":                 "json",
-		"LUMO_DATA_DIR":                   "/srv/lumo",
-		"LUMO_DATABASE_DSN":               "postgres://u:p@h:5432/db",
-		"LUMO_DATABASE_MAX_OPEN_CONNS":    "50",
-		"LUMO_DATABASE_CONN_MAX_LIFETIME": "30m",
-		"LUMO_DATABASE_AUTO_MIGRATE":      "false",
-		"LUMO_MAX_BODY_SIZE":              "2097152",
-		"LUMO_MAX_UPLOAD_SIZE":            "134217728",
+		"LUMO_ADDR":                            ":9000",
+		"LUMO_LOG_LEVEL":                       "debug",
+		"LUMO_LOG_FORMAT":                      "json",
+		"LUMO_DATA_DIR":                        "/srv/lumo",
+		"LUMO_DATABASE_DSN":                    "postgres://u:p@h:5432/db",
+		"LUMO_DATABASE_MAX_OPEN_CONNS":         "50",
+		"LUMO_DATABASE_CONN_MAX_LIFETIME":      "30m",
+		"LUMO_DATABASE_MIGRATION_LOCK_TIMEOUT": "90s",
+		"LUMO_DATABASE_AUTO_MIGRATE":           "false",
+		"LUMO_MAX_BODY_SIZE":                   "2097152",
+		"LUMO_MAX_UPLOAD_SIZE":                 "134217728",
 	}
 
 	cfg := Default()
@@ -52,6 +53,9 @@ func TestApplyEnv(t *testing.T) {
 	}
 	if cfg.Database.ConnMaxLifetime != 30*time.Minute {
 		t.Errorf("ConnMaxLifetime = %v，期望 30m", cfg.Database.ConnMaxLifetime)
+	}
+	if cfg.Database.MigrationLockTimeout != 90*time.Second {
+		t.Errorf("MigrationLockTimeout = %v，期望 90s", cfg.Database.MigrationLockTimeout)
 	}
 	if cfg.Database.AutoMigrate {
 		t.Error("AutoMigrate 应被覆盖为 false")
@@ -102,6 +106,7 @@ func TestValidateCatchesBadConfig(t *testing.T) {
 		{"非法日志格式", func(c *Config) { c.Log.Format = "xml" }, "log.format"},
 		{"空工作目录", func(c *Config) { c.DataDir = "" }, "dataDir"},
 		{"连接数非正", func(c *Config) { c.Database.MaxOpenConns = 0 }, "maxOpenConns"},
+		{"迁移锁期限非正", func(c *Config) { c.Database.MigrationLockTimeout = 0 }, "migrationLockTimeout"},
 		{"空闲连接超过上限", func(c *Config) {
 			c.Database.MaxOpenConns = 5
 			c.Database.MaxIdleConns = 10

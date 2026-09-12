@@ -224,6 +224,140 @@ func TestCommentEndToEnd(t *testing.T) {
 	})
 }
 
+// TestCommentPublicVisibilityEndToEnd 是审查发现的泄漏点的回归测试：
+// 文章撤回或转私密后，正文已经 404，评论接口却仍然 200 并可匿名写入。
+func TestCommentPublicVisibilityEndToEnd(t *testing.T) {
+	s := newStack(t)
+	editor := s.Bearer(t, "editor-vis", perm.RoleEditor)
+	postID := createPost(t, s, editor, "会被下线的文章")
+	postPath := publicPrefix + "/posts/" + strconv.FormatInt(postID, 10) + "/comments"
+	consolePath := consolePrefix + "/posts/" + strconv.FormatInt(postID, 10)
+
+	// 先造一条已通过的评论，确认基线是可见的。
+	created := mustStatus(t, req(t, s, http.MethodPost, postPath,
+		`{"content":"一条会留下的评论","name":"访客","email":"v@example.com"}`, ""), http.StatusCreated)
+	commentID := strconv.FormatInt(num(t, created["comment"].(map[string]any), "id"), 10)
+	mustStatus(t, req(t, s, http.MethodPost, consolePrefix+"/comments/"+commentID+"/approve", `{}`, editor), http.StatusOK)
+	if body := mustStatus(t, req(t, s, http.MethodGet, postPath, "", ""), http.StatusOK); body["total"] != float64(1) {
+		t.Fatalf("基线：已发布文章的评论应可见，total = %v", body["total"])
+	}
+
+	t.Run("撤回为草稿后评论不可读也不可写", func(t *testing.T) {
+		mustStatus(t, req(t, s, http.MethodPost, consolePath+"/unpublish", `{}`, editor), http.StatusOK)
+		mustStatus(t, req(t, s, http.MethodGet, postPath, "", ""), http.StatusNotFound)
+		mustStatus(t, req(t, s, http.MethodPost, postPath,
+			`{"content":"下线后还能写进去吗","name":"访客","email":"v@example.com"}`, ""), http.StatusNotFound)
+
+		// 真正的伤害是「写进去了」：确认没有新增行。
+		list := mustStatus(t, req(t, s, http.MethodGet, consolePrefix+"/comments?postId="+strconv.FormatInt(postID, 10), "", editor), http.StatusOK)
+		if list["total"] != float64(1) {
+			t.Errorf("下线后不应接受新评论，评论总数 = %v", list["total"])
+		}
+	})
+
+	t.Run("转为私密后同样不可读不可写", func(t *testing.T) {
+		// PUT 是整体替换，必须带上标题等必填字段。
+		raw, _ := json.Marshal(map[string]any{
+			"title": "会被下线的文章", "rawType": "markdown", "raw": "正文", "visibility": "private",
+		})
+		mustStatus(t, req(t, s, http.MethodPut, consolePath, string(raw), editor), http.StatusOK)
+		mustStatus(t, req(t, s, http.MethodPost, consolePath+"/publish", `{}`, editor), http.StatusOK)
+
+		mustStatus(t, req(t, s, http.MethodGet, postPath, "", ""), http.StatusNotFound)
+		mustStatus(t, req(t, s, http.MethodPost, postPath,
+			`{"content":"私密之后还能写吗","name":"访客","email":"v@example.com"}`, ""), http.StatusNotFound)
+	})
+
+	t.Run("移入回收站后不可读", func(t *testing.T) {
+		mustStatus(t, req(t, s, http.MethodDelete, consolePath, "", editor), http.StatusNoContent)
+		mustStatus(t, req(t, s, http.MethodGet, postPath, "", ""), http.StatusNotFound)
+	})
+
+	t.Run("Console 仍能管理非公开内容下的评论", func(t *testing.T) {
+		// 前台收紧不该影响后台：回收站里的评论依然可查、可删。
+		body := mustStatus(t, req(t, s, http.MethodGet,
+			consolePrefix+"/comments?postId="+strconv.FormatInt(postID, 10), "", editor), http.StatusOK)
+		if body["total"] != float64(1) {
+			t.Fatalf("后台应仍能看到该评论，total = %v", body["total"])
+		}
+		mustStatus(t, req(t, s, http.MethodDelete, consolePrefix+"/comments/"+commentID, "", editor), http.StatusNoContent)
+	})
+}
+
+// TestCommentMaxLengthEndToEnd 验证「评论长度上限」设置真正生效：
+// 过去服务端只执行固定的 10000 字硬上限，站点设置的 maxLength 形同虚设。
+func TestCommentMaxLengthEndToEnd(t *testing.T) {
+	s := newStack(t)
+	editor := s.Bearer(t, "editor-len", perm.RoleEditor)
+	admin := s.Bearer(t, "admin-len", perm.RoleAdmin)
+	postID := createPost(t, s, editor, "长度上限测试")
+	postPath := publicPrefix + "/posts/" + strconv.FormatInt(postID, 10) + "/comments"
+
+	// 站点设置：上限压到 100 字。settings:manage 只有 admin 及以上持有。
+	raw, _ := json.Marshal(map[string]any{"enabled": true, "maxLength": 100})
+	rec := s.Do(t, &testsupport.Request{
+		Method: http.MethodPut, Path: consolePrefix + "/settings/comment", Body: string(raw), Auth: admin,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("更新评论设置失败 %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// 按字符（而非字节）计：100 个汉字合法，101 个必须被拒。
+	ok := strings.Repeat("字", 100)
+	mustStatus(t, req(t, s, http.MethodPost, postPath,
+		`{"content":"`+ok+`","name":"访客","email":"l@example.com"}`, ""), http.StatusCreated)
+
+	tooLong := strings.Repeat("字", 101)
+	mustStatus(t, req(t, s, http.MethodPost, postPath,
+		`{"content":"`+tooLong+`","name":"访客","email":"l@example.com"}`, ""), http.StatusBadRequest)
+}
+
+// TestCommentPublicWriteRequiresCSRF 是审查发现的边界的回归测试：
+// Public 平面会解析会话身份，但 CSRF 只挂在 Console 与 Extension 上，
+// 于是同站点跨源的页面可以借受害者会话写评论（受害者是作者时评论还会自动过审）。
+func TestCommentPublicWriteRequiresCSRF(t *testing.T) {
+	s := newStack(t)
+	editor := s.Bearer(t, "editor-csrf", perm.RoleEditor)
+	postID := createPost(t, s, editor, "CSRF 测试文章")
+	postPath := publicPrefix + "/posts/" + strconv.FormatInt(postID, 10) + "/comments"
+
+	cookies, csrf := s.Session(t, "editor-csrf")
+	body := `{"content":"用会话写的评论","name":"编辑器"}`
+
+	t.Run("匿名访客不带 Cookie 时不受 CSRF 约束", func(t *testing.T) {
+		mustStatus(t, req(t, s, http.MethodPost, postPath,
+			`{"content":"匿名访客的评论","name":"访客甲","email":"g@example.com"}`, ""), http.StatusCreated)
+	})
+
+	t.Run("带会话但缺 CSRF 头返回 403", func(t *testing.T) {
+		rec := s.Do(t, &testsupport.Request{
+			Method: http.MethodPost, Path: postPath, Body: body, Cookies: cookies,
+		})
+		mustStatus(t, rec, http.StatusForbidden)
+
+		// 头不匹配同样拒绝。
+		rec = s.Do(t, &testsupport.Request{
+			Method: http.MethodPost, Path: postPath, Body: body, Cookies: cookies,
+			Headers: map[string]string{"X-CSRF-Token": "not-the-token"},
+		})
+		mustStatus(t, rec, http.StatusForbidden)
+	})
+
+	t.Run("带上正确的 CSRF 头即可发表", func(t *testing.T) {
+		rec := s.Do(t, &testsupport.Request{
+			Method: http.MethodPost, Path: postPath, Body: body, Cookies: cookies,
+			Headers: map[string]string{"X-CSRF-Token": csrf},
+		})
+		created := mustStatus(t, rec, http.StatusCreated)
+		// 这里只断言「请求被受理」：状态可能是 approved，也可能因同一 IP 的
+		// 发表间隔限制被判为 spam，那是反垃圾的职责，与本用例无关。
+		item, _ := created["comment"].(map[string]any)
+		if num(t, item, "id") == 0 {
+			t.Errorf("应写入评论：%v", created)
+		}
+	})
+}
+
 // TestCommentSettingsPublic 验证前台能读到评论的公开设置。
 func TestCommentSettingsPublic(t *testing.T) {
 	s := newStack(t)

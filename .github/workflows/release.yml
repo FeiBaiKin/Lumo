@@ -5,6 +5,9 @@
 #   2. 手动运行（workflow_dispatch）—— 默认 snapshot 模式，**只构建不发布**，
 #      用来在真有 Docker 的机器上验证镜像能否构建。本项目的日常开发机没装 Docker，
 #      这是验证 deploy/Dockerfile.goreleaser 的主要途径。
+#
+# 两种方式都必须先通过 verify 作业（与 CI 完全相同的 lint / 测试 / 构建），
+# 且验证的是**同一次提交**：只要测试不过，就不存在推送 latest 的路径。
 name: Release
 
 on:
@@ -21,8 +24,20 @@ permissions:
   contents: write # 创建 Release 与上传归档
   packages: write # 推送 GHCR 镜像
 
+# 发布不并发：同一标签/分支同时跑两次会争抢 dist 与镜像 tag。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # 发布门禁：与手动 CI 调用同一个可复用工作流，因此「发布前验证」不可能比
+  # 「手动验证」更宽松。任一作业失败，release 作业不会开始。
+  verify:
+    name: 发布前验证
+    uses: ./.github/workflows/verify.yml
+
   release:
+    needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,8 +65,11 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
+      # 登录条件必须与「是否真的发布」完全一致：手动运行且 snapshot=false 时
+      # goreleaser 走的是正式发布路径，会推镜像，缺凭据就必然失败。
+      # 反过来 --snapshot 时不登录，也避免把令牌交给一次只做本地构建的运行。
       - name: 登录 GHCR
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.snapshot) }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io

@@ -24,6 +24,8 @@ var (
 	ErrSlugTaken = errors.New("slug 已被占用")
 	// ErrTermNotFound 表示引用的分类或标签不存在。
 	ErrTermNotFound = errors.New("分类或标签不存在")
+	// ErrNotTrashed 表示内容不在回收站，无法彻底删除。
+	ErrNotTrashed = errors.New("内容不在回收站")
 	// ErrInvalid 表示字段违反了数据库约束。
 	ErrInvalid = errors.New("字段不合法")
 )
@@ -199,12 +201,25 @@ func (s *Store) UpdateStatus(ctx context.Context, p *Post) error {
 }
 
 // DeletePermanently 彻底删除内容，关联与修订随外键级联消失。
+//
+// 删除条件里带上 status = 'trashed'，让「检查是否在回收站」与「删除」成为同一条语句：
+// 先读后删之间存在窗口，用户在这期间点了「恢复」，刚恢复的内容就会被永久删除，
+// 连同它的修订与评论一起不可逆地消失。条件不满足时返回 ErrNotTrashed。
 func (s *Store) DeletePermanently(ctx context.Context, typ Type, id int64) error {
-	res, err := s.db.NewDelete().Model((*Post)(nil)).Where("type = ? AND id = ?", typ, id).Exec(ctx)
+	res, err := s.db.NewDelete().Model((*Post)(nil)).
+		Where("type = ? AND id = ? AND status = ?", typ, id, StatusTrashed).
+		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("删除内容: %w", err)
 	}
-	return requireOneRow(res)
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil //nolint:nilerr // 驱动不支持计数时视为成功
+	}
+	if affected == 0 {
+		return ErrNotTrashed
+	}
+	return nil
 }
 
 // PublishDue 把计划时间已到的定时内容推进为已发布，返回推进条数。

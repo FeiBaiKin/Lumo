@@ -3,6 +3,7 @@ package comment
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -265,7 +266,7 @@ func (h *Handler) reply(ctx context.Context, in *commentInput) (*commentOutput, 
 		return nil, err
 	}
 
-	content, err := cleanContent(in.Body.Content)
+	content, err := cleanContent(in.Body.Content, 0) // 管理员回复只受硬上限约束
 	if err != nil {
 		return nil, err
 	}
@@ -318,9 +319,9 @@ func (h *Handler) canManage(ctx context.Context, c *Comment) bool {
 // ---------- Public 处理器 ----------
 
 func (h *Handler) publicList(ctx context.Context, in *postInput) (*treeOutput, error) {
-	post, err := h.store.PostRef(ctx, in.PostID)
+	post, err := h.publicPost(ctx, in.PostID)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, err
 	}
 	items, err := h.store.ListApproved(ctx, in.PostID)
 	if err != nil {
@@ -332,15 +333,32 @@ func (h *Handler) publicList(ctx context.Context, in *postInput) (*treeOutput, e
 	return out, nil
 }
 
+// publicPost 取内容摘要并执行**与正文前台一致的**可见性校验。
+//
+// 评论接口过去只检查内容是否存在，于是文章一旦撤回或转为私密：
+// 正文 404，评论列表却仍返回 200、评论也仍能被匿名写入——
+// 已下线内容的信息就这样从评论接口漏了出去。
+func (h *Handler) publicPost(ctx context.Context, id int64) (*PostRef, error) {
+	post, err := h.store.PostRef(ctx, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	if !post.PubliclyVisible() {
+		// 与正文一样用 404 而不是 403：不暴露该内容是否存在。
+		return nil, huma.Error404NotFound(ErrPostNotFound.Error())
+	}
+	return post, nil
+}
+
 func (h *Handler) publicCreate(ctx context.Context, in *createInput) (*createOutput, error) {
 	cfg := h.settings(ctx)
 	if !cfg.Enabled {
 		return nil, huma.Error403Forbidden("本站已关闭评论")
 	}
 
-	post, err := h.store.PostRef(ctx, in.PostID)
+	post, err := h.publicPost(ctx, in.PostID)
 	if err != nil {
-		return nil, mapError(err)
+		return nil, err
 	}
 
 	principal, authenticated := auth.FromContext(ctx)
@@ -348,7 +366,7 @@ func (h *Handler) publicCreate(ctx context.Context, in *createInput) (*createOut
 		return nil, huma.Error403Forbidden("本站仅允许已登录用户发表评论")
 	}
 
-	content, err := cleanContent(in.Body.Content)
+	content, err := cleanContent(in.Body.Content, cfg.MaxLength)
 	if err != nil {
 		return nil, err
 	}
@@ -504,17 +522,23 @@ func (h *Handler) checkParent(ctx context.Context, parentID, postID int64) (*Com
 
 // ---------- 工具 ----------
 
-// cleanContent 规范化评论正文：去首尾空白、拒绝空白内容、按配置限制长度。
+// cleanContent 规范化评论正文：去首尾空白、拒绝空白内容、按上限限制长度。
+//
+// limit 是站点设置里的有效上限（Unicode 字符数），非正数或超过硬上限时退回硬上限——
+// 设置本身已被表单声明约束在 1..10000，这里再兜一层，避免一条脏数据让评论功能全挂。
 //
 // 这里只做形态检查，转义交给 Render——两者分开，是为了让「存什么」与
 // 「怎么显示」各自独立可测。
-func cleanContent(content string) (string, error) {
+func cleanContent(content string, limit int) (string, error) {
 	content = strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n"))
 	if content == "" {
 		return "", huma.Error400BadRequest("评论内容不能为空白")
 	}
-	if utf8.RuneCountInString(content) > maxContentLength {
-		return "", huma.Error400BadRequest("评论内容过长")
+	if limit <= 0 || limit > maxContentLength {
+		limit = maxContentLength
+	}
+	if utf8.RuneCountInString(content) > limit {
+		return "", huma.Error400BadRequest(fmt.Sprintf("评论内容过长，最多 %d 字", limit))
 	}
 	return content, nil
 }

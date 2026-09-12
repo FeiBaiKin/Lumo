@@ -37,9 +37,10 @@ func (h *Handler) Register(consolePublic, console huma.API) {
 		Path:        "/auth/login",
 		Summary:     "登录",
 		Description: "校验用户名或邮箱与密码，签发服务端会话并经 Set-Cookie 下发。" +
-			"响应体中的 csrfToken 须在后续非安全方法请求的 X-CSRF-Token 头中回传。",
+			"响应体中的 csrfToken 须在后续非安全方法请求的 X-CSRF-Token 头中回传。" +
+			"失败的尝试按账号与客户端 IP 两个维度限流，超出后返回 429。",
 		Tags:   tagAuth,
-		Errors: []int{http.StatusUnauthorized, http.StatusForbidden},
+		Errors: []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests, http.StatusServiceUnavailable},
 	}, h.login)
 
 	huma.Register(console, huma.Operation{
@@ -86,11 +87,12 @@ func (h *Handler) Register(consolePublic, console huma.API) {
 		Method:      http.MethodPost,
 		Path:        "/auth/tokens",
 		Summary:     "创建访问令牌",
-		Description: "签发 Personal Access Token。明文只在本响应中返回一次；" +
-			"scope 与用户权限取交集，只能收窄不能放大。",
+		Description: "签发 Personal Access Token，**只能用会话登录调用**，且须重新输入当前账号密码。" +
+			"明文只在本响应中返回一次。scope 是你当前权限的子集，留空表示继承当前全部权限" +
+			"（服务端会展开为显式清单后落库）。",
 		Tags:          tagAuth,
 		DefaultStatus: http.StatusCreated,
-		Errors:        []int{http.StatusBadRequest},
+		Errors:        []int{http.StatusBadRequest, http.StatusForbidden},
 	}, h.createToken)
 
 	huma.Register(console, huma.Operation{
@@ -144,6 +146,12 @@ func (h *Handler) login(ctx context.Context, in *loginInput) (*loginOutput, erro
 			return nil, huma.Error401Unauthorized("用户名或密码错误")
 		case errors.Is(err, ErrAccountDisabled):
 			return nil, huma.Error403Forbidden("账号已被停用")
+		case errors.Is(err, ErrTooManyAttempts):
+			return nil, huma.Error429TooManyRequests(
+				"登录尝试过于频繁，请稍后再试。若忘记密码，可用 lumo admin reset-password 重置。")
+		case errors.Is(err, password.ErrBusy):
+			// 并发哈希额度用满：这是临时的容量问题，不是凭据问题。
+			return nil, huma.Error503ServiceUnavailable("服务器繁忙，请稍后重试")
 		default:
 			return nil, err
 		}
@@ -264,8 +272,11 @@ func (h *Handler) listTokens(ctx context.Context, _ *struct{}) (*tokenListOutput
 
 // tokenRequest 是创建令牌的入参。
 type tokenRequest struct {
-	Name      string     `json:"name" minLength:"1" maxLength:"128" doc:"令牌名称，仅用于区分"`
-	Scopes    []string   `json:"scopes,omitempty" doc:"权限串子集；留空表示继承用户全部权限"`
+	Name string `json:"name" minLength:"1" maxLength:"128" doc:"令牌名称，仅用于区分"`
+	// Password 是当前账号密码，用于二次确认。
+	Password string `json:"password" minLength:"1" maxLength:"128" doc:"当前账号密码，用于二次确认"`
+	// Scopes 留空表示继承调用者当前的全部权限。
+	Scopes    []string   `json:"scopes,omitempty" doc:"权限串子集；留空表示继承调用者当前的全部权限"`
 	ExpiresAt *time.Time `json:"expiresAt,omitempty" doc:"过期时间；留空表示永不过期"`
 }
 
@@ -283,10 +294,29 @@ type createTokenOutput struct {
 	Body issuedTokenView
 }
 
+// createToken 签发访问令牌。
+//
+// 只允许会话调用，并要求重新验证密码，理由是令牌比会话危险得多：
+// 它能脱离浏览器长期使用，且不受 CSRF 与会话撤销的约束。
+// 若放开给 PAT 调用，「只读令牌 → 派生一枚全权限令牌」就是一条完整的提权路径
+// （空 scopes 在过去恰好表示继承账号全部权限）。
 func (h *Handler) createToken(ctx context.Context, in *createTokenInput) (*createTokenOutput, error) {
 	principal := MustFromContext(ctx)
+	if principal.Method != MethodSession {
+		return nil, huma.Error403Forbidden("签发访问令牌必须用会话登录调用，不能用令牌调用")
+	}
+	if err := h.service.VerifyPassword(ctx, principal.UserID(), in.Body.Password); err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidCredentials):
+			return nil, huma.Error403Forbidden("密码错误，无法签发令牌")
+		case errors.Is(err, ErrNotFound):
+			return nil, huma.Error401Unauthorized("需要登录")
+		default:
+			return nil, err
+		}
+	}
 
-	scopes, err := parseScopes(in.Body.Scopes)
+	scopes, err := resolveScopes(in.Body.Scopes, principal.Permissions())
 	if err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
 	}
@@ -302,6 +332,15 @@ func (h *Handler) createToken(ctx context.Context, in *createTokenInput) (*creat
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// 签发长期凭据是安全审计必须留痕的事件。
+	if h.logger != nil {
+		h.logger.Info("签发访问令牌",
+			slog.Int64("userId", principal.UserID()),
+			slog.Int64("tokenId", issued.Token.ID),
+			slog.Int("scopes", len(issued.Token.Scopes)),
+		)
 	}
 
 	// 明文只在此刻返回一次，之后无法找回。

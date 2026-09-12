@@ -77,7 +77,10 @@ export function Button({
       // 不写 type 的 button 在 form 内默认是 submit —— 工具栏里的「取消」
       // 会意外提交表单。默认给 button，需要提交时显式写 type="submit"。
       type={asChild ? undefined : (type ?? "button")}
-      disabled={asChild ? undefined : (disabled ?? loading)}
+      // 两个条件都必须进 disabled：写成 `disabled ?? loading` 时，
+      // 调用方传 disabled={false} 就会让 loading 完全失效，
+      // 慢网下连点「保存」等于连发多个写请求。
+      disabled={asChild ? undefined : loading || disabled}
       aria-busy={loading || undefined}
       {...props}
     >

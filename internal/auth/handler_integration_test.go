@@ -213,7 +213,7 @@ func TestSessionFlowEndToEnd(t *testing.T) {
 				headers[auth.CSRFHeaderName] = header
 			}
 			rec := e.do(t, root, &call{method: http.MethodPost, path: "/auth/tokens",
-				body: `{"name":"x"}`, cookies: cookies, headers: headers})
+				body: `{"name":"x","password":"` + testPassword + `"}`, cookies: cookies, headers: headers})
 			if rec.Code != http.StatusForbidden {
 				t.Errorf("CSRF 头 %q 时状态码 = %d，期望 403", header, rec.Code)
 			}
@@ -224,7 +224,7 @@ func TestSessionFlowEndToEnd(t *testing.T) {
 	var tokenID float64
 	t.Run("携带 CSRF 头可创建令牌且明文只返回一次", func(t *testing.T) {
 		rec := e.do(t, root, &call{method: http.MethodPost, path: "/auth/tokens",
-			body: `{"name":"ci","scopes":["posts:write"]}`, cookies: cookies,
+			body: `{"name":"ci","password":"` + testPassword + `","scopes":["posts:write"]}`, cookies: cookies,
 			headers: map[string]string{auth.CSRFHeaderName: csrf}})
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("状态码 = %d：%s", rec.Code, rec.Body.String())
@@ -251,13 +251,13 @@ func TestSessionFlowEndToEnd(t *testing.T) {
 
 	t.Run("未知 scope 返回 400、未知字段返回 422", func(t *testing.T) {
 		bad := e.do(t, root, &call{method: http.MethodPost, path: "/auth/tokens",
-			body: `{"name":"x","scopes":["posts:fly"]}`, cookies: cookies,
+			body: `{"name":"x","password":"` + testPassword + `","scopes":["posts:fly"]}`, cookies: cookies,
 			headers: map[string]string{auth.CSRFHeaderName: csrf}})
 		if bad.Code != http.StatusBadRequest {
 			t.Errorf("未知 scope 状态码 = %d，期望 400", bad.Code)
 		}
 		unknown := e.do(t, root, &call{method: http.MethodPost, path: "/auth/tokens",
-			body: `{"name":"x","bogus":true}`, cookies: cookies,
+			body: `{"name":"x","password":"` + testPassword + `","bogus":true}`, cookies: cookies,
 			headers: map[string]string{auth.CSRFHeaderName: csrf}})
 		if unknown.Code != http.StatusUnprocessableEntity {
 			t.Errorf("未知字段状态码 = %d，期望 422", unknown.Code)
@@ -314,6 +314,91 @@ func TestSessionFlowEndToEnd(t *testing.T) {
 		after := e.do(t, root, &call{method: http.MethodGet, path: "/auth/me", cookies: cookies})
 		if after.Code != http.StatusUnauthorized {
 			t.Errorf("登出后旧会话仍可用：状态码 = %d", after.Code)
+		}
+	})
+}
+
+// TestTokenIssuanceIsNotPrivilegeEscalation 是审查发现的提权路径的回归测试：
+// 一枚只有 posts:write 的受限 PAT 曾经可以调用签发接口，创建一枚空 scopes 的新令牌，
+// 而空 scopes 在当时被解释为「继承账号全部权限」——于是受限令牌一步变成全权限令牌。
+func TestTokenIssuanceIsNotPrivilegeEscalation(t *testing.T) {
+	e := newEnv(t)
+	root := newRouter(t, e)
+	user := e.createUser(t, "dave", perm.RoleAuthor)
+	cookies, csrf := e.login(t, root, "dave", testPassword)
+	sessionHeaders := map[string]string{auth.CSRFHeaderName: csrf}
+
+	// 只有 posts:write 的受限令牌。
+	restricted, err := e.tokens.Create(t.Context(), &auth.CreateTokenParams{
+		UserID: user.ID,
+		Name:   "restricted",
+		Scopes: []perm.Permission{perm.PostsWrite},
+	})
+	if err != nil {
+		t.Fatalf("签发受限令牌失败: %v", err)
+	}
+	bearer := map[string]string{"Authorization": "Bearer " + restricted.Plaintext}
+
+	t.Run("受限 PAT 不能签发新令牌", func(t *testing.T) {
+		rec := e.do(t, root, &call{method: http.MethodPost, path: "/auth/tokens",
+			body: `{"name":"escalated","password":"` + testPassword + `"}`, headers: bearer})
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("状态码 = %d，期望 403：%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("空 scopes 的令牌没有任何权限", func(t *testing.T) {
+		// 绕过处理器直接落库，覆盖「历史数据或直接被改空」的情形：
+		// 空 scopes 必须按无权限解释，而不是账号全权限。
+		empty, createErr := e.tokens.Create(t.Context(), &auth.CreateTokenParams{
+			UserID: user.ID,
+			Name:   "legacy-empty",
+		})
+		if createErr != nil {
+			t.Fatalf("签发空 scopes 令牌失败: %v", createErr)
+		}
+		rec := e.do(t, root, &call{method: http.MethodGet, path: "/auth/me",
+			headers: map[string]string{"Authorization": "Bearer " + empty.Plaintext}})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d：%s", rec.Code, rec.Body.String())
+		}
+		if perms, _ := decode(t, rec)["permissions"].([]any); len(perms) != 0 {
+			t.Errorf("空 scopes 令牌的有效权限 = %v，期望为空", perms)
+		}
+	})
+
+	t.Run("签发令牌须重新校验密码", func(t *testing.T) {
+		rec := e.do(t, root, &call{method: http.MethodPost, path: "/auth/tokens",
+			body: `{"name":"x","password":"wrong-password"}`, cookies: cookies, headers: sessionHeaders})
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("密码错误时状态码 = %d，期望 403：%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("scope 不得超出账号权限", func(t *testing.T) {
+		rec := e.do(t, root, &call{method: http.MethodPost, path: "/auth/tokens",
+			body:    `{"name":"x","password":"` + testPassword + `","scopes":["users:manage"]}`,
+			cookies: cookies, headers: sessionHeaders})
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("越权 scope 状态码 = %d，期望 400：%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("省略 scopes 时展开为账号权限的显式清单", func(t *testing.T) {
+		rec := e.do(t, root, &call{method: http.MethodPost, path: "/auth/tokens",
+			body: `{"name":"full","password":"` + testPassword + `"}`, cookies: cookies, headers: sessionHeaders})
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("状态码 = %d：%s", rec.Code, rec.Body.String())
+		}
+		body := decode(t, rec)
+		token, _ := body["token"].(map[string]any)
+		scopes, _ := token["scopes"].([]any)
+		if len(scopes) != len(perm.BuiltinRoles[perm.RoleAuthor]) {
+			t.Errorf("落库 scope = %v，期望与 author 的权限清单等长", scopes)
+		}
+		// 空 scopes 不再落库：这条不变量保证鉴权侧「空即无权限」永远安全。
+		if len(scopes) == 0 {
+			t.Error("scope 不应以空数组落库")
 		}
 	})
 }
