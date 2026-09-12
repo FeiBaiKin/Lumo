@@ -2,7 +2,6 @@ package theme
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"sort"
@@ -80,17 +79,12 @@ func compileSettings(themeName string, decl *SettingsDecl) (*compiledSettings, e
 	out := &compiledSettings{byName: make(map[string]*compiledGroup, len(groups))}
 	for i := range groups {
 		g := groups[i]
-		validator, err := settings.NewValidator(themeName+"."+g.Name, g.Schema)
+		validator, err := settings.NewValidator(themeName+"."+g.Name, g.Form)
 		if err != nil {
 			return nil, fmt.Errorf("%w：%w", ErrInvalidPackage, err)
 		}
 
-		defaults := map[string]any{}
-		if len(g.Defaults) > 0 {
-			if err := json.Unmarshal(g.Defaults, &defaults); err != nil {
-				return nil, fmt.Errorf("%w：分组 %q 的 defaults 不是对象", ErrInvalidPackage, g.Name)
-			}
-		}
+		defaults := validator.DefaultValues()
 		// 缺省值必须自洽：主题作者把 defaults 写得不符合自己的 schema 时，
 		// 站长打开设置页会看到一堆无法保存的初始值。
 		if err := validator.Validate(defaults); err != nil {

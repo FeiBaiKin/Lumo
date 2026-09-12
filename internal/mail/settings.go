@@ -1,12 +1,12 @@
 package mail
 
 import (
-	"encoding/json"
 	"net/mail"
 	"os"
 	"strings"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/form"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 )
@@ -47,36 +47,41 @@ func Password() string {
 	return os.Getenv(EnvSMTPPassword)
 }
 
-// mailSchema 是 mail 分组的表单 Schema（agent.md §5）。
-const mailSchema = `{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "enabled": {"type": "boolean", "title": "启用邮件发送",
-                "description": "关闭时评论通知等邮件不会发出，也不会重试"},
-    "host": {"type": "string", "title": "SMTP 服务器", "maxLength": 256},
-    "port": {"type": "integer", "title": "端口", "minimum": 1, "maximum": 65535},
-    "username": {"type": "string", "title": "用户名", "maxLength": 256,
-                 "description": "留空表示服务器不需要认证；口令请设环境变量 LUMO_SMTP_PASSWORD"},
-    "encryption": {"type": "string", "title": "加密方式", "enum": ["none", "starttls", "tls"], "x-widget": "select",
-                   "description": "starttls 对应 587，tls 对应 465"},
-    "fromAddress": {"type": "string", "title": "发件地址", "maxLength": 256},
-    "fromName": {"type": "string", "title": "发件人名称", "maxLength": 128}
-  },
-  "required": ["enabled", "host", "port", "encryption"]
-}`
+// mailForm 是 mail 分组的表单声明（agent.md §5）。
+//
+// 未启用发信时，SMTP 服务器与发件人两段整段不出现——此前它们一律摊在页面上，
+// 一个只想关掉通知的站长仍要面对七个字段。
+var mailForm = form.New(
+	form.NewSection("发信",
+		form.Bool("enabled").Label("启用邮件发送").Default(false).
+			Help("关闭时评论通知等邮件不会发出，也不会重试"),
+	).Describe("口令只从环境变量 "+EnvSMTPPassword+" 读取，不保存在这里"),
 
-// mailDefaults 是 mail 分组的缺省值。
-const mailDefaults = `{
-  "enabled": false,
-  "host": "",
-  "port": 587,
-  "username": "",
-  "encryption": "starttls",
-  "fromAddress": "",
-  "fromName": "Lumo"
-}`
+	form.NewSection("SMTP 服务器",
+		form.Text("host").Label("SMTP 服务器").Required().MaxLen(256).Default("").
+			ShowIf(form.Eq("enabled", true)),
+		form.Int("port").Label("端口").Min(1).Max(65535).Default(587).
+			ShowIf(form.Eq("enabled", true)),
+		form.Text("username").Label("用户名").MaxLen(256).Default("").
+			ShowIf(form.Eq("enabled", true)).
+			Help("留空表示服务器不需要认证；口令请设环境变量 "+EnvSMTPPassword),
+		form.Select("encryption",
+			form.Opt(EncryptionNone, "不加密"),
+			form.Opt(EncryptionStartTLS, "STARTTLS"),
+			form.Opt(EncryptionTLS, "TLS"),
+		).Label("加密方式").Default(EncryptionStartTLS).
+			ShowIf(form.Eq("enabled", true)).
+			Help("STARTTLS 对应 587 端口，TLS 对应 465。"+
+				"STARTTLS 是强制升级而非机会性加密——服务器不支持时直接报错，不会悄悄退回明文"),
+	),
+
+	form.NewSection("发件人",
+		form.Text("fromAddress").Label("发件地址").Required().MaxLen(256).Default("").
+			ShowIf(form.Eq("enabled", true)),
+		form.Text("fromName").Label("发件人名称").MaxLen(128).Default("Lumo").
+			ShowIf(form.Eq("enabled", true)),
+	),
+).Named(GroupMail)
 
 // group 返回 mail 分组的声明。
 func group() app.SettingGroup {
@@ -85,27 +90,20 @@ func group() app.SettingGroup {
 		Label:       "邮件发送",
 		Description: "SMTP 发信配置。口令只从环境变量 " + EnvSMTPPassword + " 读取，不保存在此处。",
 		Order:       30,
-		Schema:      json.RawMessage(mailSchema),
-		Defaults:    json.RawMessage(mailDefaults),
+		Form:        mailForm,
 		Check:       check,
 	}
 }
 
-// check 做 Schema 表达不了的校验：启用时服务器与发件地址必填且地址须合法。
+// check 做 Schema 表达不了的校验：发件地址须是合法的邮件地址。
+//
+// 「启用时服务器与发件地址必填」不在这里——它是那两个字段的 Required + ShowIf，
+// 界面与校验读的是同一句话。
 func check(values map[string]any) error {
 	var details []httpx.ErrorDetail
-	enabled, _ := values["enabled"].(bool)
 
 	from, _ := values["fromAddress"].(string)
 	from = strings.TrimSpace(from)
-	if enabled {
-		if host, _ := values["host"].(string); strings.TrimSpace(host) == "" {
-			details = append(details, httpx.ErrorDetail{Location: "body.host", Message: "启用邮件发送时必填"})
-		}
-		if from == "" {
-			details = append(details, httpx.ErrorDetail{Location: "body.fromAddress", Message: "启用邮件发送时必填"})
-		}
-	}
 	if from != "" {
 		if _, err := mail.ParseAddress(from); err != nil {
 			details = append(details, httpx.ErrorDetail{Location: "body.fromAddress", Message: "不是合法的邮件地址"})

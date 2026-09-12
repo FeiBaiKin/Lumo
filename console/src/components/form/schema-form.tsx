@@ -9,7 +9,9 @@ import {
   type FormValues,
   type GroupSchema,
   initialValues,
+  isVisible,
   labelFor,
+  sectionsOf,
   validateGroup,
 } from "@/components/form/schema";
 import { Alert } from "@/components/ui/alert";
@@ -71,10 +73,12 @@ export function SchemaForm({
   isEqual,
   className,
 }: SchemaFormProps) {
-  const fields = useMemo(
-    () => Object.entries(schema.properties ?? {}),
-    [schema],
-  );
+  /*
+   * 分段与字段一起算，但**不用 useMemo 缓存可见性**：
+   * 可见性随表单值变化，缓存它反而要给每个分区都带上 form 依赖。
+   * 分段本身只随 Schema 变，值得缓一下。
+   */
+  const sections = useMemo(() => sectionsOf(schema), [schema]);
 
   const [form, setForm] = useState<FormValues>(() =>
     initialValues(schema, values),
@@ -160,24 +164,27 @@ export function SchemaForm({
       onChange,
     }) => (
       <div className="flex flex-col gap-4">
-        {Object.entries(groupSchema.properties ?? {}).map(([key, field]) => {
-          const path = `${basePath}.${key}`;
-          return (
-            <SchemaField
-              key={path}
-              path={path}
-              schema={field}
-              value={groupValues[key]}
-              error={errors[path]}
-              disabled={groupDisabled}
-              onChange={(next) => {
-                onChange({ ...groupValues, [key]: next });
-              }}
-              onBlur={() => markTouched(path)}
-              renderGroup={renderGroup}
-            />
-          );
-        })}
+        {Object.entries(groupSchema.properties ?? {})
+          .filter(([, field]) => isVisible(field["x-show-if"], groupValues))
+          .map(([key, field]) => {
+            const path = `${basePath}.${key}`;
+            return (
+              <SchemaField
+                key={path}
+                path={path}
+                schema={field}
+                value={groupValues[key]}
+                error={errors[path]}
+                disabled={groupDisabled}
+                onChange={(next) => {
+                  onChange({ ...groupValues, [key]: next });
+                }}
+                onBlur={() => markTouched(path)}
+                scope={groupValues}
+                renderGroup={renderGroup}
+              />
+            );
+          })}
       </div>
     ),
     [errors, markTouched],
@@ -251,21 +258,57 @@ export function SchemaForm({
         </Alert>
       ) : null}
 
-      {/* 字段之间一条细线，是长表单的节奏（Halo 的 FormKit 风格） */}
-      <div className="divide-y divide-line">
-        {fields.map(([key, field]) => (
-          <FieldRow
-            key={key}
-            path={key}
-            schema={field}
-            value={form[key]}
-            error={errors[key]}
-            disabled={disabled || pending}
-            onChange={(value) => setValue(key, value)}
-            onBlur={() => markTouched(key)}
-            renderGroup={renderGroup}
-          />
-        ))}
+      {/*
+        分段渲染。字段之间一条细线，段与段之间留出更大的间距并给出标题——
+        设置项多起来以后，一长条没有分隔的表单会让人找不到东西（agent.md §5）。
+        没有 x-sections 的老 Schema 只会得到一段无标题的，外观与改动前一致。
+      */}
+      <div className="flex flex-col gap-8">
+        {sections.map((section) => {
+          // 条件不成立的字段此刻不该出现。它的值仍然留着：
+          // 站长把驱动从 s3 切回 local 再切回来，填过的地址应当还在。
+          const visibleFields = section.fields.filter(([, field]) =>
+            isVisible(field["x-show-if"], form),
+          );
+          if (visibleFields.length === 0) {
+            return null;
+          }
+          return (
+            <section
+              key={section.title || "__default__"}
+              className="flex flex-col gap-2"
+            >
+              {section.title ? (
+                <header className="flex flex-col gap-0.5">
+                  <h3 className="text-sm font-medium text-ink">
+                    {section.title}
+                  </h3>
+                  {section.description ? (
+                    <p className="text-xs text-ink-muted">
+                      {section.description}
+                    </p>
+                  ) : null}
+                </header>
+              ) : null}
+              <div className="divide-y divide-line">
+                {visibleFields.map(([key, field]) => (
+                  <FieldRow
+                    key={key}
+                    path={key}
+                    schema={field}
+                    value={form[key]}
+                    error={errors[key]}
+                    disabled={disabled || pending}
+                    onChange={(value) => setValue(key, value)}
+                    onBlur={() => markTouched(key)}
+                    scope={form}
+                    renderGroup={renderGroup}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-line border-t pt-4">

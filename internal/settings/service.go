@@ -16,6 +16,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/form"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 	"github.com/FeiBaiKin/lumo/internal/slug"
 )
@@ -119,39 +120,23 @@ func compileGroup(decl *app.SettingGroup) (*Group, error) {
 	if !groupNamePattern.MatchString(decl.Name) {
 		return nil, fmt.Errorf("settings: 非法的分组名 %q", decl.Name)
 	}
-	if len(decl.Schema) == 0 {
-		return nil, fmt.Errorf("settings: 分组 %q 缺少 Schema", decl.Name)
+	if decl.Form == nil {
+		return nil, fmt.Errorf("settings: 分组 %q 缺少表单声明", decl.Name)
 	}
-
-	rawDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(decl.Schema))
+	validator, err := NewValidator(decl.Name, decl.Form)
 	if err != nil {
-		return nil, fmt.Errorf("settings: 分组 %q 的 Schema 不是合法 JSON: %w", decl.Name, err)
-	}
-	doc, ok := rawDoc.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("settings: 分组 %q 的 Schema 须为对象", decl.Name)
-	}
-	if typ, _ := doc["type"].(string); typ != "object" {
-		return nil, fmt.Errorf("settings: 分组 %q 的 Schema 顶层 type 须为 object", decl.Name)
+		return nil, err
 	}
 
-	compiler := jsonschema.NewCompiler()
-	location := "lumo://settings/" + decl.Name + ".json"
-	if addErr := compiler.AddResource(location, rawDoc); addErr != nil {
-		return nil, fmt.Errorf("settings: 载入分组 %q 的 Schema: %w", decl.Name, addErr)
+	defaults := validator.DefaultValues()
+	g := &Group{
+		SettingGroup: *decl,
+		schema:       validator.schema,
+		doc:          validator.Doc(),
+		defaults:     defaults,
 	}
-	schema, err := compiler.Compile(location)
-	if err != nil {
-		return nil, fmt.Errorf("settings: 编译分组 %q 的 Schema: %w", decl.Name, err)
-	}
-
-	defaults := map[string]any{}
-	if len(decl.Defaults) > 0 {
-		if err := json.Unmarshal(decl.Defaults, &defaults); err != nil {
-			return nil, fmt.Errorf("settings: 分组 %q 的 Defaults 不是合法 JSON 对象: %w", decl.Name, err)
-		}
-	}
-	g := &Group{SettingGroup: *decl, schema: schema, doc: doc, defaults: defaults}
+	// 缺省值必须自洽：模块作者把缺省值写成不合自身约束时，
+	// 站长打开设置页会看到一堆无法保存的初始值。
 	if err := g.validate(defaults); err != nil {
 		return nil, fmt.Errorf("settings: 分组 %q 的 Defaults 未通过自身 Schema: %w", decl.Name, err)
 	}
@@ -166,6 +151,14 @@ func (g *Group) validate(values map[string]any) error {
 			return &ValidationError{Details: collectDetails(verr.BasicOutput(), nil)}
 		}
 		return &ValidationError{Details: []httpx.ErrorDetail{{Message: err.Error()}}}
+	}
+	// 条件必填：Schema 只管无条件的必填，带 x-show-if 的字段由表单声明判定。
+	if missing := g.Form.Missing(values); len(missing) > 0 {
+		details := make([]httpx.ErrorDetail, 0, len(missing))
+		for _, path := range missing {
+			details = append(details, httpx.ErrorDetail{Location: "body." + path, Message: "不能为空"})
+		}
+		return &ValidationError{Details: details}
 	}
 	if g.Check != nil {
 		if err := g.Check(values); err != nil {
@@ -209,30 +202,30 @@ func collectDetails(unit *jsonschema.OutputUnit, out []httpx.ErrorDetail) []http
 	return out
 }
 
-// Validator 是一份编译好的 Schema 校验器，供设置分组之外的场景复用。
+// Validator 是一份编译好的表单校验器，供设置分组之外的场景复用。
 //
-// 主题设置的 Schema 由主题包的 settings.yaml 声明、随主题安装而变，
+// 主题设置的声明由主题包的 settings.yaml 给出、随主题安装而变，
 // 不能走 RegisterGroups 那条「启动期固定登记」的路径；但校验语义必须与站点设置完全一致，
 // 否则主题作者要面对两套规则。故把编译与校验单独暴露出来（agent.md §5）。
+//
+// 校验分两步，缺一不可：JSON Schema 判「值是否合法」，Form.Missing 判
+// 「此刻该显示的必填项是否都填了」。后者只能由 Form 回答——条件依赖的可见性是
+// 它的知识，Schema 里只留了一句 x-show-if 的提示。
 type Validator struct {
+	form   *form.Form
 	schema *jsonschema.Schema
-	doc    map[string]any
 }
 
-// NewValidator 编译一份 JSON Schema 2020-12 声明。
+// NewValidator 编译一份表单声明。
 //
 // name 只用于错误信息与内部资源定位，不要求全局唯一。
-func NewValidator(name string, schema json.RawMessage) (*Validator, error) {
-	if len(schema) == 0 {
-		return nil, fmt.Errorf("settings: %s 缺少 Schema", name)
+func NewValidator(name string, f *form.Form) (*Validator, error) {
+	if f == nil {
+		return nil, fmt.Errorf("settings: %s 缺少表单声明", name)
 	}
-	rawDoc, err := jsonschema.UnmarshalJSON(bytes.NewReader(schema))
+	doc, _, err := f.Build()
 	if err != nil {
-		return nil, fmt.Errorf("settings: %s 的 Schema 不是合法 JSON: %w", name, err)
-	}
-	doc, ok := rawDoc.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("settings: %s 的 Schema 须为对象", name)
+		return nil, fmt.Errorf("settings: %s 的表单声明有误: %w", name, err)
 	}
 	if typ, _ := doc["type"].(string); typ != "object" {
 		return nil, fmt.Errorf("settings: %s 的 Schema 顶层 type 须为 object", name)
@@ -240,18 +233,24 @@ func NewValidator(name string, schema json.RawMessage) (*Validator, error) {
 
 	compiler := jsonschema.NewCompiler()
 	location := "lumo://schema/" + name + ".json"
-	if addErr := compiler.AddResource(location, rawDoc); addErr != nil {
+	if addErr := compiler.AddResource(location, doc); addErr != nil {
 		return nil, fmt.Errorf("settings: 载入 %s 的 Schema: %w", name, addErr)
 	}
 	compiled, err := compiler.Compile(location)
 	if err != nil {
 		return nil, fmt.Errorf("settings: 编译 %s 的 Schema: %w", name, err)
 	}
-	return &Validator{schema: compiled, doc: doc}, nil
+	return &Validator{form: f, schema: compiled}, nil
 }
 
 // Doc 返回解析后的 Schema 文档，供接口原样输出给表单引擎。
-func (v *Validator) Doc() map[string]any { return v.doc }
+func (v *Validator) Doc() map[string]any { return v.form.Doc() }
+
+// DefaultValues 返回缺省值的副本。
+func (v *Validator) DefaultValues() map[string]any { return v.form.DefaultValues() }
+
+// Missing 返回此刻应当显示却没填的必填字段，供调用方在保存前判定。
+func (v *Validator) Missing(values map[string]any) []string { return v.form.Missing(values) }
 
 // Validate 校验一个值对象，失败时返回 *ValidationError（明细逐条定位到字段）。
 func (v *Validator) Validate(values map[string]any) error {
@@ -262,7 +261,27 @@ func (v *Validator) Validate(values map[string]any) error {
 		}
 		return &ValidationError{Details: []httpx.ErrorDetail{{Message: err.Error()}}}
 	}
-	return nil
+	return v.validateVisibleRequired(values)
+}
+
+// validateVisibleRequired 追究「条件成立但没填」的必填字段。
+//
+// 这一条靠 JSON Schema 做不了：带 x-show-if 的字段在条件不成立时压根不存在，
+// 把它写进 required 会让「隐藏起来所以没填」变成一次校验失败。
+// 可见性是表单声明的知识，只能回到 Form 上问。
+func (v *Validator) validateVisibleRequired(values map[string]any) error {
+	missing := v.form.Missing(values)
+	if len(missing) == 0 {
+		return nil
+	}
+	details := make([]httpx.ErrorDetail, 0, len(missing))
+	for _, path := range missing {
+		details = append(details, httpx.ErrorDetail{
+			Location: "body." + path,
+			Message:  "不能为空",
+		})
+	}
+	return &ValidationError{Details: details}
 }
 
 // Merge 返回 defaults 被 overrides 按顶层键覆盖后的新对象，与设置分组的合并语义一致。

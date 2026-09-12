@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/form"
 )
 
 // 主题包内的固定文件名（agent.md §4.4）。
@@ -195,13 +196,19 @@ func (d *SettingsDecl) SettingGroups() ([]app.SettingGroup, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w：设置分组 %q 的 defaults 无法编码: %w", ErrInvalidPackage, g.Name, err)
 		}
+		// 走 form.Parse 而不是把两段 JSON 直接塞进分组：条件依赖（x-show-if）
+		// 需要结构化的字段信息才能判定可见性，主题设置与站点设置必须共用同一套语义，
+		// 否则主题作者要面对两套「什么时候算必填」的规则。
+		parsed, err := form.Parse(g.Name, schema, defaults)
+		if err != nil {
+			return nil, fmt.Errorf("%w：设置分组 %q：%w", ErrInvalidPackage, g.Name, err)
+		}
 		out = append(out, app.SettingGroup{
 			Name:        g.Name,
 			Label:       g.Label,
 			Description: g.Description,
 			Order:       g.Order,
-			Schema:      schema,
-			Defaults:    defaults,
+			Form:        parsed,
 		})
 	}
 	return out, nil

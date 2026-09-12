@@ -1,11 +1,11 @@
 package settings
 
 import (
-	"encoding/json"
 	"net/url"
 	"time"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/form"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 )
 
@@ -32,42 +32,49 @@ type Site struct {
 	PageSize     int    `json:"pageSize"`
 }
 
-// siteSchema 是 site 分组的表单 Schema（agent.md §5）。
-const siteSchema = `{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "additionalProperties": false,
-  "properties": {
-    "title": {"type": "string", "title": "站点标题", "minLength": 1, "maxLength": 128},
-    "subtitle": {"type": "string", "title": "副标题", "maxLength": 256},
-    "description": {"type": "string", "title": "站点描述", "maxLength": 1000, "x-widget": "textarea"},
-    "url": {"type": "string", "title": "对外地址", "maxLength": 512,
-            "description": "含协议的绝对地址，如 https://example.com；留空则使用服务器配置"},
-    "language": {"type": "string", "title": "语言", "enum": ["zh-CN", "en-US"], "x-widget": "select"},
-    "timezone": {"type": "string", "title": "时区", "minLength": 1, "maxLength": 64,
-                 "description": "IANA 时区名，如 Asia/Shanghai"},
-    "logoUrl": {"type": "string", "title": "Logo", "maxLength": 1024, "x-widget": "image"},
-    "faviconUrl": {"type": "string", "title": "Favicon", "maxLength": 1024, "x-widget": "image"},
-    "slugStrategy": {"type": "string", "title": "链接别名生成方式", "enum": ["unicode", "pinyin"], "x-widget": "select",
-                     "description": "unicode 保留中文；pinyin 把汉字转为拼音"},
-    "pageSize": {"type": "integer", "title": "前台每页条数", "minimum": 1, "maximum": 100}
-  },
-  "required": ["title", "language", "timezone", "slugStrategy", "pageSize"]
-}`
+// siteForm 是 site 分组的表单声明（agent.md §5）。
+//
+// 声明式而非手写 JSON：字段名在 Site 结构体、这份表单与 Public 白名单里各出现一次，
+// 但前两处的对应关系现在由编译器看着——写错一个键是编译错误，不是「打开那一页才发现」。
+//
+// 分段按「站长会一起改的东西」切：站名与副标题一起改，标志与图标一起换，
+// 地址、语言、时区都属于「这个站住在哪」，最后一段是内容呈现的偏好。
+var siteForm = form.New(
+	form.NewSection("基本信息",
+		form.Text("title").Label("站点标题").Required().MinLen(1).MaxLen(128).Default("Lumo"),
+		form.Text("subtitle").Label("副标题").MaxLen(256).Default(""),
+		form.Textarea("description").Label("站点描述").MaxLen(1000).Default("").
+			Help("用于首页的 meta description 与分享卡片；留空则退回 SEO 设置里的默认描述"),
+	).Describe("站点的名字与自我介绍"),
 
-// siteDefaults 是 site 分组的缺省值。
-const siteDefaults = `{
-  "title": "Lumo",
-  "subtitle": "",
-  "description": "",
-  "url": "",
-  "language": "zh-CN",
-  "timezone": "Asia/Shanghai",
-  "logoUrl": "",
-  "faviconUrl": "",
-  "slugStrategy": "unicode",
-  "pageSize": 10
-}`
+	form.NewSection("标识",
+		form.Image("logoUrl").Label("站点标志").MaxLen(1024).Default("").
+			Help("显示在后台侧栏与主题页头；建议方形、背景透明"),
+		form.Image("faviconUrl").Label("站点图标").MaxLen(1024).Default("").
+			Help("浏览器标签页上的小图标；建议 32×32 的 PNG 或 ICO"),
+	),
+
+	form.NewSection("地址与语言",
+		form.Text("url").Label("对外地址").MaxLen(512).Default("").
+			Help("含协议的绝对地址，如 https://example.com；留空则使用服务器配置。"+
+				"sitemap 与订阅源需要绝对地址，未配置时会明确报错而不是产出相对地址"),
+		form.Select("language",
+			form.Opt("zh-CN", "简体中文"),
+			form.Opt("en-US", "English"),
+		).Label("语言").Default("zh-CN"),
+		form.Text("timezone").Label("时区").Required().MinLen(1).MaxLen(64).Default("Asia/Shanghai").
+			Help("IANA 时区名，如 Asia/Shanghai。定时发布的判断以此为准"),
+	),
+
+	form.NewSection("内容与链接",
+		form.Select("slugStrategy",
+			form.Opt("unicode", "保留中文"),
+			form.Opt("pinyin", "转为拼音"),
+		).Label("链接别名生成方式").Default("unicode").
+			Help("由标题自动生成链接时使用；已有内容的链接不受影响"),
+		form.Slider("pageSize").Label("前台每页条数").Min(1).Max(100).Default(10),
+	),
+).Named(GroupSite)
 
 // siteGroup 返回 site 分组的声明。
 func siteGroup() app.SettingGroup {
@@ -76,8 +83,7 @@ func siteGroup() app.SettingGroup {
 		Label:       "站点",
 		Description: "站点的基本信息与前台行为",
 		Order:       0,
-		Schema:      json.RawMessage(siteSchema),
-		Defaults:    json.RawMessage(siteDefaults),
+		Form:        siteForm,
 		Public:      []string{"title", "subtitle", "description", "url", "language", "logoUrl", "faviconUrl"},
 		Check:       checkSite,
 	}

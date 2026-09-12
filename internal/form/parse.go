@@ -48,7 +48,9 @@ func Parse(name string, schema, defaults json.RawMessage) (*Form, error) {
 func (f *Form) compileRaw() {
 	props, ok := f.rawDoc["properties"].(map[string]any)
 	if !ok {
-		f.err = fmt.Errorf("表单 %s 的 Schema 缺少 properties", f.name)
+		// 最常见的成因是 properties 拼错了（propertes / properties 写成别的），
+		// 而它的表现是「设置页打开是空的，却没有任何报错」——故在这里点破。
+		f.err = fmt.Errorf("表单 %s 的 Schema 缺少 properties，检查是否拼写有误", f.name)
 		return
 	}
 

@@ -46,11 +46,14 @@ const (
 type Widget string
 
 // 全部控件。前 11 个是 Console 表单引擎第二版就有的，其余为本次扩充。
+//
+// 刻意不含富文本：Console 的文章编辑器是「初始内容 + 变化回调」的形态，
+// 塞进受控的设置表单会与每次按键的回写互相打架，而设置项里几乎没有长到需要富文本的字段。
+// 真要做，得先给编辑器加一个受控模式，那是另一件事。
 const (
 	WidgetText        Widget = "text"
 	WidgetTextarea    Widget = "textarea"
 	WidgetCode        Widget = "code"
-	WidgetEditor      Widget = "editor"
 	WidgetSelect      Widget = "select"
 	WidgetRadio       Widget = "radio"
 	WidgetMultiselect Widget = "multiselect"
@@ -170,11 +173,6 @@ func Textarea(key string) *Field { return newField(key, TypeString, WidgetTextar
 
 // Code 是代码，等宽字体、保留缩进。
 func Code(key string) *Field { return newField(key, TypeString, WidgetCode) }
-
-// RichText 是富文本，复用 Console 的文章编辑器。
-//
-// 编辑器是约 900 KB 的按需分块，只有真正用到它的表单才会加载。
-func RichText(key string) *Field { return newField(key, TypeString, WidgetEditor) }
 
 // Color 是颜色，值为 #rrggbb 一类字符串。
 func Color(key string) *Field { return newField(key, TypeString, WidgetColor) }

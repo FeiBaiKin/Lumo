@@ -143,13 +143,22 @@ func TestCompileSettingsOrdersGroups(t *testing.T) {
 groups:
   - name: zzz
     order: 0
-    schema: {type: object}
+    schema:
+      type: object
+      properties:
+        title: {type: string, title: 标题}
   - name: aaa
     order: 0
-    schema: {type: object}
+    schema:
+      type: object
+      properties:
+        title: {type: string, title: 标题}
   - name: first
     order: -5
-    schema: {type: object}
+    schema:
+      type: object
+      properties:
+        title: {type: string, title: 标题}
 `
 	decl, err := parseSettings([]byte(yaml))
 	if err != nil {

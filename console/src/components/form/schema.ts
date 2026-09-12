@@ -25,9 +25,15 @@ export type WidgetKind =
   | "textarea"
   | "code"
   | "select"
+  | "radio"
+  | "multiselect"
   | "color"
   | "image"
+  | "images"
+  | "date"
+  | "icon"
   | "number"
+  | "slider"
   | "switch"
   | "repeater"
   | "list"
@@ -61,12 +67,35 @@ export type FieldSchema = {
   "x-unit"?: string;
   /** repeater 的条目名，用于「添加一项」的按钮文案。 */
   "x-item-label"?: string;
+  /** 条件依赖：全部成立时字段才显示。语义见 isVisible。 */
+  "x-show-if"?: ShowIfCondition[] | ShowIfCondition;
+};
+
+/**
+ * 一条条件依赖。
+ *
+ * 与 Go 侧 form.Condition 一一对应，运算符集合必须一致——
+ * 多一种运算符会让声明方以为自己写了条件，而渲染方默默按「不成立」处理。
+ */
+export type ShowIfCondition = {
+  field: string;
+  op: "eq" | "ne" | "in" | "empty" | "notEmpty";
+  value?: unknown;
+};
+
+/** 一个分段：标题 + 字段名列表。分节是纯呈现，不影响值与校验。 */
+export type SectionSchema = {
+  title: string;
+  description?: string | undefined;
+  fields: string[];
 };
 
 /** 一个分组完整的表单 Schema。 */
 export type GroupSchema = FieldSchema & {
   properties?: Record<string, FieldSchema>;
   required?: string[];
+  /** 分段。缺省时按平铺形态渲染，与主题包声明的老 Schema 兼容。 */
+  "x-sections"?: SectionSchema[];
 };
 
 /** 值对象。刻意用 unknown 而不是 any：这个对象来自网络，未经校验。 */
@@ -121,9 +150,15 @@ const WIDGETS = new Set<string>([
   "textarea",
   "code",
   "select",
+  "radio",
+  "multiselect",
   "color",
   "image",
+  "images",
+  "date",
+  "icon",
   "number",
+  "slider",
   "switch",
   "repeater",
   "list",
@@ -315,6 +350,11 @@ export function validateGroup(
   const required = new Set(schema.required ?? []);
 
   for (const [key, field] of Object.entries(schema.properties ?? {})) {
+    // 条件不成立的字段此刻并不存在，追究它会让「关掉某个开关后设置反而存不进去」。
+    // 服务端用同一套判定（Go 侧 form.Missing），两边必须一致。
+    if (!isVisible(field["x-show-if"], values)) {
+      continue;
+    }
     const message = validateField(field, values[key], required.has(key));
     if (message) {
       errors[key] = message;
@@ -373,4 +413,145 @@ export function errorsFromServer(
     others.push(location ? `${location}：${message}` : message);
   }
   return { fields, others };
+}
+
+/**
+ * 条件依赖的判定（对应 Go 侧 form.conditionHolds）。
+ *
+ * 两端必须给出同样的答案：服务端拿它决定「此刻该不该追究这个必填项」，
+ * 前端拿它决定「画不画、校不校」。判错一边的表现是
+ * 「页面上没有这一项，保存时却说它必填」——最难自查的一类问题。
+ *
+ * 取值在字段所在的那一层里找（嵌套分组里引用同层的兄弟字段是常见写法），
+ * 顶层字段的所在层就是表单根。找不到时按空值处理，于是 eq 为假、empty 为真。
+ */
+export function isVisible(
+  conds: ShowIfCondition[] | ShowIfCondition | undefined,
+  scope: FormValues,
+): boolean {
+  if (!conds) {
+    return true;
+  }
+  const list = Array.isArray(conds) ? conds : [conds];
+  return list.every((cond) => conditionHolds(cond, scope));
+}
+
+function conditionHolds(cond: ShowIfCondition, scope: FormValues): boolean {
+  const value = scope[cond.field];
+  switch (cond.op) {
+    case "eq":
+      return looseEqual(value, cond.value);
+    case "ne":
+      return !looseEqual(value, cond.value);
+    case "in":
+      return (
+        Array.isArray(cond.value) &&
+        cond.value.some((item) => looseEqual(value, item))
+      );
+    case "empty":
+      return isEmptyValue(value);
+    case "notEmpty":
+      return !isEmptyValue(value);
+    default:
+      // 认不出的运算符按「不成立」处理，与 Go 侧一致。
+      // 默认显示更危险：一个被误认为可见的字段会参与必填校验，
+      // 拦住一次本该成功的保存。
+      return false;
+  }
+}
+
+/**
+ * 「空」的定义：null、undefined、空串、空数组、空对象。
+ *
+ * 0 与 false 都**不算**空——它们是明确的取值，不是缺席。
+ * 这与 Go 侧 form.isEmptyValue 保持一致。
+ */
+function isEmptyValue(value: unknown): boolean {
+  if (value === null || value === undefined || value === "") {
+    return true;
+  }
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+  if (typeof value === "object") {
+    return Object.keys(value as object).length === 0;
+  }
+  return false;
+}
+
+/**
+ * 宽容比较。
+ *
+ * 必须宽容：声明里写的是 10 与 true，而值经 JSON 往返后可能变成 "10"；
+ * 而布尔开关在 unchecked 时可能压根不在对象里。直接比类型会让条件
+ * 永远不成立，表现是「字段永远不显示」，界面上没有任何报错。
+ */
+function looseEqual(a: unknown, b: unknown): boolean {
+  if (a === null || a === undefined || b === null || b === undefined) {
+    return a === b || (a == null && b == null);
+  }
+  if (typeof a === "number" || typeof b === "number") {
+    const na = Number(a);
+    const nb = Number(b);
+    return Number.isFinite(na) && Number.isFinite(nb) && na === nb;
+  }
+  if (typeof a === "boolean" || typeof b === "boolean") {
+    return a === b;
+  }
+  return String(a) === String(b);
+}
+
+/** 渲染用的一个分段：标题、说明与它收下的字段。 */
+export type RenderSection = {
+  title: string;
+  /** 段说明。分段没写说明时是 undefined（tsconfig 开了 exactOptionalPropertyTypes）。 */
+  description?: string | undefined;
+  fields: [string, FieldSchema][];
+};
+
+/**
+ * 把分组切成待渲染的分段。
+ *
+ * 没有 x-sections 时返回一个无标题的单段，按 properties 的键序渲染——
+ * 主题包声明的老 Schema 就长这样，不能因为没写分段就不显示。
+ *
+ * 分段里引用了不存在的字段时跳过它而不是报错：那多半是 Schema 演进时
+ * 删了字段忘了改分段，此时少显示一个不存在的项，远好过整页打不开。
+ */
+export function sectionsOf(schema: GroupSchema): RenderSection[] {
+  const properties = schema.properties ?? {};
+  const declared = schema["x-sections"];
+
+  if (!declared || declared.length === 0) {
+    return [{ title: "", fields: Object.entries(properties) }];
+  }
+
+  const covered = new Set<string>();
+  const out: RenderSection[] = [];
+  for (const section of declared) {
+    const fields: [string, FieldSchema][] = [];
+    for (const key of section.fields ?? []) {
+      const field = properties[key];
+      if (!field || covered.has(key)) {
+        continue;
+      }
+      covered.add(key);
+      fields.push([key, field]);
+    }
+    out.push({
+      title: section.title,
+      description: section.description,
+      fields,
+    });
+  }
+
+  // 没被任何分段收下的字段补在末尾：声明方漏更新分段时，
+  // 少一个字段比顺序难看严重得多。
+  const orphans = Object.entries(properties).filter(
+    ([key]) => !covered.has(key),
+  );
+  if (orphans.length > 0) {
+    out.push({ title: "", fields: orphans });
+  }
+  return out;
 }

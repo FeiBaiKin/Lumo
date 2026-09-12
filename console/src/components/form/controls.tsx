@@ -1,7 +1,10 @@
+import { IconPicker } from "@/components/form/icon-picker";
 import {
   type FieldSchema,
+  type FormValues,
   type GroupSchema,
   type WidgetKind,
+  isVisible,
   labelFor,
   optionsFor,
   widgetFor,
@@ -15,6 +18,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
+import { RadioGroup, RadioRow } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -22,7 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/toggle";
+import { Slider } from "@/components/ui/slider";
+import { CheckboxRow, Switch } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 import { ImageOff, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -534,8 +539,22 @@ export function SchemaField({
   disabled,
   onChange,
   onBlur,
+  scope,
   renderGroup,
-}: ControlProps & { renderGroup: RenderGroup }) {
+}: ControlProps & {
+  renderGroup: RenderGroup;
+  /**
+   * 字段所在那一层的值，用于判定条件依赖。
+   *
+   * 刻意是必填而不是可选：漏传时条件里的字段一律取不到值，于是
+   * 「eq 为假」，字段**静默地永远不显示**——页面上什么都不缺，只是少了一项，
+   * 没有任何报错。让类型检查把漏传挡在编译期，比让它在运行期变成幽灵字段好。
+   */
+  scope: FormValues;
+}) {
+  if (!isVisible(schema["x-show-if"], scope)) {
+    return null;
+  }
   const widget: WidgetKind = widgetFor(schema);
   const label = labelFor(schema, path);
   const id = fieldId(path);
@@ -582,12 +601,24 @@ function renderControl(
       return <CodeControl {...control} />;
     case "number":
       return <NumberControl {...control} />;
+    case "slider":
+      return <SliderControl {...control} />;
     case "select":
       return <SelectControl {...control} />;
+    case "radio":
+      return <RadioControl {...control} />;
+    case "multiselect":
+      return <MultiSelectControl {...control} />;
+    case "date":
+      return <DateControl {...control} />;
+    case "icon":
+      return <IconControl {...control} />;
     case "color":
       return <ColorControl {...control} />;
     case "image":
       return <ImageControl {...control} />;
+    case "images":
+      return <ImagesControl {...control} />;
     case "list":
       return <ListControl {...control} />;
     case "repeater":
@@ -616,4 +647,289 @@ function renderControl(
     default:
       return <TextControl {...control} />;
   }
+}
+
+/**
+ * 单选组。选项少时用它，多时用下拉。
+ */
+function RadioControl({
+  path,
+  schema,
+  value,
+  error,
+  disabled,
+  onChange,
+  onBlur,
+}: ControlProps) {
+  const options = optionsFor(schema);
+  return (
+    <RadioGroup
+      value={String(value ?? "")}
+      disabled={disabled}
+      onValueChange={(next) => {
+        onChange(next);
+        onBlur();
+      }}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? `${fieldId(path)}-error` : undefined}
+    >
+      {options.map((option) => (
+        <RadioRow
+          key={option.value}
+          id={`${fieldId(path)}-${option.value}`}
+          value={option.value}
+          label={option.label}
+          disabled={disabled}
+        />
+      ))}
+    </RadioGroup>
+  );
+}
+
+/**
+ * 多选。值是一个数组。
+ *
+ * 候选项声明在 items 的 enum 上，而不是字段自己的 enum 上——
+ * 数组字段的「取值」是数组本身，写成顶层 enum 会表达成「数组等于其中一个字符串」。
+ */
+function MultiSelectControl({
+  path,
+  schema,
+  value,
+  error,
+  disabled,
+  onChange,
+}: ControlProps) {
+  const options = optionsFor(schema.items ?? {});
+  const selected = Array.isArray(value)
+    ? value.map((item) => String(item))
+    : [];
+  const toggle = (option: string, checked: boolean) => {
+    onChange(
+      checked
+        ? [...selected, option]
+        : selected.filter((item) => item !== option),
+    );
+  };
+
+  // 库里可能留着已经不在选项里的值（Schema 收窄过）。把它们一并显示出来，
+  // 否则用户看不见、也没法取消勾选，而保存时会原样带着走。
+  const known = new Set(options.map((option) => option.value));
+  const stale = selected.filter((item) => !known.has(item));
+
+  return (
+    <div
+      className="flex flex-col gap-0.5"
+      aria-invalid={error ? true : undefined}
+      aria-describedby={error ? `${fieldId(path)}-error` : undefined}
+    >
+      {options.map((option) => (
+        <CheckboxRow
+          key={option.value}
+          id={`${fieldId(path)}-${option.value}`}
+          checked={selected.includes(option.value)}
+          onCheckedChange={(checked) => toggle(option.value, checked)}
+          label={option.label}
+          disabled={disabled}
+        />
+      ))}
+      {stale.map((option) => (
+        <CheckboxRow
+          key={option}
+          id={`${fieldId(path)}-${option}`}
+          checked
+          onCheckedChange={(checked) => toggle(option, checked)}
+          label={`${option}（已不在选项中）`}
+          disabled={disabled}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * 拖动条。当前值永远显示在右侧：拖动时只看滑块的相对位置，
+ * 说不清「到底调到了几」——那正是设置项要回答的问题。
+ */
+function SliderControl({
+  path,
+  schema,
+  value,
+  error,
+  disabled,
+  onChange,
+  onBlur,
+}: ControlProps) {
+  const min = schema.minimum ?? 0;
+  const max = schema.maximum ?? 100;
+  const step = schema.type === "integer" ? 1 : 0.1;
+  const parsed = Number(value);
+  const current = Number.isFinite(parsed) ? parsed : min;
+  const unit = schema["x-unit"] ?? "";
+
+  return (
+    <div className="flex items-center gap-3">
+      <Slider
+        id={fieldId(path)}
+        min={min}
+        max={max}
+        step={step}
+        value={[current]}
+        disabled={disabled}
+        onValueChange={([next]) => {
+          if (next !== undefined) {
+            onChange(next);
+          }
+        }}
+        // 拖动过程中每一步都写回表单，但只在松手时才标记「已触碰」并触发校验：
+        // 拖到一半就报「不能小于 N」会闪个不停。
+        onValueCommit={onBlur}
+        ariaLabel={labelFor(schema, path)}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${fieldId(path)}-error` : undefined}
+      />
+      <output
+        htmlFor={fieldId(path)}
+        className="w-14 shrink-0 text-right text-sm tabular-nums text-ink-muted"
+      >
+        {current}
+        {unit}
+      </output>
+    </div>
+  );
+}
+
+/** 日期。用浏览器自带的日期控件：它有原生的键盘操作与本地化，不值得自己造。 */
+function DateControl({
+  path,
+  schema,
+  value,
+  error,
+  disabled,
+  onChange,
+  onBlur,
+}: ControlProps) {
+  return (
+    <Input
+      {...textProps(path, schema, error)}
+      type="date"
+      value={String(value ?? "")}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
+      className="max-w-48"
+    />
+  );
+}
+
+/** 图标。取值是图标登记表里的名字，后端与前端共守这一份词汇（见 lib/icons.ts）。 */
+function IconControl({
+  path,
+  value,
+  disabled,
+  onChange,
+  onBlur,
+}: ControlProps) {
+  return (
+    <IconPicker
+      id={fieldId(path)}
+      value={String(value ?? "")}
+      disabled={disabled}
+      onChange={(next) => {
+        onChange(next);
+        onBlur();
+      }}
+    />
+  );
+}
+
+/**
+ * 多张图片。每一行一个地址，与单图同样的「填地址 + 即时预览」。
+ *
+ * 与 ListControl 的差别只在预览：图片地址是一串看不出所以然的 URL，
+ * 不给预览的话，排错了顺序、填错了链接都看不出来。
+ */
+function ImagesControl({
+  path,
+  value,
+  error,
+  disabled,
+  onChange,
+  onBlur,
+}: ControlProps) {
+  const items = Array.isArray(value) ? value.map((item) => String(item)) : [];
+  const update = (next: string[]) => onChange(next);
+
+  return (
+    <div className="flex flex-col gap-2">
+      {items.map((item, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 完全受控的输入框，无内部状态
+        <div key={index} className="flex items-center gap-2">
+          <ImageThumb url={item} />
+          <Input
+            value={item}
+            disabled={disabled}
+            onChange={(e) => {
+              const next = [...items];
+              next[index] = e.target.value;
+              update(next);
+            }}
+            onBlur={onBlur}
+            aria-label={`第 ${index + 1} 张图片的地址`}
+          />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={disabled}
+            onClick={() => update(items.filter((_, i) => i !== index))}
+            aria-label={`删除第 ${index + 1} 张图片`}
+            className="hover:text-danger"
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </div>
+      ))}
+      <Button
+        variant="secondary"
+        size="sm"
+        disabled={disabled}
+        onClick={() => update([...items, ""])}
+        className="self-start"
+      >
+        <Plus aria-hidden="true" />
+        添加一张
+      </Button>
+      <ErrorLine path={path} error={error} />
+    </div>
+  );
+}
+
+/** 小尺寸图片预览。加载失败时退回一个中性的占位图标，不显示浏览器的破图。 */
+function ImageThumb({ url }: { url: string }) {
+  const [broken, setBroken] = useState(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 仅在地址变化时重置
+  useEffect(() => {
+    setBroken(false);
+  }, [url]);
+
+  return (
+    <div
+      className={cn(
+        "flex size-9 shrink-0 items-center justify-center overflow-hidden",
+        "rounded-control border border-line bg-surface-raised",
+      )}
+    >
+      {url && !broken ? (
+        <img
+          src={url}
+          alt=""
+          className="size-full object-contain"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <ImageOff aria-hidden="true" className="size-4 text-ink-subtle" />
+      )}
+    </div>
+  );
 }

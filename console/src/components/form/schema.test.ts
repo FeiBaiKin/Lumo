@@ -1,11 +1,15 @@
 import {
-  type GroupSchema,
   errorsFromServer,
   initialValues,
   optionsFor,
   validateField,
-  validateGroup,
   widgetFor,
+} from "@/components/form/schema";
+import {
+  type GroupSchema,
+  isVisible,
+  sectionsOf,
+  validateGroup,
 } from "@/components/form/schema";
 import { describe, expect, it } from "vitest";
 
@@ -44,24 +48,43 @@ describe("widgetFor 推断控件", () => {
   it("未知的 x-widget 退回按类型推断，而不是渲染成空白", () => {
     // 主题作者写错一个词，不该让设置页少一个字段或直接打不开
     expect(widgetFor({ type: "string", "x-widget": "markdown" })).toBe("text");
-    expect(widgetFor({ type: "integer", "x-widget": "slider" })).toBe("number");
+    expect(widgetFor({ type: "integer", "x-widget": "spinner" })).toBe(
+      "number",
+    );
     expect(widgetFor({ type: "boolean", "x-widget": "checkbox" })).toBe(
       "switch",
     );
   });
 
-  it("支持 agent.md §5 列出的全部 widget", () => {
-    for (const widget of [
+  it("支持全部已登记的 widget", () => {
+    // 这份清单必须与 Go 侧 internal/form 的 Widget 常量一致，
+    // 由 cmd/lumo 的契约测试盯着（它直接读本文件的 WIDGETS 集合）。
+    // 这里再断言一次，是为了让「加控件忘了接线」在前端单测就暴露。
+    const stringWidgets = [
+      "text",
       "textarea",
+      "code",
+      "select",
+      "radio",
       "color",
       "image",
-      "select",
-      "switch",
-      "repeater",
-      "code",
-    ]) {
+      "date",
+      "icon",
+    ];
+    for (const widget of stringWidgets) {
       expect(widgetFor({ type: "string", "x-widget": widget })).toBe(widget);
     }
+    expect(widgetFor({ type: "integer", "x-widget": "slider" })).toBe("slider");
+    expect(widgetFor({ type: "array", "x-widget": "multiselect" })).toBe(
+      "multiselect",
+    );
+    expect(widgetFor({ type: "array", "x-widget": "images" })).toBe("images");
+    expect(widgetFor({ type: "array", "x-widget": "list" })).toBe("list");
+    expect(widgetFor({ type: "array", "x-widget": "repeater" })).toBe(
+      "repeater",
+    );
+    expect(widgetFor({ type: "object", "x-widget": "group" })).toBe("group");
+    expect(widgetFor({ type: "boolean", "x-widget": "switch" })).toBe("switch");
   });
 });
 
@@ -324,5 +347,138 @@ describe("errorsFromServer 服务端 422 明细落回字段", () => {
 
   it("未定义明细时返回空结果", () => {
     expect(errorsFromServer(undefined)).toEqual({ fields: {}, others: [] });
+  });
+});
+
+describe("isVisible 条件依赖", () => {
+  it("没有条件时永远显示", () => {
+    expect(isVisible(undefined, {})).toBe(true);
+    expect(isVisible([], {})).toBe(true);
+  });
+
+  it("eq 比较，且容得下数字的类型差异", () => {
+    expect(
+      isVisible({ field: "driver", op: "eq", value: "s3" }, { driver: "s3" }),
+    ).toBe(true);
+    expect(
+      isVisible(
+        { field: "driver", op: "eq", value: "s3" },
+        { driver: "local" },
+      ),
+    ).toBe(false);
+    // 声明里写的是数字，值经 JSON 往返后可能变成字符串 —— 不宽容的话，
+    // 条件永远不成立、字段永远不显示，而界面上没有任何报错
+    expect(isVisible({ field: "n", op: "eq", value: 10 }, { n: "10" })).toBe(
+      true,
+    );
+    expect(
+      isVisible({ field: "on", op: "eq", value: true }, { on: true }),
+    ).toBe(true);
+  });
+
+  it("ne / in", () => {
+    expect(isVisible({ field: "a", op: "ne", value: "x" }, { a: "y" })).toBe(
+      true,
+    );
+    expect(
+      isVisible({ field: "a", op: "in", value: ["x", "y"] }, { a: "y" }),
+    ).toBe(true);
+    expect(
+      isVisible({ field: "a", op: "in", value: ["x", "y"] }, { a: "z" }),
+    ).toBe(false);
+  });
+
+  it("empty 把空串、空数组、空对象都算作空，但 0 与 false 不算", () => {
+    for (const value of [undefined, null, "", [], {}]) {
+      expect(isVisible({ field: "a", op: "empty" }, { a: value })).toBe(true);
+    }
+    for (const value of [0, false, "x", [1]]) {
+      expect(isVisible({ field: "a", op: "empty" }, { a: value })).toBe(false);
+    }
+  });
+
+  it("数组形式是「与」", () => {
+    const conds = [
+      { field: "enabled", op: "eq" as const, value: true },
+      { field: "mode", op: "eq" as const, value: "advanced" },
+    ];
+    expect(isVisible(conds, { enabled: true, mode: "advanced" })).toBe(true);
+    expect(isVisible(conds, { enabled: true, mode: "simple" })).toBe(false);
+  });
+
+  it("认不出的运算符按不成立处理，与 Go 侧一致", () => {
+    // 默认显示更危险：一个被误认为可见的字段会参与必填校验，拦住一次本该成功的保存
+    expect(
+      isVisible({ field: "a", op: "gt" as never, value: 1 }, { a: 5 }),
+    ).toBe(false);
+  });
+});
+
+describe("validateGroup 跳过隐藏字段", () => {
+  const schema: GroupSchema = {
+    type: "object",
+    properties: {
+      driver: { type: "string", title: "驱动", enum: ["local", "s3"] },
+      s3Endpoint: {
+        type: "string",
+        title: "服务地址",
+        "x-show-if": { field: "driver", op: "eq", value: "s3" },
+      },
+    },
+    required: ["driver", "s3Endpoint"],
+  };
+
+  it("条件不成立的字段不参与校验", () => {
+    // 「关掉某个开关后设置反而存不进去」正是条件依赖要消灭的东西
+    const errors = validateGroup(schema, { driver: "local" });
+    expect(errors.s3Endpoint).toBeUndefined();
+  });
+
+  it("条件成立时才追究", () => {
+    const errors = validateGroup(schema, { driver: "s3", s3Endpoint: "" });
+    expect(errors.s3Endpoint).toBeDefined();
+  });
+});
+
+describe("sectionsOf 分节", () => {
+  it("没有 x-sections 时给一个无标题的单段", () => {
+    const sections = sectionsOf({
+      type: "object",
+      properties: { a: { type: "string" }, b: { type: "string" } },
+    });
+    expect(sections).toHaveLength(1);
+    expect(sections[0]?.title).toBe("");
+    expect(sections[0]?.fields.map(([key]) => key)).toEqual(["a", "b"]);
+  });
+
+  it("按 x-sections 的声明顺序切分", () => {
+    const sections = sectionsOf({
+      type: "object",
+      properties: {
+        a: { type: "string" },
+        b: { type: "string" },
+        c: { type: "string" },
+      },
+      "x-sections": [
+        { title: "第二", fields: ["b"] },
+        { title: "第一", fields: ["a"] },
+      ],
+    });
+    expect(sections.map((section) => section.title)).toEqual([
+      "第二",
+      "第一",
+      "",
+    ]);
+    // 没被任何一段收下的字段补在末尾：漏更新分段时，少一个字段比顺序难看严重得多
+    expect(sections[2]?.fields.map(([key]) => key)).toEqual(["c"]);
+  });
+
+  it("分段引用了不存在的字段时跳过，而不是整页打不开", () => {
+    const sections = sectionsOf({
+      type: "object",
+      properties: { a: { type: "string" } },
+      "x-sections": [{ title: "S", fields: ["a", "ghost"] }],
+    });
+    expect(sections[0]?.fields.map(([key]) => key)).toEqual(["a"]);
   });
 });

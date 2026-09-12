@@ -7,11 +7,12 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"io/fs"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
+
+	"github.com/FeiBaiKin/lumo/internal/form"
 )
 
 // Module 是每个功能模块必须实现的最小接口。
@@ -107,10 +108,12 @@ type SettingGroup struct {
 	Description string
 	// Order 决定 Console 中的显示顺序，数值小者在前。
 	Order int
-	// Schema 是 JSON Schema 2020-12 子集 + x-widget 的声明，须为 object 类型并逐项声明 properties。
-	Schema json.RawMessage
-	// Defaults 是缺省值对象，须能通过 Schema 校验；有效值 = Defaults 被已保存值按顶层键覆盖。
-	Defaults json.RawMessage
+	// Form 是表单声明（agent.md §5）。模块用 internal/form 的 DSL 构建；
+	// 主题包从 settings.yaml 读入后经 form.Build 得到。
+	//
+	// 值 = Form 的缺省值被已保存值按顶层键覆盖；Schema、缺省值与条件依赖
+	// 三者同出一处，不再有「stuct 改了 Schema 忘了改」这种缝。
+	Form *form.Form
 	// Public 列出可经 Public 平面读取的字段名（如站点标题）；其余字段仅 Console 可见。
 	Public []string
 	// Check 是 Schema 之外的 Go 侧校验（如时区名是否真实存在），入参为合并默认值后的有效值；可为 nil。

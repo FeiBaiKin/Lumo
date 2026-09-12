@@ -2,12 +2,12 @@ package settings
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/form"
 )
 
 // newService 登记 site 分组，不带存储：有效值就是缺省值。
@@ -81,6 +81,16 @@ func TestValidationDetails(t *testing.T) {
 	}
 }
 
+// tinyForm 构造一个最小的合法表单，供只关心装配行为的用例使用。
+//
+// 必须至少有一个字段：空表单是声明错误（见 internal/form 的 compileDSL），
+// 而那正好也是本文件要覆盖的一类。
+func tinyForm(key string) *form.Form {
+	return form.New(form.NewSection("s",
+		form.Text(key).Label("字段").Default(""),
+	))
+}
+
 func TestRegisterGroupsRejectsBadDeclarations(t *testing.T) {
 	t.Parallel()
 
@@ -88,15 +98,21 @@ func TestRegisterGroupsRejectsBadDeclarations(t *testing.T) {
 		name  string
 		group app.SettingGroup
 	}{
-		{"非法分组名", app.SettingGroup{Name: "Bad Name", Schema: json.RawMessage(`{"type":"object"}`)}},
-		{"缺少 Schema", app.SettingGroup{Name: "x"}},
-		{"Schema 非 object", app.SettingGroup{Name: "x", Schema: json.RawMessage(`{"type":"string"}`)}},
-		{"Schema 不是 JSON", app.SettingGroup{Name: "x", Schema: json.RawMessage(`{`)}},
-		{"Defaults 未通过 Schema", app.SettingGroup{
-			Name:     "x",
-			Schema:   json.RawMessage(`{"type":"object","properties":{"n":{"type":"integer"}},"required":["n"]}`),
-			Defaults: json.RawMessage(`{"n":"one"}`),
-		}},
+		{"非法分组名", app.SettingGroup{Name: "Bad Name", Form: tinyForm("a")}},
+		{"缺少表单声明", app.SettingGroup{Name: "x"}},
+		{
+			// 声明错误由 internal/form 在构建时报出，这里确认它确实传得上来：
+			// 模块作者写错一个字段，应当在启动那一刻就失败，而不是等有人点开那一页。
+			"表单声明有误",
+			app.SettingGroup{Name: "x", Form: form.New(form.NewSection("s", form.Text("a")))},
+		},
+		{
+			// 缺省值必须能通过自己的 Schema，否则站长打开设置页会看到一堆存不进去的初始值。
+			"缺省值未通过自身 Schema",
+			app.SettingGroup{Name: "x", Form: form.New(form.NewSection("s",
+				form.Int("n").Label("数量").Default("one"),
+			))},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -106,12 +122,16 @@ func TestRegisterGroupsRejectsBadDeclarations(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRegisterGroupsSortsByOrderThenName(t *testing.T) {
+	t.Parallel()
 
 	s := NewService(nil)
 	err := s.RegisterGroups([]app.SettingGroup{
-		{Name: "b", Order: 1, Schema: json.RawMessage(`{"type":"object"}`)},
-		{Name: "a", Order: 1, Schema: json.RawMessage(`{"type":"object"}`)},
-		{Name: "z", Order: 0, Schema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "b", Order: 1, Form: tinyForm("a")},
+		{Name: "a", Order: 1, Form: tinyForm("a")},
+		{Name: "z", Order: 0, Form: tinyForm("a")},
 	})
 	if err != nil {
 		t.Fatalf("合法声明不应报错: %v", err)
@@ -120,7 +140,7 @@ func TestRegisterGroupsRejectsBadDeclarations(t *testing.T) {
 	if len(groups) != 3 || groups[0].Name != "z" || groups[1].Name != "a" || groups[2].Name != "b" {
 		t.Errorf("分组顺序应按 Order 再按名称：%v", names(groups))
 	}
-	if err := s.RegisterGroups([]app.SettingGroup{{Name: "a", Schema: json.RawMessage(`{"type":"object"}`)}}); err == nil {
+	if err := s.RegisterGroups([]app.SettingGroup{{Name: "a", Form: tinyForm("a")}}); err == nil {
 		t.Error("重复分组名应报错")
 	}
 }
