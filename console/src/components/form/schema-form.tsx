@@ -279,8 +279,13 @@ export function SchemaForm({
               className="flex flex-col gap-2"
             >
               {section.title ? (
-                <header className="flex flex-col gap-0.5">
-                  <h3 className="text-sm font-medium text-ink">
+                /*
+                 * 分段标题要比它下面的字段标签**大一档**，再加一条细线把它与字段分开。
+                 * 两者同为 text-sm 时，分段读起来像是第一个字段的一部分——
+                 * 层级反了，而字段一多就看不出这一段从哪开始。
+                 */
+                <header className="flex flex-col gap-0.5 border-line border-b pb-2">
+                  <h3 className="text-base font-medium text-ink">
                     {section.title}
                   </h3>
                   {section.description ? (

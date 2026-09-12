@@ -26,13 +26,36 @@ const SIZE_CLASS = {
 
 export type DialogSize = keyof typeof SIZE_CLASS;
 
+/** 遮罩的样式。两个原语各要一份，但外观必须一致，故共用这一串。 */
+const overlayClass = "overlay-in fixed inset-0 z-overlay bg-scrim";
+
 function Overlay({
   className,
   ...props
 }: ComponentProps<typeof DialogPrimitive.Overlay>) {
   return (
     <DialogPrimitive.Overlay
-      className={cn("overlay-in fixed inset-0 z-overlay bg-scrim", className)}
+      className={cn(overlayClass, className)}
+      {...props}
+    />
+  );
+}
+
+/**
+ * 确认框的遮罩。
+ *
+ * 必须用 AlertDialog 的原语，不能复用上面那个：Radix 的 DialogOverlay
+ * 要求自己处在 Dialog 上下文里，而 AlertDialog 提供的是另一套上下文。
+ * 混用的后果不是「遮罩样式不对」，而是**打开确认框的那一刻抛异常、整页白屏**——
+ * 错误信息是 `DialogOverlay must be used within Dialog`。
+ */
+function AlertOverlay({
+  className,
+  ...props
+}: ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
+  return (
+    <AlertDialogPrimitive.Overlay
+      className={cn(overlayClass, className)}
       {...props}
     />
   );
@@ -175,7 +198,7 @@ export function ConfirmDialog({
   return (
     <AlertDialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <AlertDialogPrimitive.Portal>
-        <Overlay />
+        <AlertOverlay />
         <AlertDialogPrimitive.Content className={cn(contentClass, "max-w-md")}>
           <div className="flex flex-col gap-1.5 px-5 py-4">
             <AlertDialogPrimitive.Title className="text-lg font-semibold text-ink">
