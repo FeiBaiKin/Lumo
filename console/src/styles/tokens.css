@@ -21,21 +21,38 @@
    ================================================================== */
 
 :root {
-  /* 中性梯级（冷调，色相 258–264）。界面（器）由此构成 */
+  /*
+   * 中性梯级（色相 286，彩度 0.001–0.010 —— 肉眼不可辨的一点冷调，只用来避开
+   * 「纯 R=G=B 灰」在某些面板上发闷的观感）。界面（器）由此构成。
+   *
+   * 第二版留在这里的是一条记录：第一版的梯级取了色相 258–264、彩度最高到 0.025，
+   * 那是实打实的蓝灰。整片工作区铺开时偏色被放大，页面读起来是「冷的、发灰的」，
+   * 而不是「干净的灰」——用户的原话是「改为更纯的色系」。故整条梯级重取，
+   * 彩度压到原来的十分之一，深浅节奏一档不动。
+   */
+
   --color-neutral-0: oklch(1 0 0); /* #FFFFFF */
-  --color-neutral-50: oklch(0.9846 0.0021 264.5); /* #F9FAFB */
-  --color-neutral-100: oklch(0.9691 0.0034 264.5); /* #F3F4F7 */
-  --color-workspace-light: oklch(0.9645 0.0082 250); /* #EFF3F8，Halo 工作区那种偏蓝的浅灰 */
-  --color-neutral-150: oklch(0.9515 0.0046 258.3); /* #EDEFF2 */
-  --color-neutral-200: oklch(0.9243 0.0058 264.5); /* #E4E6EB */
-  --color-neutral-300: oklch(0.8567 0.0106 261.8); /* #CDD1D8 */
-  --color-neutral-400: oklch(0.7132 0.021 260.2); /* #9BA3B0 */
-  --color-neutral-500: oklch(0.5055 0.0245 261.7); /* #5C6470 */
-  --color-neutral-600: oklch(0.4193 0.0209 262.1); /* #464C57 */
-  --color-neutral-700: oklch(0.3665 0.0169 262.3); /* #3A3F48 */
-  --color-neutral-800: oklch(0.2482 0.0106 260.7); /* #1E2126 */
-  --color-neutral-850: oklch(0.2117 0.0086 264.4); /* #17191D */
-  --color-neutral-900: oklch(0.1818 0.0088 264.3); /* #101216 */
+  --color-neutral-50: oklch(0.9851 0 0); /* #FAFAFA */
+  --color-neutral-100: oklch(0.9674 0.0013 286.4); /* #F4F4F5 */
+  --color-workspace-light: oklch(0.9467 0.0027 286.3); /* #EDEDEF，工作区底色 */
+  --color-neutral-150: oklch(0.9316 0.0027 286.3); /* #E8E8EA */
+  --color-neutral-200: oklch(0.9073 0.0027 286.3); /* #E0E0E2 */
+  --color-neutral-300: oklch(0.8554 0.0041 286.3); /* #CFCFD2 */
+  --color-neutral-400: oklch(0.6979 0.0087 286.2); /* #9D9DA3 */
+  --color-neutral-500: oklch(0.5088 0.0094 286.1); /* #65656B */
+  --color-neutral-600: oklch(0.415 0.0099 286); /* #4B4B51 */
+  --color-neutral-700: oklch(0.3546 0.0103 285.9); /* #3B3B41 */
+  --color-neutral-800: oklch(0.2615 0.0055 286); /* #242427 */
+  --color-neutral-850: oklch(0.2359 0.0038 286.1); /* #1E1E20 */
+  --color-neutral-900: oklch(0.2011 0.0039 286); /* #161618 */
+  --color-neutral-950: oklch(0.1693 0.0041 286); /* #0F0F11 */
+
+  /* 只服务于暗色的一块。写进 primitive 层而不是散在 .dark 里，是因为它们确实是原始值 */
+  --color-dark-inset: oklch(0.1785 0.0041 286); /* #111113 嵌在面板里的输入区 */
+  --color-dark-hover: oklch(0.249 0.0056 286); /* #212124 */
+  --color-dark-active: oklch(0.2825 0.0073 285.9); /* #29292D */
+  --color-dark-line: oklch(0.278 0.0055 286); /* #28282B */
+  --color-dark-line-strong: oklch(0.3661 0.0102 285.9); /* #3E3E44 */
 
   /* 纸墨系（暖调，色相 145）。与内置主题「墨 Ink」同源，只服务于正文 */
   --color-paper-light: oklch(0.9781 0.0017 145.6); /* #F7F8F7 */
@@ -189,26 +206,26 @@
   --neutral-dot: var(--color-neutral-400);
 
   --focus-ring: var(--seal);
-  --scrim: oklch(0.2 0.02 264 / 0.45);
+  --scrim: oklch(0.2 0 0 / 0.45);
 
   /*
    * 阴影三档。卡片用极轻的一层 —— 它只是把白卡片从浅灰底上「托」起来，
    * 不表达高度；真正浮起的元素（下拉、弹窗、命令面板）才用后两档。
    */
-  --elevation-card: 0 1px 2px 0 oklch(0.2 0.02 264 / 0.04);
-  --elevation-popover: 0 4px 14px -4px oklch(0.2 0.02 264 / 0.16),
-    0 1px 3px 0 oklch(0.2 0.02 264 / 0.06);
-  --elevation-overlay: 0 16px 40px -12px oklch(0.2 0.02 264 / 0.28),
-    0 2px 8px -2px oklch(0.2 0.02 264 / 0.1);
+  --elevation-card: 0 1px 2px 0 oklch(0.2 0 0 / 0.04);
+  --elevation-popover: 0 4px 14px -4px oklch(0.2 0 0 / 0.16),
+    0 1px 3px 0 oklch(0.2 0 0 / 0.06);
+  --elevation-overlay: 0 16px 40px -12px oklch(0.2 0 0 / 0.28),
+    0 2px 8px -2px oklch(0.2 0 0 / 0.1);
 }
 
 .dark {
-  --chrome: var(--color-neutral-900);
-  --surface: var(--color-neutral-850);
-  --surface-raised: var(--color-neutral-800);
-  --surface-hover: oklch(0.2477 0.014 267);
-  --surface-active: oklch(0.2856 0.0129 262);
-  --surface-inset: var(--color-neutral-900);
+  --chrome: var(--color-neutral-950); /* 工作区：近纯黑，去掉了第一版那层蓝 */
+  --surface: var(--color-neutral-900); /* 侧栏、页头、卡片 */
+  --surface-raised: var(--color-neutral-850); /* 卡片内的次级区块、表头 */
+  --surface-hover: var(--color-dark-hover);
+  --surface-active: var(--color-dark-active);
+  --surface-inset: var(--color-dark-inset); /* 比工作区再深一档：嵌在面板里的输入区 */
 
   /* 暗色下纸墨关系整体反转：纸取「墨」色，字取浅墨 */
   --paper: var(--color-paper-dark);
@@ -231,11 +248,11 @@
   --seal: var(--color-seal-400);
   --seal-hover: var(--color-seal-300);
   --seal-soft: var(--color-seal-dark-soft);
-  --seal-soft-strong: oklch(0.36 0.05 260);
+  --seal-soft-strong: oklch(0.36 0.05 260); /* 暗色下的选中底强档，随印走，不随中性走 */
   --seal-on: var(--color-neutral-900);
 
-  --line: oklch(0.2856 0.0129 262); /* #272B33 */
-  --line-strong: var(--color-neutral-700);
+  --line: var(--color-dark-line); /* #28282B */
+  --line-strong: var(--color-dark-line-strong); /* #3E3E44，输入框边框要看出边界 */
 
   --ok: var(--color-ok-300);
   --ok-dot: var(--color-ok-300);

@@ -163,7 +163,7 @@ export function SchemaForm({
       disabled: groupDisabled,
       onChange,
     }) => (
-      <div className="flex flex-col gap-4">
+      <div className="@container flex flex-col gap-4">
         {Object.entries(groupSchema.properties ?? {})
           .filter(([, field]) => isVisible(field["x-show-if"], groupValues))
           .map(([key, field]) => {
@@ -295,7 +295,7 @@ export function SchemaForm({
                   ) : null}
                 </header>
               ) : null}
-              <div className="divide-y divide-line">
+              <div className="@container divide-y divide-line">
                 {visibleFields.map(([key, field]) => (
                   <FieldRow
                     key={key}

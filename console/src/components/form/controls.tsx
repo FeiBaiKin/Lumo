@@ -12,7 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Inset } from "@/components/ui/card";
 import {
-  Field,
   FieldDescription,
   FieldError,
   FieldLabel,
@@ -30,7 +29,7 @@ import { Slider } from "@/components/ui/slider";
 import { CheckboxRow, Switch } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 import { ImageOff, Plus, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 /**
  * 通用表单的控件渲染。
@@ -220,7 +219,6 @@ function SelectControl({
         id={fieldId(path)}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${fieldId(path)}-error` : undefined}
-        className="max-w-md"
       >
         <SelectValue />
       </SelectTrigger>
@@ -357,16 +355,24 @@ function SwitchControl({
 }: ControlProps) {
   const label = labelFor(schema, path);
   return (
-    <div className="flex items-start justify-between gap-4 py-1">
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <label
+    /*
+     * 同一个元素在宽窄两种容器下都是「开关行」，只是排布不同：
+     * 窄的时候（弹窗里的插件设置）标签在左、开关在右，与全站的 SwitchRow 一致；
+     * 宽的时候（设置页）并入 FieldGrid 那套「标签列 + 控件列」，开关落在控件列的开头。
+     * 用容器查询而不是窗口断点：弹窗的宽度与窗口无关，用断点会在宽屏上把两列塞进 672px 的弹窗。
+     */
+    <div className="flex items-start justify-between gap-4 @[44rem]:grid @[44rem]:grid-cols-[16rem_minmax(0,1fr)] @[44rem]:gap-x-8">
+      <div className="flex min-w-0 flex-col gap-0.5 @[44rem]:pt-2">
+        {/* 开关的标签在窄容器里比别的字段大一档（它是整行的标题）；
+            宽容器下并入标签列，就跟其他字段的标签同号，否则同一列里两种字号会发锯齿 */}
+        <FieldLabel
           htmlFor={fieldId(path)}
-          className="text-base font-medium text-ink select-none"
+          className="text-base @[44rem]:text-sm"
         >
           {label}
-        </label>
+        </FieldLabel>
         {schema.description ? (
-          <p className="text-xs text-ink-muted">{schema.description}</p>
+          <FieldDescription>{schema.description}</FieldDescription>
         ) : null}
         <ErrorLine path={path} error={error} />
       </div>
@@ -375,9 +381,40 @@ function SwitchControl({
         checked={Boolean(value)}
         disabled={disabled}
         onCheckedChange={(checked) => onChange(checked)}
-        className="mt-0.5"
+        className="mt-0.5 @[44rem]:mt-2"
         aria-describedby={error ? `${fieldId(path)}-error` : undefined}
       />
+    </div>
+  );
+}
+
+/**
+ * 字段的排布。
+ *
+ * 由上到下（窄容器）与「标签列 + 控件列」（宽容器）是**同一棵 DOM**，
+ * 只是外层在容器够宽时从 flex 换成 grid：这样两种形态不可能长得不一样，
+ * 也不会出现「窄屏那份忘了改」。
+ *
+ * 为什么按容器宽度而不是窗口宽度切换：同一套表单引擎既渲染在整页的设置页里
+ * （上千像素），也渲染在 672px 的弹窗里（插件设置）。窗口宽 1440 时弹窗照样只有 672，
+ * 用媒体查询会把两列硬塞进弹窗。容器查询问的是「我实际有多宽」，这才是对的问题。
+ */
+function FieldGrid({
+  label,
+  description,
+  children,
+}: {
+  label: ReactNode;
+  description: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-y-1.5 @[44rem]:grid @[44rem]:grid-cols-[16rem_minmax(0,1fr)] @[44rem]:gap-x-8">
+      <div className="flex min-w-0 flex-col gap-0.5 @[44rem]:pt-2">
+        {label}
+        {description}
+      </div>
+      <div className="flex min-w-0 flex-col gap-1.5">{children}</div>
     </div>
   );
 }
@@ -569,23 +606,27 @@ export function SchemaField({
     onBlur,
   };
 
-  // 布尔字段自成一行，标签在左、开关在右
+  // 布尔字段自成一行，排布见 SwitchControl
   if (widget === "switch") {
     return <SwitchControl {...control} />;
   }
 
+  // 复合控件（列表 / 重复 / 嵌套）自己负责显示错误，其余在这里统一显示
+  const showError =
+    widget !== "list" && widget !== "repeater" && widget !== "group";
+
   return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      {schema.description ? (
-        <FieldDescription>{schema.description}</FieldDescription>
-      ) : null}
+    <FieldGrid
+      label={<FieldLabel htmlFor={id}>{label}</FieldLabel>}
+      description={
+        schema.description ? (
+          <FieldDescription>{schema.description}</FieldDescription>
+        ) : null
+      }
+    >
       {renderControl(widget, control, renderGroup)}
-      {/* 复合控件（列表/重复/嵌套）自己负责显示错误，其余在这里统一显示 */}
-      {widget !== "list" && widget !== "repeater" && widget !== "group" ? (
-        <ErrorLine path={path} error={error} />
-      ) : null}
-    </Field>
+      {showError ? <ErrorLine path={path} error={error} /> : null}
+    </FieldGrid>
   );
 }
 

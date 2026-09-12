@@ -23,7 +23,6 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
-import { Tabbar } from "@/components/ui/tabs";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Send, Settings, SlidersHorizontal } from "lucide-react";
@@ -31,17 +30,22 @@ import { useMemo, useState } from "react";
 import { useParams } from "react-router";
 
 /**
- * 设置页（形态对齐 Halo 的 SystemSettings：一张卡片，标题栏是分组标签栏）。
+ * 设置页（形态对齐 Halo 的 SystemSettings：一张卡片）。
  *
  * **一个页面渲染所有分组**，而不是给 site / seo / mail / storage 各写一个页面。
  * 这正是 agent.md §5 定那套声明式 Schema 的目的：新增一个设置分组
  * （模块启动时登记，或主题安装时声明）不该需要动前端一行代码。
  *
- * 标签栏由接口返回的分组列表生成，不是写死的四个 ——
- * 写死的话，comment 分组就永远没有入口，而它在后端是存在的。
+ * **分组之间怎么切换：靠左侧菜单，页面里不再有第二套入口。**
+ * 第二版曾在这张卡片的标题栏里放一条分组标签栏，与左侧「设置」下的五个分组完全重复
+ * ——同一个动作画两遍，用户还得先判断哪一套才是「真的」。既然设置分组的菜单项
+ * 由服务端的 `Module.Navigation` 从同一份分组列表推导出来（见 internal/settings/module.go），
+ * 侧栏就是权威入口，标签栏删除。
+ *
+ * 页头的标题因此换成**当前分组自己的名字**（「站点」「附件存储」……），
+ * 而不是千篇一律的「设置」：左侧已经高亮了所在分组，页头再写一遍「设置」
+ * 等于把「我在哪一组」推回给用户去侧栏里找。文档标题同理。
  */
-
-type GroupView = components["schemas"]["GroupView"];
 
 export function SettingsPage({ defaultGroup }: { defaultGroup?: string } = {}) {
   const { group } = useParams<{ group: string }>();
@@ -104,9 +108,9 @@ export function SettingsPage({ defaultGroup }: { defaultGroup?: string } = {}) {
         <PageHeader icon={Settings} title="设置" />
         <PageBody>
           <Card>
-            <CardBody className="flex flex-col gap-4" aria-busy="true">
-              <Skeleton className="h-9 w-80" />
-              <Skeleton className="h-80 w-full max-w-2xl" />
+            <CardBody className="flex flex-col gap-6" aria-busy="true">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-72 w-full" />
             </CardBody>
           </Card>
         </PageBody>
@@ -136,13 +140,10 @@ export function SettingsPage({ defaultGroup }: { defaultGroup?: string } = {}) {
         <PageHeader icon={Settings} title="设置" />
         <PageBody>
           <Card>
-            <CardHeader>
-              <GroupTabs groups={groups} active={group} />
-            </CardHeader>
             <EmptyState
               icon={SlidersHorizontal}
               title={`没有名为「${group}」的设置分组`}
-              description="它可能来自一个未启用的模块。上方是当前可用的分组。"
+              description="它可能来自一个未启用的模块，或已随模块移除。左侧「设置」下的分组是当前可用的全部。"
             />
           </Card>
         </PageBody>
@@ -157,46 +158,41 @@ export function SettingsPage({ defaultGroup }: { defaultGroup?: string } = {}) {
     <>
       <PageHeader
         icon={Settings}
-        title="设置"
+        title={current.label}
         description={current.description}
       />
 
       <PageBody>
         <Card>
-          <CardHeader>
-            <GroupTabs groups={groups} active={current.name} />
-          </CardHeader>
           <CardBody>
-            <div className="max-w-2xl">
-              <SchemaForm
-                // key 让切换分组时表单整体重建：否则上一组的 touched / submitted
-                // 状态会带到下一组，出现「刚打开就满屏红字」
-                key={current.name}
-                schema={schema}
-                values={values}
-                serverErrors={errors}
-                serverMessages={messages}
-                onSubmit={async (next) => {
-                  setErrors({});
-                  setMessages([]);
-                  try {
-                    await update.mutateAsync(next);
-                  } catch (err) {
-                    if (err instanceof SettingsError) {
-                      // 服务端才是权威校验方：把它的 422 明细落回对应字段
-                      const mapped = errorsFromServer(err.details);
-                      setErrors(mapped.fields);
-                      setMessages(mapped.others);
-                    } else {
-                      setMessages([
-                        err instanceof Error ? err.message : "保存失败",
-                      ]);
-                    }
-                    throw err;
+            <SchemaForm
+              // key 让切换分组时表单整体重建：否则上一组的 touched / submitted
+              // 状态会带到下一组，出现「刚打开就满屏红字」
+              key={current.name}
+              schema={schema}
+              values={values}
+              serverErrors={errors}
+              serverMessages={messages}
+              onSubmit={async (next) => {
+                setErrors({});
+                setMessages([]);
+                try {
+                  await update.mutateAsync(next);
+                } catch (err) {
+                  if (err instanceof SettingsError) {
+                    // 服务端才是权威校验方：把它的 422 明细落回对应字段
+                    const mapped = errorsFromServer(err.details);
+                    setErrors(mapped.fields);
+                    setMessages(mapped.others);
+                  } else {
+                    setMessages([
+                      err instanceof Error ? err.message : "保存失败",
+                    ]);
                   }
-                }}
-              />
-            </div>
+                  throw err;
+                }
+              }}
+            />
           </CardBody>
         </Card>
 
@@ -224,38 +220,6 @@ class SettingsError extends Error {
     this.name = "SettingsError";
     this.details = details;
   }
-}
-
-/**
- * 分组标签栏。
- *
- * 用链接而不是按钮：每个分组有自己的地址（`/settings/site`），
- * 这样刷新与分享链接都能回到同一处。用按钮就需要自己同步地址，反而更绕。
- * 只有一个分组时不显示 —— 一个标签的标签栏只是噪音。
- */
-function GroupTabs({
-  groups,
-  active,
-}: {
-  groups: GroupView[];
-  active: string | undefined;
-}) {
-  if (groups.length <= 1) {
-    return null;
-  }
-  return (
-    <Tabbar
-      ariaLabel="设置分组"
-      value={active ?? ""}
-      items={groups.map((item) => ({
-        value: item.name,
-        label: item.label,
-        to: `/settings/${item.name}`,
-      }))}
-      // 卡片标题栏自带底线，标签栏的底线去掉；pb-px 给激活项那 2px 底线留出落脚处
-      className="w-full border-b-0 px-2 pb-px"
-    />
-  );
 }
 
 /**

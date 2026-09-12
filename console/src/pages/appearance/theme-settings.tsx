@@ -90,7 +90,12 @@ export function ThemeSettingsPanel({
   }
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4 p-4">
+    /*
+     * 不再给这层面板封顶：主题设置与站点设置是同一个引擎、同一套排版，
+     * 站点设置已经铺满工作区，主题设置被卡在 48rem 就会显得两半不一样。
+     * 窄的时候（`lg` 以下主题列表折到上方）由表单自己的容器查询收回单列。
+     */
+    <div className="flex flex-col gap-4 p-4">
       {current.description ? (
         <p className="text-sm text-ink-muted">{current.description}</p>
       ) : null}

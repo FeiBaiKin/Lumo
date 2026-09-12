@@ -18,7 +18,6 @@ export function PageHeader({
   back,
   sticky = true,
   className,
-  children,
 }: {
   icon?: LucideIcon | undefined;
   title: ReactNode;
@@ -28,8 +27,6 @@ export function PageHeader({
   back?: { to: string; label?: string } | undefined;
   sticky?: boolean;
   className?: string;
-  /** 页头下沿的附加内容（如标签栏）。 */
-  children?: ReactNode;
 }) {
   return (
     <header
@@ -69,7 +66,6 @@ export function PageHeader({
           <div className="flex flex-wrap items-center gap-2">{actions}</div>
         ) : null}
       </div>
-      {children}
     </header>
   );
 }
