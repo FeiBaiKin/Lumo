@@ -7,9 +7,9 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"strings"
+
+	"github.com/FeiBaiKin/lumo/internal/pkgzip"
 )
 
 // 主题包的解压限额。主题包来自第三方上传，必须防 zip 炸弹。
@@ -29,6 +29,25 @@ const (
 	themeDirPerm  os.FileMode = 0o750
 	themeFilePerm os.FileMode = 0o640
 )
+
+// pkgOptions 组装本包类型的安全解压参数。
+//
+// 安全解压的实现共用 internal/pkgzip：路径穿越、zip 炸弹、符号链接这几条约束
+// 对主题与插件是同一回事，两份实现意味着每次补洞要补两遍。
+// 白名单与限额是策略，各包类型不同，故由各自给出。
+func pkgOptions() pkgzip.Options {
+	return pkgzip.Options{
+		Limits: pkgzip.Limits{
+			MaxFiles:     maxPackageFiles,
+			MaxFileSize:  maxFileSize,
+			MaxTotalSize: maxTotalSize,
+			MaxPathDepth: maxPathDepth,
+		},
+		AllowedExtensions: allowedExtensions,
+		DirPerm:           themeDirPerm,
+		FilePerm:          themeFilePerm,
+	}
+}
 
 // allowedExtensions 是主题包内允许出现的文件扩展名。
 //
@@ -80,12 +99,12 @@ func Install(root string, r io.ReaderAt, size int64, overwrite bool) (*Manifest,
 		}
 	}()
 
-	prefix, err := detectPrefix(zr)
+	prefix, err := pkgzip.DetectPrefix(zr, FileManifest)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w：%w", ErrInvalidPackage, err)
 	}
-	if extractErr := extract(zr, staging, prefix); extractErr != nil {
-		return nil, extractErr
+	if extractErr := pkgzip.Extract(zr, staging, prefix, pkgOptions()); extractErr != nil {
+		return nil, fmt.Errorf("%w：%w", ErrInvalidPackage, extractErr)
 	}
 
 	manifest, err := validateDir(staging)
@@ -118,151 +137,6 @@ func Install(root string, r io.ReaderAt, size int64, overwrite bool) (*Manifest,
 	}
 	committed = true
 	return manifest, nil
-}
-
-// detectPrefix 判断包内是否有统一的顶层目录。
-//
-// 从 GitHub 下载的 zip 会多套一层 `<repo>-<branch>/`，而手工打的包通常没有。
-// 两种都得支持，否则一半用户会在「为什么提示缺少 theme.yaml」上卡住。
-func detectPrefix(zr *zip.Reader) (string, error) {
-	// 包根直接有 theme.yaml 就不需要剥层。
-	for _, f := range zr.File {
-		if path.Clean(f.Name) == FileManifest {
-			return "", nil
-		}
-	}
-	for _, f := range zr.File {
-		clean := path.Clean(f.Name)
-		if base := path.Base(clean); base != FileManifest {
-			continue
-		}
-		dir := path.Dir(clean)
-		if dir == "." || strings.Contains(dir, "/") {
-			// 只接受恰好一层的包装目录，再深就说明包结构不对。
-			continue
-		}
-		return dir + "/", nil
-	}
-	return "", fmt.Errorf("%w：包内找不到 %s", ErrInvalidPackage, FileManifest)
-}
-
-// extract 把 zip 内容解压到 dest，逐项施加安全限额。
-func extract(zr *zip.Reader, dest, prefix string) error {
-	var (
-		fileCount int
-		totalSize int64
-	)
-	for _, f := range zr.File {
-		name := f.Name
-		if prefix != "" {
-			if !strings.HasPrefix(name, prefix) {
-				continue
-			}
-			name = strings.TrimPrefix(name, prefix)
-		}
-		if name == "" {
-			continue
-		}
-
-		rel, err := safeRelPath(name)
-		if err != nil {
-			return err
-		}
-		if rel == "" {
-			continue
-		}
-
-		info := f.FileInfo()
-		if info.IsDir() {
-			if mkErr := os.MkdirAll(filepath.Join(dest, rel), themeDirPerm); mkErr != nil {
-				return fmt.Errorf("创建目录 %s: %w", rel, mkErr)
-			}
-			continue
-		}
-		// 符号链接可以指到 /etc/passwd，解压时一律拒绝。
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("%w：包内 %s 不是普通文件", ErrInvalidPackage, rel)
-		}
-		if ext := strings.ToLower(path.Ext(rel)); !allowedExtensions[ext] {
-			return fmt.Errorf("%w：不允许的文件类型 %s（%s）", ErrInvalidPackage, ext, rel)
-		}
-
-		fileCount++
-		if fileCount > maxPackageFiles {
-			return fmt.Errorf("%w：文件数超过 %d 个", ErrInvalidPackage, maxPackageFiles)
-		}
-		written, err := extractFile(f, filepath.Join(dest, rel), rel)
-		if err != nil {
-			return err
-		}
-		totalSize += written
-		if totalSize > maxTotalSize {
-			return fmt.Errorf("%w：解压后总大小超过 %d 字节", ErrInvalidPackage, maxTotalSize)
-		}
-	}
-	if fileCount == 0 {
-		return fmt.Errorf("%w：包内没有任何文件", ErrInvalidPackage)
-	}
-	return nil
-}
-
-// extractFile 解压单个文件，返回写入字节数。
-func extractFile(f *zip.File, target, rel string) (int64, error) {
-	if err := os.MkdirAll(filepath.Dir(target), themeDirPerm); err != nil {
-		return 0, fmt.Errorf("创建目录 %s: %w", filepath.Dir(rel), err)
-	}
-	src, err := f.Open()
-	if err != nil {
-		return 0, fmt.Errorf("读取包内文件 %s: %w", rel, err)
-	}
-	defer func() { _ = src.Close() }()
-
-	dst, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, themeFilePerm)
-	if err != nil {
-		return 0, fmt.Errorf("写入文件 %s: %w", rel, err)
-	}
-	defer func() { _ = dst.Close() }()
-
-	// 限流复制：不信任 zip 头里声明的 UncompressedSize64，
-	// 高压缩比的炸弹正是靠谎报这个字段绕过预检的。
-	written, err := io.Copy(dst, io.LimitReader(src, maxFileSize+1))
-	if err != nil {
-		return 0, fmt.Errorf("解压文件 %s: %w", rel, err)
-	}
-	if written > maxFileSize {
-		return 0, fmt.Errorf("%w：%s 解压后超过 %d 字节", ErrInvalidPackage, rel, maxFileSize)
-	}
-	return written, nil
-}
-
-// safeRelPath 校验并规范化包内路径，拒绝穿越与绝对路径。
-func safeRelPath(name string) (string, error) {
-	// zip 规范里分隔符就是 /，但实际存在用 \ 打的包。
-	normalized := strings.ReplaceAll(name, `\`, "/")
-	if strings.HasPrefix(normalized, "/") {
-		return "", fmt.Errorf("%w：包内路径不得为绝对路径（%s）", ErrInvalidPackage, name)
-	}
-	if strings.Contains(normalized, "\x00") {
-		return "", fmt.Errorf("%w：包内路径含非法字符", ErrInvalidPackage)
-	}
-
-	clean := path.Clean(normalized)
-	if clean == "." {
-		return "", nil
-	}
-	if clean == ".." || strings.HasPrefix(clean, "../") {
-		return "", fmt.Errorf("%w：包内路径越界（%s）", ErrInvalidPackage, name)
-	}
-	// 忽略打包工具留下的元数据目录。
-	for _, junk := range []string{"__MACOSX/", ".git/", "node_modules/"} {
-		if strings.HasPrefix(clean, junk) {
-			return "", nil
-		}
-	}
-	if strings.Count(clean, "/") >= maxPathDepth {
-		return "", fmt.Errorf("%w：包内路径层级过深（%s）", ErrInvalidPackage, name)
-	}
-	return filepath.FromSlash(clean), nil
 }
 
 // validateDir 校验一个已解压的主题目录，返回其元信息。

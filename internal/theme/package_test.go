@@ -308,38 +308,3 @@ func TestRemoveAndList(t *testing.T) {
 		t.Errorf("非法名错误 = %v，期望 ErrInvalidPackage", err)
 	}
 }
-
-// TestSafeRelPath 逐条验证路径规范化。
-func TestSafeRelPath(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		in      string
-		wantErr bool
-		skip    bool
-	}{
-		{in: "templates/index.html"},
-		{in: "a/b/c.css"},
-		{in: "../evil", wantErr: true},
-		{in: "a/../../evil", wantErr: true},
-		{in: "/abs/path", wantErr: true},
-		{in: `..\evil`, wantErr: true},
-		{in: "__MACOSX/x", skip: true},
-		{in: "node_modules/x", skip: true},
-		{in: "a/b/c/d/e/f/g/h/i.css", wantErr: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.in, func(t *testing.T) {
-			t.Parallel()
-			got, err := safeRelPath(tt.in)
-			switch {
-			case tt.wantErr && err == nil:
-				t.Errorf("期望报错，实际得到 %q", got)
-			case !tt.wantErr && err != nil:
-				t.Errorf("不应报错，实际 %v", err)
-			case tt.skip && got != "":
-				t.Errorf("期望被忽略，实际 %q", got)
-			}
-		})
-	}
-}
