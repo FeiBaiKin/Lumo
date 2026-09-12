@@ -905,7 +905,80 @@ button {
   color: #b3261e;
 }
 
+/* ---------- 印（插图系统，阶段 8） ---------- */
+/*
+ * 一枚方印、一个字。空状态盖「待」，搜索无果盖「无」，404 盖「空」，
+ * 归档页头盖名字的第一个字。字用显示字体渲染，颜色就是「印」本身。
+ * 微微逆时针歪一点：盖章从来不是水平的。
+ */
+.seal {
+  display: block;
+  flex: none;
+  width: 4rem;
+  height: 4rem;
+  transform: rotate(-5deg);
+}
+
+.seal rect {
+  fill: var(--seal-color, var(--link));
+}
+
+.seal text {
+  fill: var(--bg);
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 600;
+}
+
+.has-seal {
+  display: flex;
+  gap: var(--s6);
+  align-items: flex-start;
+}
+
+.has-seal .seal {
+  margin-top: var(--s1);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s4);
+  padding-block: var(--s12);
+  text-align: center;
+}
+
+.empty-state .empty {
+  margin: 0;
+}
+
+/* ---------- 阅读进度 ---------- */
+/* 一条 2px 的印色线，贴在视口顶部。初始 scaleX(0)：没有 JS 时它就是不存在。 */
+.reading-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: var(--link);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  z-index: 20;
+  pointer-events: none;
+}
+
 /* ---------- 404 ---------- */
+.notfound-head {
+  display: flex;
+  gap: var(--s6);
+  align-items: flex-start;
+}
+
+.notfound-head .seal {
+  width: 5rem;
+  height: 5rem;
+  margin-top: var(--s2);
+}
+
 .notfound-code {
   margin: 0;
   font-family: var(--font-display);

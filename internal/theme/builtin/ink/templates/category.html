@@ -2,11 +2,15 @@
 
 {{ define "main" }}
 <div class="wrap">
-  <header class="archive-header">
-    <p class="archive-kind">分类</p>
-    <h1 class="archive-title">{{ .Category.Name }}</h1>
-    {{ with .Category.Description }}<p class="archive-desc">{{ . }}</p>{{ end }}
-    <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+  {{- /* 页头的印：盖上分类名的第一个字。printf 的精度按字符数截取，中文安全。 */ -}}
+  <header class="archive-header has-seal">
+    {{ template "partials/seal.html" (printf "%.1s" .Category.Name) }}
+    <div data-motion="title">
+      <p class="archive-kind">分类</p>
+      <h1 class="archive-title">{{ .Category.Name }}</h1>
+      {{ with .Category.Description }}<p class="archive-desc">{{ . }}</p>{{ end }}
+      <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+    </div>
   </header>
 
   {{ template "partials/post-list.html" . }}

@@ -2,11 +2,15 @@
 
 {{ define "main" }}
 <div class="wrap">
-  <header class="archive-header">
-    <p class="archive-kind">标签</p>
-    <h1 class="archive-title"{{ with .Tag.Color }} style="--tag-color: {{ . }}"{{ end }}>{{ .Tag.Name }}</h1>
-    {{ with .Tag.Description }}<p class="archive-desc">{{ . }}</p>{{ end }}
-    <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+  {{- /* 标签有自定义颜色时，印也跟着换色。 */ -}}
+  <header class="archive-header has-seal"{{ with .Tag.Color }} style="--seal-color: {{ . }}"{{ end }}>
+    {{ template "partials/seal.html" (printf "%.1s" .Tag.Name) }}
+    <div data-motion="title">
+      <p class="archive-kind">标签</p>
+      <h1 class="archive-title">{{ .Tag.Name }}</h1>
+      {{ with .Tag.Description }}<p class="archive-desc">{{ . }}</p>{{ end }}
+      <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+    </div>
   </header>
 
   {{ template "partials/post-list.html" . }}

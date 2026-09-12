@@ -11,7 +11,7 @@
 {{ $layout := .Theme.Settings.layout }}
 
 {{ if .Posts }}
-<ul class="post-list">
+<ul class="post-list" data-motion="list">
   {{ range .Posts }}
   <li class="post-item{{ if .Pinned }} is-pinned{{ end }}">
     {{ if and $layout.showCover .CoverURL }}
@@ -45,5 +45,8 @@
 
 {{ template "partials/pagination.html" . }}
 {{ else }}
-<p class="empty">还没有内容。</p>
+<div class="empty-state">
+  {{ template "partials/seal.html" "待" }}
+  <p class="empty">还没有内容。</p>
+</div>
 {{ end }}

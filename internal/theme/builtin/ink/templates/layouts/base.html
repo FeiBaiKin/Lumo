@@ -29,6 +29,13 @@
   <link rel="alternate" type="application/rss+xml" title="{{ .Site.Title }}" href="/feed.xml">
   <link rel="alternate" type="application/atom+xml" title="{{ .Site.Title }}" href="/atom.xml">
 
+  {{- /*
+  自托管的思源宋体（阶段 8）：按 unicode-range 分包，浏览器只下载当前页标题真正用到的那几片。
+  放在 theme.css 之前，@font-face 声明先就位。站长可在主题设置里关掉它。
+  */}}
+  {{ with .Theme.Settings.appearance }}{{ if .webFont }}
+  <link rel="stylesheet" href="{{ $.Theme.AssetsBase }}/fonts/display-font.css">
+  {{ end }}{{ end }}
   <link rel="stylesheet" href="{{ .Theme.AssetsBase }}/theme.css">
   {{- /* 印色可在后台改，作为内联变量覆盖样式表里的默认值。 */}}
   {{ with .Theme.Settings.appearance }}
@@ -36,6 +43,7 @@
     :root {
       {{ with .seal }}--seal: {{ . }};{{ end }}
       {{ with .contentWidth }}--measure: {{ . }}em;{{ end }}
+      {{ if .webFont }}--font-display: "Noto Serif SC", var(--font-serif);{{ end }}
     }
   </style>
   {{ end }}
@@ -49,5 +57,16 @@
   </main>
 
   {{ template "partials/footer.html" . }}
+
+  {{- /*
+  动效（阶段 8）：GSAP + ScrollTrigger + Lenis 全部自托管，defer 加载、不阻塞渲染。
+  脚本自己检查 prefers-reduced-motion；这里的开关是站长的总闸。
+  */}}
+  {{ with .Theme.Settings.appearance }}{{ if .motion }}
+  <script defer src="{{ $.Theme.AssetsBase }}/vendor/gsap.min.js"></script>
+  <script defer src="{{ $.Theme.AssetsBase }}/vendor/ScrollTrigger.min.js"></script>
+  <script defer src="{{ $.Theme.AssetsBase }}/vendor/lenis.min.js"></script>
+  <script defer src="{{ $.Theme.AssetsBase }}/motion.js"></script>
+  {{ end }}{{ end }}
 </body>
 </html>

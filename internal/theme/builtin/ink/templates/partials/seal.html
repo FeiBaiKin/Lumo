@@ -1,0 +1,12 @@
+{{- /*
+印：一枚方印，里面是一个字。这是本主题的插图系统 —— 空状态、404、归档页头都用它，
+而不是各画一张线条插画。三个颜色各自对应一种真实物质（纸、墨、印），
+插图理应也是其中之一：印章正是「印」这个颜色的出处。
+
+字由 --font-display 渲染（阶段 8 起是自托管的思源宋体），没有图片、没有 JS 也能显示；
+调用时把要盖的那个字作为 dot 传入：{{ template "partials/seal.html" "空" }}。
+*/ -}}
+<svg class="seal" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  <rect x="3" y="3" width="58" height="58" rx="7" />
+  <text x="32" y="34" text-anchor="middle" dominant-baseline="central">{{ . }}</text>
+</svg>

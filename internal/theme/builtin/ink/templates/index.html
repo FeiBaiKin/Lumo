@@ -3,7 +3,7 @@
 {{ define "main" }}
 <div class="wrap">
   {{ if and (eq .Pagination.Page 1) .Site.Description }}
-  <p class="site-intro">{{ .Site.Description }}</p>
+  <div data-motion="title"><p class="site-intro">{{ .Site.Description }}</p></div>
   {{ end }}
 
   {{ template "partials/post-list.html" . }}

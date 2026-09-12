@@ -36,12 +36,22 @@ groups:
           type: boolean
           title: 显示阅读时长
           description: 在文章页的元信息栏显示估算的阅读分钟数；列表页不显示
+        webFont:
+          type: boolean
+          title: 标题使用自托管宋体
+          description: 标题与站名用随主题附带的思源宋体（按需分包加载，每页只下载用到的几片）；关闭则退回访客系统里的衬线字体
+        motion:
+          type: boolean
+          title: 页面动效
+          description: 入场淡入、插图随滚动显现、文章页的阅读进度线。访客系统开启「减少动态效果」时自动关闭
     defaults:
       colorScheme: auto
       seal: "#1B3A6B"
       contentWidth: 36
       showMeta: true
       showReadingTime: true
+      webFont: true
+      motion: true
 
   - name: layout
     label: 版式

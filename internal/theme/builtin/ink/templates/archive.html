@@ -2,10 +2,13 @@
 
 {{ define "main" }}
 <div class="wrap">
-  <header class="archive-header">
-    <p class="archive-kind">归档</p>
-    <h1 class="archive-title">{{ .Archive.Label }}</h1>
-    <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+  <header class="archive-header has-seal">
+    {{ template "partials/seal.html" "存" }}
+    <div data-motion="title">
+      <p class="archive-kind">归档</p>
+      <h1 class="archive-title">{{ .Archive.Label }}</h1>
+      <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+    </div>
   </header>
 
   {{ template "partials/post-list.html" . }}

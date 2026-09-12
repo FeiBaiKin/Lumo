@@ -2,8 +2,13 @@
 
 {{ define "main" }}
 <div class="wrap notfound">
-  <h1 class="notfound-code">404</h1>
-  <p class="notfound-text">这里没有内容。地址可能改过，或者它从未存在。</p>
+  <div class="notfound-head" data-motion="title">
+    {{ template "partials/seal.html" "空" }}
+    <div>
+      <h1 class="notfound-code">404</h1>
+      <p class="notfound-text">这里没有内容。地址可能改过，或者它从未存在。</p>
+    </div>
+  </div>
 
   {{- /* 空状态是行动的邀请，不是道歉。给出下一步，而不是一句「很抱歉」。 */ -}}
   {{ $recent := .Find.Posts.Recent 5 }}

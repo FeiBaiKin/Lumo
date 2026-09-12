@@ -18,7 +18,10 @@
     {{ if .Posts }}
       {{ template "partials/post-list.html" . }}
     {{ else }}
-    <p class="empty">没有匹配的内容。换个词试试，或者从<a href="/">首页</a>浏览。</p>
+    <div class="empty-state">
+      {{ template "partials/seal.html" "无" }}
+      <p class="empty">没有匹配的内容。换个词试试，或者从<a href="/">首页</a>浏览。</p>
+    </div>
     {{ end }}
   {{ else }}
     {{- /* 空态给入口而不是留白：标签云是最省力的「不知道搜什么」的解法。 */ -}}

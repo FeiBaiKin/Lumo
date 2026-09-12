@@ -3,8 +3,9 @@
 {{ define "main" }}
 <div class="wrap">
   <header class="archive-header author-header">
-    {{ with .Author.AvatarURL }}<img class="avatar avatar-lg" src="{{ . }}" alt="" loading="lazy">{{ end }}
-    <div>
+    {{- /* 作者有头像用头像，没有就盖一枚写着名字首字的印。 */ -}}
+    {{ with .Author.AvatarURL }}<img class="avatar avatar-lg" src="{{ . }}" alt="" loading="lazy">{{ else }}{{ template "partials/seal.html" (printf "%.1s" .Author.DisplayName) }}{{ end }}
+    <div data-motion="title">
       <p class="archive-kind">作者</p>
       <h1 class="archive-title">{{ .Author.DisplayName }}</h1>
       {{ with .Author.Bio }}<p class="archive-desc">{{ . }}</p>{{ end }}

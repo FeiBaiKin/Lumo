@@ -50,6 +50,21 @@ func (f *Frontend) Mount(r chi.Router) {
 // viewerID 返回当前登录用户的 ID；匿名为 0。
 //
 // 用于放行作者本人的私密内容：作者点自己文章的链接不该看到 404。
+// pathParam 取路径参数并做一次百分号解码。
+//
+// html/template 在 href 上下文里会把中文 slug 规范化成**小写**的百分号编码
+// （/posts/%e7%a7%8b…），而 Go 的 url.Parse 只在编码形式与规范形式（大写）不同时才保留
+// RawPath；chi 一旦看到 RawPath 就按它路由，参数值因此是**未解码**的编码串，
+// 拿去查库自然找不到。站点默认的 slug 策略是保留中文（settings.site.slugStrategy = unicode），
+// 不解码就等于所有中文标题的文章前台都打不开。解码失败时按原值处理。
+func pathParam(r *http.Request, name string) string {
+	raw := chi.URLParam(r, name)
+	if decoded, err := url.PathUnescape(raw); err == nil {
+		return decoded
+	}
+	return raw
+}
+
 func viewerID(r *http.Request) int64 {
 	principal, ok := auth.FromContext(r.Context())
 	if !ok || principal == nil {
@@ -99,7 +114,7 @@ func (f *Frontend) index(w http.ResponseWriter, r *http.Request) {
 
 // post 渲染文章详情页。
 func (f *Frontend) post(w http.ResponseWriter, r *http.Request) {
-	f.renderContent(w, r, string(content.TypePost), chi.URLParam(r, "slug"), KindPost, "post.html")
+	f.renderContent(w, r, string(content.TypePost), pathParam(r, "slug"), KindPost, "post.html")
 }
 
 // page 渲染独立页面。
@@ -107,7 +122,7 @@ func (f *Frontend) post(w http.ResponseWriter, r *http.Request) {
 // 页面可选主题提供的 page-*.html 模板（WordPress 模式，agent.md §4.2）；
 // 模板不存在时回退到 page.html，而不是报错——主题换了之后旧页面还得能打开。
 func (f *Frontend) page(w http.ResponseWriter, r *http.Request) {
-	slug := chi.URLParam(r, "slug")
+	slug := pathParam(r, "slug")
 	ctx := r.Context()
 
 	view, err := f.store.GetContent(ctx, string(content.TypePage), slug, viewerID(r))
@@ -155,7 +170,7 @@ func (f *Frontend) renderSingle(w http.ResponseWriter, r *http.Request, view *Po
 // category 渲染分类归档页。
 func (f *Frontend) category(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	slug := chi.URLParam(r, "slug")
+	slug := pathParam(r, "slug")
 
 	category, err := f.store.GetCategory(ctx, slug)
 	if err != nil {
@@ -187,7 +202,7 @@ func (f *Frontend) category(w http.ResponseWriter, r *http.Request) {
 // tag 渲染标签归档页。
 func (f *Frontend) tag(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	slug := chi.URLParam(r, "slug")
+	slug := pathParam(r, "slug")
 
 	tag, err := f.store.GetTag(ctx, slug)
 	if err != nil {
@@ -265,7 +280,7 @@ func (f *Frontend) archive(w http.ResponseWriter, r *http.Request) {
 // author 渲染作者归档页。
 func (f *Frontend) author(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	username := chi.URLParam(r, "username")
+	username := pathParam(r, "username")
 
 	author, err := f.store.GetAuthor(ctx, username)
 	if err != nil {
