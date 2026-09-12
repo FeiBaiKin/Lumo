@@ -1,243 +1,101 @@
-import {
-  BookOpen,
-  FileText,
-  FolderTree,
-  HardDrive,
-  Image,
-  Info,
-  LayoutDashboard,
-  ListTree,
-  type LucideIcon,
-  Mail,
-  MessageSquare,
-  Palette,
-  ScrollText,
-  Search,
-  Settings,
-  ShieldCheck,
-  Tags,
-  UserRound,
-  Users,
-} from "lucide-react";
+import type { components } from "@/api/schema";
+import { type LucideIcon, resolveIcon } from "@/lib/icons";
 
 /**
- * 侧边栏导航地图。
+ * 侧边栏菜单的形态与换算。
  *
- * 严格照 agent.md §8 的七组页面地图，不自行增减。
- * 用分组而非扁平列表，是为了 v1.1 接入插件页时有确定的安放位置 ——
- * 届时插件只需声明自己属于哪一组，侧边栏不必改结构。
+ * 菜单**由服务端给出**（见 internal/app/nav.go 与 internal/console/nav.go），
+ * 前端不再维护一份硬编码清单。理由是插件：插件的页面要出现在侧边栏里，
+ * 而前端不可能事先知道装了哪些插件。清单一旦写死在前端，就必须与后端的模块构成
+ * 保持同步，而那种同步只能靠人记着。
  *
- * `permission` 是显示条件而非安全边界：没有权限就不显示入口，
- * 但真正的拦截在服务端。前端隐藏按钮只是少让人白跑一趟。
+ * 本文件只做两件事：把接口给的图标名换成组件，以及判断「当前在哪一项上」。
+ * 排序、分组、权限过滤都不在这里——排序由服务端排好，权限由调用方按各自的语义过滤。
  */
 
+type NavGroupWire = components["schemas"]["NavGroupView"];
+type NavItemWire = components["schemas"]["NavItemView"];
+
+/** 渲染用的菜单项：图标已解析成组件。 */
 export type NavItem = {
+  key: string;
   label: string;
   to: string;
   icon: LucideIcon;
-  /** 需要的权限；留空表示所有已登录用户可见。 */
-  permission?: string;
-  /** 只在精确匹配时高亮（用于「概览」这类根路径项）。 */
-  end?: boolean;
-  /** 命令面板里的检索关键词（含拼音），便于用中文输入法习惯查找。 */
-  keywords?: string;
+  /** 显示所需的权限；留空表示所有已登录用户可见。 */
+  permission?: string | undefined;
+  keywords?: string | undefined;
+  description?: string | undefined;
+  /** 只在路径完全相等时高亮，用于「概览」这类根路径项。 */
+  end?: boolean | undefined;
 };
 
+/** 渲染用的分组。 */
 export type NavGroup = {
+  name: string;
   label: string;
   items: NavItem[];
 };
 
-export const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "仪表盘",
-    items: [
-      {
-        label: "概览",
-        to: "/",
-        icon: LayoutDashboard,
-        end: true,
-        keywords: "dashboard gailan shouye home",
-      },
-    ],
-  },
-  {
-    label: "内容",
-    items: [
-      {
-        label: "文章",
-        to: "/posts",
-        icon: BookOpen,
-        keywords: "posts wenzhang",
-      },
-      { label: "页面", to: "/pages", icon: FileText, keywords: "pages yemian" },
-      // 分类与标签不设权限门槛：服务端对 Console 平面的读操作对任何已认证用户开放
-      // （见 internal/taxonomy/handler.go 的说明 —— 作者写文章要能选分类）。
-      // 写操作在页面内部按 taxonomies:manage 收起。
-      {
-        label: "分类",
-        to: "/categories",
-        icon: FolderTree,
-        keywords: "categories fenlei",
-      },
-      { label: "标签", to: "/tags", icon: Tags, keywords: "tags biaoqian" },
-      {
-        label: "评论",
-        to: "/comments",
-        icon: MessageSquare,
-        keywords: "comments pinglun",
-      },
-    ],
-  },
-  {
-    label: "媒体",
-    items: [
-      {
-        label: "附件",
-        to: "/media",
-        icon: Image,
-        keywords: "media fujian tupian",
-      },
-    ],
-  },
-  {
-    label: "外观",
-    items: [
-      // 主题的**全部**操作都要求 themes:manage（含列表）——
-      // 主题能执行任意模板逻辑并决定整站外观，门槛与设置同级，
-      // 故未持有时整项隐藏，点进去也只会得到 403。
-      {
-        label: "主题",
-        to: "/themes",
-        icon: Palette,
-        permission: "themes:manage",
-        keywords: "themes zhuti",
-      },
-      {
-        label: "菜单",
-        to: "/menus",
-        icon: ListTree,
-        permission: "menus:manage",
-        keywords: "menus caidan daohang",
-      },
-    ],
-  },
-  {
-    label: "用户",
-    items: [
-      {
-        label: "用户",
-        to: "/users",
-        icon: Users,
-        permission: "users:manage",
-        keywords: "users yonghu",
-      },
-      {
-        label: "角色",
-        to: "/roles",
-        icon: ShieldCheck,
-        permission: "roles:manage",
-        keywords: "roles juese quanxian",
-      },
-    ],
-  },
-  {
-    label: "设置",
-    items: [
-      // 设置的**全部**端点（含读取）都要求 settings:manage，见 internal/settings/handler.go
-      // 里的 manage 中间件 —— 未授权用户不该看到站点的 SMTP 主机与存储配置。
-      {
-        label: "站点",
-        to: "/settings/site",
-        icon: Settings,
-        permission: "settings:manage",
-        keywords: "settings site zhandian shezhi",
-      },
-      {
-        label: "SEO",
-        to: "/settings/seo",
-        icon: Search,
-        permission: "settings:manage",
-        keywords: "seo sousuo",
-      },
-      {
-        label: "邮件",
-        to: "/settings/mail",
-        icon: Mail,
-        permission: "settings:manage",
-        keywords: "mail smtp youjian",
-      },
-      {
-        label: "存储",
-        to: "/settings/storage",
-        icon: HardDrive,
-        permission: "settings:manage",
-        keywords: "storage s3 cunchu",
-      },
-    ],
-  },
-  {
-    label: "系统",
-    items: [
-      {
-        label: "关于",
-        to: "/about",
-        icon: Info,
-        keywords: "about guanyu banben",
-      },
-      {
-        label: "日志",
-        to: "/logs",
-        icon: ScrollText,
-        permission: "settings:manage",
-        keywords: "logs rizhi",
-      },
-    ],
-  },
-];
-
-/** 不进侧栏、但要在命令面板与面包屑里出现的页面。 */
-export const EXTRA_ROUTES: NavItem[] = [
-  {
-    label: "个人中心",
-    to: "/profile",
-    icon: UserRound,
-    keywords: "profile geren zhanghao mima lingpai token",
-  },
-];
+/**
+ * 把接口返回的分组与菜单项拼成渲染用的结构。
+ *
+ * 服务端已经排好序，这里只做两件事：解析图标，以及把不属于任何已声明分组的菜单项丢掉。
+ * 丢掉而不是塞进一个「其他」组：分组没声明出来多半是声明方的疏漏，
+ * 此时把它藏起来并让契约测试报错，比在界面上多出一个来路不明的分组好。
+ */
+export function buildNavigation(
+  groups: NavGroupWire[] | null | undefined,
+  items: NavItemWire[] | null | undefined,
+): NavGroup[] {
+  const byName = new Map<string, NavGroup>();
+  const out: NavGroup[] = [];
+  for (const group of groups ?? []) {
+    const built: NavGroup = { name: group.name, label: group.label, items: [] };
+    byName.set(group.name, built);
+    out.push(built);
+  }
+  for (const item of items ?? []) {
+    const group = byName.get(item.group);
+    if (!group || item.hidden) {
+      continue;
+    }
+    group.items.push({
+      key: item.key,
+      label: item.label,
+      to: item.path,
+      icon: resolveIcon(item.icon),
+      permission: item.permission || undefined,
+      keywords: item.keywords || undefined,
+      description: item.description || undefined,
+      end: item.end || undefined,
+    });
+  }
+  return out;
+}
 
 /**
- * 路径 → 名称表，供文档标题与移动端顶栏使用。
+ * 把菜单项拍平成「路径 → 名称」，供文档标题与面包屑使用。
+ *
+ * 隐藏项也在内：个人中心不进侧边栏，但它确实是一个页面，需要有标题。
  */
-export const ROUTE_LABELS: Record<string, string> = {
-  "/": "概览",
-  "/posts": "文章",
-  "/pages": "页面",
-  "/categories": "分类",
-  "/tags": "标签",
-  "/comments": "评论",
-  "/media": "附件",
-  "/themes": "主题",
-  "/menus": "菜单",
-  "/users": "用户",
-  "/roles": "角色",
-  "/settings": "设置",
-  "/about": "关于",
-  "/logs": "日志",
-  "/profile": "个人中心",
-};
+export function routeLabels(
+  items: NavItemWire[] | null | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const item of items ?? []) {
+    out[item.path] = item.label;
+  }
+  return out;
+}
 
-/** 判断某个导航项是否对应当前路径。 */
-export function isActivePath(item: NavItem, pathname: string): boolean {
+/** 判断某个菜单项是否对应当前路径。 */
+export function isActivePath(
+  item: { to: string; end?: boolean | undefined },
+  pathname: string,
+): boolean {
   if (item.end) {
     return item.to === pathname;
   }
   return pathname === item.to || pathname.startsWith(`${item.to}/`);
-}
-
-/** 按当前路径找出所属分组，供侧栏在移动端折叠时显示上下文。 */
-export function groupOf(pathname: string): NavGroup | undefined {
-  return NAV_GROUPS.find((group) =>
-    group.items.some((item) => isActivePath(item, pathname)),
-  );
 }

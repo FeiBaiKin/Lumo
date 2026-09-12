@@ -66,3 +66,12 @@ func (m *Module) Routes(r app.Router) {
 	}
 	m.handler.Register(r.Console(), r.Public())
 }
+
+// Navigation 实现 app.NavigationProvider。
+func (m *Module) Navigation() app.Navigation {
+	return app.Navigation{Items: []app.NavItem{{
+		Key: "menus", Label: "菜单", Path: "/menus", Icon: "list-tree",
+		Group: app.NavGroupAppearance, Order: 20, Permission: perm.MenusManage.String(),
+		Keywords: "menus caidan daohang",
+	}}}
+}

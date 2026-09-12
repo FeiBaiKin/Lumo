@@ -145,3 +145,11 @@ func (n *notifier) notifyParent(ctx context.Context, event *NotifyEvent) {
 			event.Comment.Content + "\n\n原评论：\n" + parent.Content,
 	})
 }
+
+// Navigation 实现 app.NavigationProvider。
+func (m *Module) Navigation() app.Navigation {
+	return app.Navigation{Items: []app.NavItem{{
+		Key: "comments", Label: "评论", Path: "/comments", Icon: "message-square",
+		Group: app.NavGroupContent, Order: 50, Keywords: "comments pinglun",
+	}}}
+}

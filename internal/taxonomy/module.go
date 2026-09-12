@@ -73,3 +73,26 @@ func (m *Module) Permissions() []app.Permission {
 		Description: "创建、修改、删除分类与标签",
 	}}
 }
+
+// navTags 既是标签菜单项的标识，也是它在图标登记表里的名字。
+//
+// 两处恰好同名，用同一个常量表达「它们指的是同一件事」——
+// 与 OpenAPI 的 tag 分组无关，那一个是 handler.go 里的 tagTags。
+const navTags = "tags"
+
+// Navigation 实现 app.NavigationProvider。
+//
+// 分类与标签不设权限门槛：服务端对 Console 平面的读操作对任何已认证用户开放
+// （作者写文章要能选分类），写操作在页面内部按 taxonomies:manage 收起。
+func (m *Module) Navigation() app.Navigation {
+	return app.Navigation{Items: []app.NavItem{
+		{
+			Key: "categories", Label: "分类", Path: "/categories", Icon: "folder-tree",
+			Group: app.NavGroupContent, Order: 30, Keywords: "categories fenlei",
+		},
+		{
+			Key: navTags, Label: "标签", Path: "/tags", Icon: navTags,
+			Group: app.NavGroupContent, Order: 40, Keywords: "tags biaoqian",
+		},
+	}}
+}

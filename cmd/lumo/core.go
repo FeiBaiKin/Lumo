@@ -6,6 +6,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/api"
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
+	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/database"
 )
 
@@ -52,6 +53,10 @@ func (c *coreStack) registerAPI(planes *api.Planes, application *app.App, logger
 		}
 		return out
 	}).Register(planes.Console())
+
+	// 侧边栏菜单。挂在核心而不是某个模块下：它汇总的是全部模块的声明，
+	// 而模块清单要到下一行才装配完，故这里传的是取值函数而不是一份快照。
+	console.NewNavHandler(application.Navigation).Register(planes.Console())
 
 	return application.Register(modules()...)
 }

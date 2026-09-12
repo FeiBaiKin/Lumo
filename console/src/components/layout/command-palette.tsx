@@ -1,10 +1,7 @@
 import { api } from "@/api/client";
 import { useAuth } from "@/components/auth/auth-provider";
-import {
-  EXTRA_ROUTES,
-  NAV_GROUPS,
-  type NavItem,
-} from "@/components/layout/nav";
+import type { NavItem } from "@/components/layout/nav";
+import { useNavigation } from "@/components/layout/use-nav";
 import { type ThemeChoice, useTheme } from "@/components/theme/theme-provider";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
@@ -86,6 +83,7 @@ const THEME_OPTIONS: { value: ThemeChoice; label: string; icon: typeof Sun }[] =
 export function CommandPalette() {
   const { open, setOpen } = useCommandPalette();
   const { can } = useAuth();
+  const { items } = useNavigation();
   const { setChoice } = useTheme();
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -133,11 +131,8 @@ export function CommandPalette() {
   );
 
   const pages: NavItem[] = useMemo(
-    () =>
-      [...NAV_GROUPS.flatMap((group) => group.items), ...EXTRA_ROUTES].filter(
-        (item) => !item.permission || can(item.permission),
-      ),
-    [can],
+    () => items.filter((item) => !item.permission || can(item.permission)),
+    [items, can],
   );
 
   const actions = useMemo(() => {

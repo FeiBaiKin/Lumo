@@ -59,6 +59,7 @@ import {
   Phone,
   Puzzle,
   Rss,
+  ScrollText,
   Search,
   Send,
   Settings,
@@ -78,6 +79,9 @@ import {
   Wand,
   Zap,
 } from "lucide-react";
+
+// 图标组件的类型。调用方要用它标注「已解析成组件」的字段。
+export type { LucideIcon };
 
 /**
  * 图标登记表。
@@ -152,6 +156,7 @@ export const ICONS: Record<string, LucideIcon> = {
   phone: Phone,
   puzzle: Puzzle,
   rss: Rss,
+  "scroll-text": ScrollText,
   search: Search,
   send: Send,
   settings: Settings,

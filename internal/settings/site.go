@@ -83,6 +83,7 @@ func siteGroup() app.SettingGroup {
 		Label:       "站点",
 		Description: "站点的基本信息与前台行为",
 		Order:       0,
+		Icon:        "settings",
 		Form:        siteForm,
 		Public:      []string{"title", "subtitle", "description", "url", "language", "logoUrl", "faviconUrl"},
 		Check:       checkSite,

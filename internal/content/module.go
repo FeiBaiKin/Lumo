@@ -122,3 +122,17 @@ func (m *Module) PublishDue(ctx context.Context) (int64, error) {
 	}
 	return count, nil
 }
+
+// Navigation 实现 app.NavigationProvider。
+func (m *Module) Navigation() app.Navigation {
+	return app.Navigation{Items: []app.NavItem{
+		{
+			Key: "posts", Label: "文章", Path: "/posts", Icon: "book-open",
+			Group: app.NavGroupContent, Order: 10, Keywords: "posts wenzhang",
+		},
+		{
+			Key: "pages", Label: "页面", Path: "/pages", Icon: "file-text",
+			Group: app.NavGroupContent, Order: 20, Keywords: "pages yemian",
+		},
+	}}
+}

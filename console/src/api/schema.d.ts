@@ -428,6 +428,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/navigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取 Console 的侧边栏菜单
+         * @description 返回内置模块与已启用插件声明的全部菜单项与分组，顺序已排好。
+         */
+        get: operations["console-navigation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/pages": {
         parameters: {
             query?: never;
@@ -2034,6 +2054,40 @@ export interface components {
             /** @description OpenGraph 的 og:type */
             type: string;
             updatedAt?: string;
+        };
+        NavGroupView: {
+            /** @description 分组显示名 */
+            label: string;
+            /** @description 分组标识 */
+            name: string;
+            /** Format: int64 */
+            order: number;
+        };
+        NavItemView: {
+            description?: string;
+            /** @description 是否只在路径完全相等时高亮 */
+            end: boolean;
+            /** @description 所属分组的标识 */
+            group: string;
+            /** @description 是否不进侧边栏（仍然参与命令面板与标题映射） */
+            hidden: boolean;
+            /** @description 图标名，取值来自前端的图标登记表 */
+            icon: string;
+            /** @description 菜单项的稳定标识 */
+            key: string;
+            /** @description 命令面板的检索关键词 */
+            keywords: string;
+            label: string;
+            /** Format: int64 */
+            order: number;
+            /** @description Console 内的绝对路径 */
+            path: string;
+            /** @description 显示所需的权限串；空串表示所有已登录用户可见 */
+            permission: string;
+        };
+        NavView: {
+            groups: components["schemas"]["NavGroupView"][] | null;
+            items: components["schemas"]["NavItemView"][] | null;
         };
         PageCategory: {
             /** @description 当前页的条目 */
@@ -4264,6 +4318,35 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "console-navigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NavView"];
+                };
+            };
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };

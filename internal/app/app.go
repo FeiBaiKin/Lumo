@@ -31,6 +31,10 @@ type App struct {
 	settings    []SettingGroup
 	permissions []Permission
 	hooks       []Hook
+	// navProviders 存的是提供者本身而不是它们当时的返回值：
+	// 设置分组要等 Start 时才登记，而设置项对应的菜单入口是从那份列表推导出来的。
+	// 每次取菜单时重新问一遍，才拿得到完整的清单。
+	navProviders []NavigationProvider
 	// provided 是模块登记的共享服务。
 	provided map[string]any
 }
@@ -172,6 +176,9 @@ func (a *App) collectCapabilities(module Module) {
 	}
 	if m, ok := module.(HookProvider); ok {
 		a.hooks = append(a.hooks, m.Hooks()...)
+	}
+	if m, ok := module.(NavigationProvider); ok {
+		a.navProviders = append(a.navProviders, m)
 	}
 	if m, ok := module.(RouteProvider); ok && a.router != nil {
 		m.Routes(a.router)

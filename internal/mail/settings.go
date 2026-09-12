@@ -90,6 +90,7 @@ func group() app.SettingGroup {
 		Label:       "邮件发送",
 		Description: "SMTP 发信配置。口令只从环境变量 " + EnvSMTPPassword + " 读取，不保存在此处。",
 		Order:       30,
+		Icon:        "mail",
 		Form:        mailForm,
 		Check:       check,
 	}

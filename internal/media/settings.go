@@ -67,6 +67,7 @@ func storageGroup() app.SettingGroup {
 		Label:       "附件存储",
 		Description: "附件存放位置。S3 访问密钥只从环境变量 " + EnvS3AccessKey + " 与 " + EnvS3SecretKey + " 读取，不保存在此处。",
 		Order:       20,
+		Icon:        "hard-drive",
 		Form:        storageForm,
 		Check:       checkStorage,
 	}

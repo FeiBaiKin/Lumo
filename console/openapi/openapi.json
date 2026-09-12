@@ -1428,6 +1428,117 @@
         ],
         "type": "object"
       },
+      "NavGroupView": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "description": "分组显示名",
+            "type": "string"
+          },
+          "name": {
+            "description": "分组标识",
+            "type": "string"
+          },
+          "order": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "order"
+        ],
+        "type": "object"
+      },
+      "NavItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "end": {
+            "description": "是否只在路径完全相等时高亮",
+            "type": "boolean"
+          },
+          "group": {
+            "description": "所属分组的标识",
+            "type": "string"
+          },
+          "hidden": {
+            "description": "是否不进侧边栏（仍然参与命令面板与标题映射）",
+            "type": "boolean"
+          },
+          "icon": {
+            "description": "图标名，取值来自前端的图标登记表",
+            "type": "string"
+          },
+          "key": {
+            "description": "菜单项的稳定标识",
+            "type": "string"
+          },
+          "keywords": {
+            "description": "命令面板的检索关键词",
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "order": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "description": "Console 内的绝对路径",
+            "type": "string"
+          },
+          "permission": {
+            "description": "显示所需的权限串；空串表示所有已登录用户可见",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "path",
+          "icon",
+          "group",
+          "order",
+          "permission",
+          "keywords",
+          "end",
+          "hidden"
+        ],
+        "type": "object"
+      },
+      "NavView": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/NavGroupView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NavItemView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "groups",
+          "items"
+        ],
+        "type": "object"
+      },
       "PageCategory": {
         "additionalProperties": false,
         "properties": {
@@ -5418,6 +5529,46 @@
         "summary": "整体替换条目树",
         "tags": [
           "menus"
+        ]
+      }
+    },
+    "/api/v1/console/navigation": {
+      "get": {
+        "description": "返回内置模块与已启用插件声明的全部菜单项与分组，顺序已排好。",
+        "operationId": "console-navigation",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NavView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取 Console 的侧边栏菜单",
+        "tags": [
+          "console"
         ]
       }
     },

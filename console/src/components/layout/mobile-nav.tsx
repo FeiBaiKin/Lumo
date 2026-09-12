@@ -9,6 +9,7 @@ import {
   BookOpen,
   Image,
   LayoutDashboard,
+  type LucideIcon,
   Menu,
   MessageSquare,
   Search,
@@ -24,12 +25,13 @@ import { Link, useLocation } from "react-router";
  * 这四个入口覆盖了绝大多数场景，其余交给抽屉。
  */
 
-const CELLS = [
-  { label: "概览", to: "/", icon: LayoutDashboard, end: true },
-  { label: "文章", to: "/posts", icon: BookOpen },
-  { label: "评论", to: "/comments", icon: MessageSquare },
-  { label: "附件", to: "/media", icon: Image },
-];
+const CELLS: { label: string; to: string; icon: LucideIcon; end?: boolean }[] =
+  [
+    { label: "概览", to: "/", icon: LayoutDashboard, end: true },
+    { label: "文章", to: "/posts", icon: BookOpen },
+    { label: "评论", to: "/comments", icon: MessageSquare },
+    { label: "附件", to: "/media", icon: Image },
+  ];
 
 export function MobileTopBar() {
   const { setOpen } = useCommandPalette();

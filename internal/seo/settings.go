@@ -72,6 +72,7 @@ func settingsGroup() app.SettingGroup {
 		Label:       "SEO",
 		Description: "标题后缀、默认分享信息，以及 sitemap 与订阅源的开关",
 		Order:       50,
+		Icon:        "search",
 		Form:        seoForm,
 		Public:      []string{"titleSuffix", "defaultDescription", "defaultImage", "twitterSite"},
 		Check:       check,

@@ -85,3 +85,11 @@ func (m *Module) Routes(r app.Router) {
 
 // Service 返回上传服务，供其他模块（如主题打包、导入导出）复用。
 func (m *Module) Service() *Service { return m.service }
+
+// Navigation 实现 app.NavigationProvider。
+func (m *Module) Navigation() app.Navigation {
+	return app.Navigation{Items: []app.NavItem{{
+		Key: "media", Label: "附件", Path: "/media", Icon: "image",
+		Group: app.NavGroupMedia, Order: 10, Keywords: "media fujian tupian",
+	}}}
+}

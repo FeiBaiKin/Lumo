@@ -92,3 +92,29 @@ func From(a *app.App) *Service {
 	svc, _ := v.(*Service)
 	return svc
 }
+
+// Navigation 实现 app.NavigationProvider：设置页的侧边栏入口由分组列表推导。
+//
+// 用推导而不是逐个手写：设置分组可能来自模块，也可能来自主题或插件，
+// 手写一份清单就必然有漏。此前 comment 分组在后端存在而在侧边栏没有入口，
+// 正是因为那份清单是手写的。
+func (m *Module) Navigation() app.Navigation {
+	if m.service == nil {
+		return app.Navigation{}
+	}
+	groups := m.service.Groups()
+	items := make([]app.NavItem, 0, len(groups))
+	for i, group := range groups {
+		items = append(items, app.NavItem{
+			Key:         "settings-" + group.Name,
+			Label:       group.Label,
+			Path:        "/settings/" + group.Name,
+			Icon:        group.Icon,
+			Group:       app.NavGroupSettings,
+			Order:       i,
+			Permission:  perm.SettingsManage.String(),
+			Description: group.Description,
+		})
+	}
+	return app.Navigation{Items: items}
+}

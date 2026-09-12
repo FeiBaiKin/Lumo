@@ -108,6 +108,11 @@ type SettingGroup struct {
 	Description string
 	// Order 决定 Console 中的显示顺序，数值小者在前。
 	Order int
+	// Icon 是该分组在侧边栏里的图标名，取值来自 console/src/lib/icons.ts 的登记表。
+	//
+	// 分组自己声明图标，设置页的侧边栏入口因此可以从分组列表推导出来——
+	// 少一处需要手工同步的清单，也就不会再出现「后端有这一组、侧边栏没有入口」。
+	Icon string
 	// Form 是表单声明（agent.md §5）。模块用 internal/form 的 DSL 构建；
 	// 主题包从 settings.yaml 读入后经 form.Build 得到。
 	//

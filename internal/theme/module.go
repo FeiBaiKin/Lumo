@@ -217,3 +217,15 @@ func From(a *app.App) *Module {
 
 // Permission 是本模块相关操作所需的权限。
 const Permission = perm.ThemesManage
+
+// Navigation 实现 app.NavigationProvider。
+//
+// 主题的**全部**操作都要求 themes:manage（含列表）——主题能执行任意模板逻辑并决定
+// 整站外观，门槛与设置同级，故未持有时整项隐藏，点进去也只会得到 403。
+func (m *Module) Navigation() app.Navigation {
+	return app.Navigation{Items: []app.NavItem{{
+		Key: "themes", Label: "主题", Path: "/themes", Icon: "palette",
+		Group: app.NavGroupAppearance, Order: 10, Permission: Permission.String(),
+		Keywords: "themes zhuti",
+	}}}
+}

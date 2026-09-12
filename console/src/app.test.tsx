@@ -5,6 +5,21 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
+ * 等侧边栏把第一项画出来，再把它交给调用方。
+ *
+ * 两个坑都要绕开：
+ *   - 只等 `findByRole("navigation")` 不够 —— 那个 <nav> 外壳始终存在，
+ *     菜单项要等接口回来才有，断言会跑在数据到达之前；
+ *   - 不能直接 `findByRole("link", { name: "文章" })` —— 窄屏的底部导航条
+ *     也有一个同名链接，jsdom 不做 CSS 媒体查询判定，会撞上两个。
+ */
+async function sidebar() {
+  const nav = await screen.findByRole("navigation", { name: "主导航" });
+  await within(nav).findByRole("link", { name: "文章" });
+  return nav;
+}
+
+/**
  * 应用外壳的冒烟测试。
  *
  * 只测路由守卫的三种状态 —— 这层壳最容易出的错不是样式，而是
@@ -44,6 +59,195 @@ const me: components["schemas"]["MeView"] = {
   },
 };
 
+/**
+ * 侧边栏菜单的样例响应。
+ *
+ * 形状与 internal/console 的 NavView 一致。这里再写一份而不是从后端取，
+ * 是因为本测试要验的是**权限过滤**这条前端逻辑；「后端声明的图标名前端是否认识」
+ * 由 cmd/lumo 的 TestNavigationContract 守着——那条测试直接读前端的图标登记表。
+ */
+type NavItemWire = components["schemas"]["NavItemView"];
+
+/**
+ * 补全菜单项的可选字段。
+ *
+ * 接口把 permission / keywords / end / hidden 一律返回（Go 侧是值类型，没有 omitempty），
+ * 生成出来的类型因此都标成必填。逐项手写这一堆空值会把 fixture 淹没，
+ * 而它要表达的信息只有「哪一项需要权限」。
+ */
+function navItem(
+  item: Pick<NavItemWire, "key" | "label" | "path" | "icon" | "group"> &
+    Partial<NavItemWire>,
+): NavItemWire {
+  return {
+    order: 0,
+    permission: "",
+    keywords: "",
+    end: false,
+    hidden: false,
+    ...item,
+  };
+}
+
+const navigation: components["schemas"]["NavView"] = {
+  groups: [
+    { name: "dashboard", label: "仪表盘", order: 0 },
+    { name: "content", label: "内容", order: 10 },
+    { name: "media", label: "媒体", order: 20 },
+    { name: "appearance", label: "外观", order: 30 },
+    { name: "users", label: "用户", order: 40 },
+    { name: "settings", label: "设置", order: 50 },
+    { name: "system", label: "系统", order: 60 },
+  ],
+  items: [
+    navItem({
+      key: "overview",
+      label: "概览",
+      path: "/",
+      icon: "layout-dashboard",
+      group: "dashboard",
+      end: true,
+    }),
+    navItem({
+      key: "posts",
+      label: "文章",
+      path: "/posts",
+      icon: "book-open",
+      group: "content",
+    }),
+    navItem({
+      key: "pages",
+      label: "页面",
+      path: "/pages",
+      icon: "file-text",
+      group: "content",
+    }),
+    navItem({
+      key: "categories",
+      label: "分类",
+      path: "/categories",
+      icon: "folder-tree",
+      group: "content",
+    }),
+    navItem({
+      key: "tags",
+      label: "标签",
+      path: "/tags",
+      icon: "tags",
+      group: "content",
+    }),
+    navItem({
+      key: "comments",
+      label: "评论",
+      path: "/comments",
+      icon: "message-square",
+      group: "content",
+    }),
+    navItem({
+      key: "media",
+      label: "附件",
+      path: "/media",
+      icon: "image",
+      group: "media",
+    }),
+    navItem({
+      key: "themes",
+      label: "主题",
+      path: "/themes",
+      icon: "palette",
+      group: "appearance",
+      permission: "themes:manage",
+    }),
+    navItem({
+      key: "menus",
+      label: "菜单",
+      path: "/menus",
+      icon: "list-tree",
+      group: "appearance",
+      permission: "menus:manage",
+    }),
+    navItem({
+      key: "users",
+      label: "用户",
+      path: "/users",
+      icon: "users",
+      group: "users",
+      permission: "users:manage",
+    }),
+    navItem({
+      key: "roles",
+      label: "角色",
+      path: "/roles",
+      icon: "shield-check",
+      group: "users",
+      permission: "roles:manage",
+    }),
+    navItem({
+      key: "profile",
+      label: "个人中心",
+      path: "/profile",
+      icon: "user-round",
+      group: "users",
+      hidden: true,
+    }),
+    navItem({
+      key: "settings-site",
+      label: "站点",
+      path: "/settings/site",
+      icon: "settings",
+      group: "settings",
+      permission: "settings:manage",
+    }),
+    navItem({
+      key: "settings-storage",
+      label: "附件存储",
+      path: "/settings/storage",
+      icon: "hard-drive",
+      group: "settings",
+      permission: "settings:manage",
+    }),
+    navItem({
+      key: "settings-mail",
+      label: "邮件发送",
+      path: "/settings/mail",
+      icon: "mail",
+      group: "settings",
+      permission: "settings:manage",
+    }),
+    navItem({
+      key: "settings-comment",
+      label: "评论",
+      path: "/settings/comment",
+      icon: "message-square",
+      group: "settings",
+      permission: "settings:manage",
+    }),
+    navItem({
+      key: "settings-seo",
+      label: "SEO",
+      path: "/settings/seo",
+      icon: "search",
+      group: "settings",
+      permission: "settings:manage",
+    }),
+    navItem({
+      key: "about",
+      label: "关于",
+      path: "/about",
+      icon: "info",
+      group: "system",
+    }),
+    navItem({
+      key: "logs",
+      label: "日志",
+      path: "/logs",
+      icon: "scroll-text",
+      group: "system",
+      permission: "settings:manage",
+    }),
+  ],
+};
+
 /** 让每个用例自己决定 /auth/me 返回什么；其余列表接口一律给空分页。 */
 let session: components["schemas"]["MeView"] | null = null;
 
@@ -57,6 +261,12 @@ vi.mock("@/api/client", () => ({
               data: undefined,
               response: new Response(null, { status: 401 }),
             };
+      }
+      if (path === "/api/v1/console/navigation") {
+        return {
+          data: navigation,
+          response: new Response(null, { status: 200 }),
+        };
       }
       return {
         data: { items: [], page: 1, size: 20, total: 0 },
@@ -113,7 +323,7 @@ describe("App 路由守卫", () => {
     // 断言限定在导航内：概览页的「站点概况」里也有「分类」「标签」等同样的词。
     // 用 getAllByText：「用户」既是分组标题也是组内条目名（§8 的页面地图如此），
     // 同名出现两次是预期的。
-    const nav = await screen.findByRole("navigation", { name: "主导航" });
+    const nav = await sidebar();
     for (const label of [
       "仪表盘",
       "内容",
@@ -131,7 +341,7 @@ describe("App 路由守卫", () => {
     session = me;
     renderApp();
 
-    await screen.findByRole("navigation", { name: "主导航" });
+    await sidebar();
     expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
   });
 
@@ -139,7 +349,7 @@ describe("App 路由守卫", () => {
     session = { ...me, permissions: ["posts:write"] };
     renderApp();
 
-    const nav = await screen.findByRole("navigation", { name: "主导航" });
+    const nav = await sidebar();
 
     // 始终可见：内容组（文章 / 页面 / 分类 / 标签 / 评论）与媒体组 ——
     // 服务端对这些的读操作对任何已认证用户开放
@@ -164,7 +374,7 @@ describe("App 路由守卫", () => {
     };
     renderApp();
 
-    const nav = await screen.findByRole("navigation", { name: "主导航" });
+    const nav = await sidebar();
     expect(within(nav).getByText("评论")).toBeInTheDocument();
   });
 });

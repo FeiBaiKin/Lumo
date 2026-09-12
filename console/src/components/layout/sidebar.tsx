@@ -1,7 +1,8 @@
 import { useAuth } from "@/components/auth/auth-provider";
 import { useCommandPalette } from "@/components/layout/command-palette";
 import { Logo } from "@/components/layout/logo";
-import { NAV_GROUPS, isActivePath } from "@/components/layout/nav";
+import { isActivePath } from "@/components/layout/nav";
+import { useNavigation } from "@/components/layout/use-nav";
 import { type ThemeChoice, useTheme } from "@/components/theme/theme-provider";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -116,10 +117,11 @@ export function SidebarNav({
 }) {
   const { can } = useAuth();
   const { pathname } = useLocation();
+  const { groups } = useNavigation();
 
   return (
     <nav aria-label="主导航" className={cn("flex flex-col", className)}>
-      {NAV_GROUPS.map((group) => {
+      {groups.map((group) => {
         const items = group.items.filter(
           (item) => !item.permission || can(item.permission),
         );
@@ -143,7 +145,7 @@ export function SidebarNav({
               const active = isActivePath(item, pathname);
               return (
                 <Link
-                  key={item.to}
+                  key={item.key}
                   to={item.to}
                   onClick={onNavigate}
                   aria-current={active ? "page" : undefined}
