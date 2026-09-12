@@ -3,13 +3,20 @@ import { runMutation } from "@/api/mutation";
 import type { components } from "@/api/schema";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
-  type Column,
+  Entity,
+  EntityActions,
+  EntityEnd,
+  EntityField,
+  EntityMeta,
+  EntityStart,
   ListBody,
   ListEmpty,
-  ListPanel,
-  ToolbarSearch,
-} from "@/components/data/list-panel";
+  ListToolbar,
+} from "@/components/data/entity";
+import { PageBody, PageHeader } from "@/components/layout/page-header";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   ConfirmDialog,
   Dialog,
@@ -19,22 +26,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Input, InputAffix, Textarea } from "@/components/ui/input";
+import { Input, SearchInput, Textarea } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { PageHeader } from "@/components/ui/panel";
-import { relativeTime } from "@/lib/format";
+import { absoluteDate, relativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useDebouncedSearch, useListParams } from "@/lib/use-list-params";
+import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Tags, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 /**
  * 标签管理。
  *
  * 与分类的区别不只是「有没有层级」：标签是**横向**的、数量会自然增长到几百个，
- * 故这里是分页表格 + 关键词筛选，而分类是一次性拿全的树。
+ * 故这里是分页列表 + 关键词筛选，而分类是一次性拿全的树。
  * 这个差异来自数据本身，不是为了两个页面看起来不一样。
  */
 
@@ -105,10 +113,7 @@ export function TagsPage() {
       }
       return runMutation(
         () => api.POST("/api/v1/console/tags", { body: payload.body }),
-        {
-          success: "标签已创建",
-          invalidate: ["tags"],
-        },
+        { success: "标签已创建", invalidate: ["tags"] },
       );
     },
   });
@@ -118,10 +123,7 @@ export function TagsPage() {
       runMutation(
         () =>
           api.DELETE("/api/v1/console/tags/{id}", { params: { path: { id } } }),
-        {
-          success: "标签已删除",
-          invalidate: ["tags"],
-        },
+        { success: "标签已删除", invalidate: ["tags"] },
       ),
   });
 
@@ -165,20 +167,12 @@ export function TagsPage() {
     }
   }
 
-  const columns: Column[] = [
-    { label: "名称" },
-    { label: "slug" },
-    { label: "颜色" },
-    { label: "描述" },
-    { label: "更新时间" },
-    { label: "" },
-  ];
-
   return (
     <>
       <PageHeader
+        icon={Tags}
         title="标签"
-        description="横向的主题词，一篇文章可以带多个；与分类互补"
+        description="横向的主题词，一篇文章可以带多个，与分类互补"
         actions={
           editable ? (
             <Button variant="primary" onClick={openCreate}>
@@ -189,30 +183,124 @@ export function TagsPage() {
         }
       />
 
-      <ListPanel
-        toolbar={
-          <>
-            <ToolbarSearch>
-              <Input
+      <PageBody>
+        <Card>
+          <ListToolbar
+            className="border-line border-b"
+            search={
+              <SearchInput
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onValueChange={setSearch}
                 placeholder="按名称或 slug 筛选"
                 aria-label="筛选标签"
-                className="pl-8"
+                className="max-w-xs"
               />
-              <InputAffix side="left">
-                <Search aria-hidden="true" />
-              </InputAffix>
-            </ToolbarSearch>
-            {list.hasFilters ? (
-              <Button variant="ghost" size="sm" onClick={list.reset}>
-                <X aria-hidden="true" />
-                清除筛选
-              </Button>
-            ) : null}
-          </>
-        }
-        footer={
+            }
+            hasFilters={list.hasFilters}
+            onClearFilters={list.reset}
+            onRefresh={() => void query.refetch()}
+            refreshing={query.isFetching}
+          />
+
+          <ListBody
+            isLoading={query.isLoading}
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            isEmpty={items.length === 0}
+            empty={
+              list.hasFilters ? (
+                <ListEmpty
+                  icon={Tags}
+                  title="没有匹配的标签"
+                  description={`当前筛选条件「${list.filter("q")}」下没有结果。`}
+                  action={
+                    <Button variant="secondary" size="sm" onClick={list.reset}>
+                      清除筛选
+                    </Button>
+                  }
+                />
+              ) : (
+                <ListEmpty
+                  icon={Tags}
+                  title="还没有标签"
+                  description="标签用来给文章加横向的主题词，比如「Go」「性能优化」。"
+                  action={
+                    editable ? (
+                      <Button variant="primary" size="sm" onClick={openCreate}>
+                        新建标签
+                      </Button>
+                    ) : null
+                  }
+                />
+              )
+            }
+          >
+            {items.map((tag) => (
+              <Entity key={tag.id}>
+                <EntityStart>
+                  {/* 颜色圆点：标签在前台的展示色。没有设色时用中性点，而不是空着 */}
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      "size-3 shrink-0 rounded-full border border-line",
+                      !tag.color && "bg-neutral-dot",
+                    )}
+                    style={
+                      tag.color ? { backgroundColor: tag.color } : undefined
+                    }
+                  />
+                  <EntityField
+                    width="max-w-md"
+                    title={tag.name}
+                    description={
+                      <>
+                        <code className="token">{tag.slug}</code>
+                        {tag.description ? (
+                          <span className="max-w-64 truncate">
+                            {tag.description}
+                          </span>
+                        ) : null}
+                      </>
+                    }
+                  />
+                </EntityStart>
+
+                <EntityEnd>
+                  <EntityMeta hideOnMobile>
+                    {tag.color ? (
+                      <code className="token">{tag.color}</code>
+                    ) : (
+                      "主题默认"
+                    )}
+                  </EntityMeta>
+                  <EntityMeta>
+                    <time
+                      dateTime={tag.updatedAt}
+                      title={absoluteDate(tag.updatedAt)}
+                    >
+                      {relativeTime(tag.updatedAt)}
+                    </time>
+                  </EntityMeta>
+                  {editable ? (
+                    <EntityActions label={`标签 ${tag.name} 的操作`}>
+                      <DropdownMenuItem onSelect={() => openEdit(tag)}>
+                        <Pencil aria-hidden="true" />
+                        编辑
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        danger
+                        onSelect={() => setDeleting(tag)}
+                      >
+                        <Trash2 aria-hidden="true" />
+                        删除
+                      </DropdownMenuItem>
+                    </EntityActions>
+                  ) : null}
+                </EntityEnd>
+              </Entity>
+            ))}
+          </ListBody>
+
           <Pagination
             page={list.page}
             size={list.size}
@@ -220,97 +308,8 @@ export function TagsPage() {
             onPageChange={list.setPage}
             onSizeChange={list.setSize}
           />
-        }
-      >
-        <ListBody
-          columns={columns}
-          isLoading={query.isLoading}
-          error={query.error}
-          onRetry={() => void query.refetch()}
-          isEmpty={items.length === 0}
-          empty={
-            list.hasFilters ? (
-              <ListEmpty
-                title="没有匹配的标签"
-                description={`当前筛选条件「${list.filter("q")}」下没有结果。`}
-                action={
-                  <Button variant="secondary" size="sm" onClick={list.reset}>
-                    清除筛选
-                  </Button>
-                }
-              />
-            ) : (
-              <ListEmpty
-                title="还没有标签"
-                description="标签用来给文章加横向的主题词，比如「Go」「性能优化」。"
-                action={
-                  editable ? (
-                    <Button variant="primary" size="sm" onClick={openCreate}>
-                      新建标签
-                    </Button>
-                  ) : null
-                }
-              />
-            )
-          }
-        >
-          {items.map((tag) => (
-            <tr key={tag.id} className="transition-ui hover:bg-surface-hover">
-              <td className="px-4 py-2.5">
-                <span className="font-medium text-ink">{tag.name}</span>
-              </td>
-              <td className="px-4 py-2.5">
-                <code className="token text-xs text-ink-muted">{tag.slug}</code>
-              </td>
-              <td className="px-4 py-2.5">
-                {tag.color ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span
-                      aria-hidden="true"
-                      className="size-3 rounded-full border border-line"
-                      style={{ backgroundColor: tag.color }}
-                    />
-                    <code className="text-xs text-ink-muted">{tag.color}</code>
-                  </span>
-                ) : (
-                  <span className="text-xs text-ink-subtle">主题默认</span>
-                )}
-              </td>
-              <td className="max-w-64 px-4 py-2.5">
-                <span className="line-clamp-1 text-sm text-ink-muted">
-                  {tag.description || "—"}
-                </span>
-              </td>
-              <td className="px-4 py-2.5 text-sm whitespace-nowrap text-ink-muted">
-                {relativeTime(tag.updatedAt)}
-              </td>
-              <td className="w-px px-4 py-2.5 text-right whitespace-nowrap">
-                {editable ? (
-                  <div className="flex items-center justify-end gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => openEdit(tag)}
-                      aria-label={`编辑 ${tag.name}`}
-                    >
-                      <Pencil aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => setDeleting(tag)}
-                      aria-label={`删除 ${tag.name}`}
-                      className="hover:text-danger"
-                    >
-                      <Trash2 aria-hidden="true" />
-                    </Button>
-                  </div>
-                ) : null}
-              </td>
-            </tr>
-          ))}
-        </ListBody>
-      </ListPanel>
+        </Card>
+      </PageBody>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent>
@@ -321,14 +320,7 @@ export function TagsPage() {
               </DialogTitle>
             </DialogHeader>
             <DialogBody className="flex flex-col gap-4">
-              {formError ? (
-                <div
-                  role="alert"
-                  className="rounded-control border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
-                >
-                  {formError}
-                </div>
-              ) : null}
+              {formError ? <Alert tone="danger">{formError}</Alert> : null}
 
               <Field>
                 <FieldLabel htmlFor="tag-name">名称</FieldLabel>
@@ -400,8 +392,8 @@ export function TagsPage() {
               <Button variant="secondary" onClick={() => setFormOpen(false)}>
                 取消
               </Button>
-              <Button type="submit" variant="primary" disabled={save.isPending}>
-                {save.isPending ? "正在保存" : "保存"}
+              <Button type="submit" variant="primary" loading={save.isPending}>
+                保存
               </Button>
             </DialogFooter>
           </form>

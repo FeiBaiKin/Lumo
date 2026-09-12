@@ -3,14 +3,23 @@ import { runMutation } from "@/api/mutation";
 import type { components } from "@/api/schema";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
-  type Column,
+  Entity,
+  EntityActions,
+  EntityEnd,
+  EntityField,
+  EntityMeta,
+  EntityStart,
+  FilterMenu,
   ListBody,
   ListEmpty,
-  ListPanel,
-  ToolbarSearch,
-} from "@/components/data/list-panel";
+  ListToolbar,
+} from "@/components/data/entity";
+import { PageBody, PageHeader } from "@/components/layout/page-header";
+import { Alert } from "@/components/ui/alert";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardHeader } from "@/components/ui/card";
 import {
   ConfirmDialog,
   Dialog,
@@ -22,21 +31,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
   Field,
   FieldDescription,
   FieldError,
   FieldLabel,
 } from "@/components/ui/field";
-import { Input, InputAffix, Textarea } from "@/components/ui/input";
+import { Input, SearchInput, Textarea } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { PageHeader } from "@/components/ui/panel";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { StatusDot } from "@/components/ui/status-dot";
+import { CheckboxRow } from "@/components/ui/toggle";
 import { absoluteDate, relativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useDebouncedSearch, useListParams } from "@/lib/use-list-params";
@@ -45,22 +52,22 @@ import {
   KeyRound,
   Pencil,
   Plus,
-  Search,
   ShieldCheck,
   Trash2,
   UserCheck,
   UserX,
-  X,
+  Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 
 /**
- * 用户管理。
+ * 用户管理（形态对齐 Halo 的用户列表）。
  *
  * 三处**自锁防护**必须在界面上说清楚，不能只靠服务端返回 409：
  * 不能停用或删除自己、不能摘掉自己的管理角色、不能让站点失去最后一名管理员。
- * 这类自锁没有后门，一旦发生只能改库恢复 —— 所以正确的做法是
- * **不显示那个按钮**，并在用户是最后一名管理员时明确说明原因。
+ * 这类自锁没有后门，一旦发生只能改库恢复 —— 所以对自己的「停用」与「删除」
+ * 在菜单里直接禁用，并把原因写在菜单项上。
  *
  * 口令是头等公民：创建时只接收一次明文，重置时同理，
  * 响应与列表绝不回显（服务端已保证，前端也不给它任何显示位置）。
@@ -69,11 +76,21 @@ import { useState } from "react";
 type User = components["schemas"]["User"];
 type Role = components["schemas"]["Role"];
 
+const STATUS_OPTIONS = [
+  { value: "", label: "全部状态" },
+  // 服务端的取值是 enabled / disabled（与 User.disabled 布尔字段相反），
+  // 界面文案用「正常 / 已停用」——站长不关心字段叫什么
+  { value: "enabled", label: "正常" },
+  { value: "disabled", label: "已停用" },
+];
+
 export function UsersPage() {
   useDocumentTitle("用户");
   const { user: me, can } = useAuth();
+  const canManage = can("users:manage");
   const canManageRoles = can("roles:manage");
   const list = useListParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useDebouncedSearch(list.filter("q"), (value) =>
     list.setFilter("q", value),
   );
@@ -82,6 +99,23 @@ export function UsersPage() {
   const [editing, setEditing] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [deleting, setDeleting] = useState<User | null>(null);
+
+  // 仪表盘的快捷入口带 ?create=1 进来时直接打开新建对话框
+  const wantsCreate = searchParams.get("create") === "1";
+  useEffect(() => {
+    if (wantsCreate) {
+      setCreating(true);
+    }
+  }, [wantsCreate]);
+
+  function closeCreate() {
+    setCreating(false);
+    if (wantsCreate) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("create");
+      setSearchParams(next, { replace: true });
+    }
+  }
 
   const query = useQuery({
     queryKey: ["users", list.page, list.size, list.filters],
@@ -121,90 +155,116 @@ export function UsersPage() {
   const total = query.data?.total ?? 0;
   const roles = rolesQuery.data ?? [];
 
-  const columns: Column[] = [
-    { label: "用户" },
-    { label: "角色" },
-    { label: "状态" },
-    { label: "最近登录" },
-    { label: "创建于" },
-    { label: "" },
-  ];
+  // `create` 也在地址栏里，但它不是筛选条件，不该点亮「清除筛选」
+  const hasFilters = Boolean(
+    list.filter("q") || list.filter("role") || list.filter("status"),
+  );
 
   return (
     <>
       <PageHeader
+        icon={Users}
         title="用户"
-        description="账号由管理员创建（v1 不开注册）；口令只在创建与重置时接收一次"
+        description="账号由管理员创建，口令只在创建与重置时接收一次"
         actions={
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus aria-hidden="true" />
-            新建用户
-          </Button>
-        }
-      />
-
-      <ListPanel
-        toolbar={
           <>
-            <ToolbarSearch>
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="按用户名、昵称或邮箱筛选"
-                aria-label="筛选用户"
-                className="pl-8"
-              />
-              <InputAffix side="left">
-                <Search aria-hidden="true" />
-              </InputAffix>
-            </ToolbarSearch>
-
-            <Select
-              value={list.filter("role") || "all"}
-              onValueChange={(value) =>
-                list.setFilter("role", value === "all" ? "" : value)
-              }
-            >
-              <SelectTrigger className="w-40" aria-label="按角色筛选">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部角色</SelectItem>
-                {roles.map((role) => (
-                  <SelectItem key={role.id} value={role.name}>
-                    {role.label || role.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select
-              value={list.filter("status") || "all"}
-              onValueChange={(value) =>
-                list.setFilter("status", value === "all" ? "" : value)
-              }
-            >
-              <SelectTrigger className="w-32" aria-label="按状态筛选">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部状态</SelectItem>
-                {/* 服务端的取值是 enabled / disabled（与 User.disabled 布尔字段相反），
-                    界面文案用「正常 / 已停用」——站长不关心字段叫什么 */}
-                <SelectItem value="enabled">正常</SelectItem>
-                <SelectItem value="disabled">已停用</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {list.hasFilters ? (
-              <Button variant="ghost" size="sm" onClick={list.reset}>
-                <X aria-hidden="true" />
-                清除筛选
+            {canManageRoles ? (
+              <Button variant="secondary" size="sm" asChild>
+                <Link to="/roles">
+                  <ShieldCheck aria-hidden="true" />
+                  角色
+                </Link>
+              </Button>
+            ) : null}
+            {canManage ? (
+              <Button variant="primary" onClick={() => setCreating(true)}>
+                <Plus aria-hidden="true" />
+                新建
               </Button>
             ) : null}
           </>
         }
-        footer={
+      />
+
+      <PageBody>
+        <Card className="overflow-hidden">
+          <CardHeader>
+            <ListToolbar
+              search={
+                <SearchInput
+                  value={search}
+                  onValueChange={setSearch}
+                  placeholder="按用户名、昵称或邮箱筛选"
+                  aria-label="筛选用户"
+                  className="sm:max-w-xs"
+                />
+              }
+              filters={
+                <>
+                  <FilterMenu
+                    label="角色"
+                    value={list.filter("role")}
+                    options={[
+                      { value: "", label: "全部角色" },
+                      ...roles.map((role) => ({
+                        value: role.name,
+                        label: role.label || role.name,
+                      })),
+                    ]}
+                    onChange={(value) => list.setFilter("role", value)}
+                  />
+                  <FilterMenu
+                    label="状态"
+                    value={list.filter("status")}
+                    options={STATUS_OPTIONS}
+                    onChange={(value) => list.setFilter("status", value)}
+                  />
+                </>
+              }
+              hasFilters={hasFilters}
+              onClearFilters={list.reset}
+              onRefresh={() => void query.refetch()}
+              refreshing={query.isFetching}
+            />
+          </CardHeader>
+
+          <ListBody
+            isLoading={query.isLoading}
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            isEmpty={items.length === 0}
+            empty={
+              hasFilters ? (
+                <ListEmpty
+                  title="没有匹配的用户"
+                  description="换个关键词或筛选条件试试。"
+                  action={
+                    <Button variant="secondary" size="sm" onClick={list.reset}>
+                      清除筛选
+                    </Button>
+                  }
+                />
+              ) : (
+                <ListEmpty
+                  icon={UserCheck}
+                  title="没有用户"
+                  description="这不太正常，至少应该有一名管理员。可以用 lumo admin create-user 从命令行创建。"
+                />
+              )
+            }
+          >
+            {items.map((user) => (
+              <UserRow
+                key={user.id}
+                user={user}
+                isSelf={user.id === me?.id}
+                onEdit={() => setEditing(user)}
+                onReset={() => setResetting(user)}
+                onDelete={() => setDeleting(user)}
+              />
+            ))}
+          </ListBody>
+
           <Pagination
             page={list.page}
             size={list.size}
@@ -212,52 +272,14 @@ export function UsersPage() {
             onPageChange={list.setPage}
             onSizeChange={list.setSize}
           />
-        }
-      >
-        <ListBody
-          columns={columns}
-          isLoading={query.isLoading}
-          error={query.error}
-          onRetry={() => void query.refetch()}
-          isEmpty={items.length === 0}
-          empty={
-            list.hasFilters ? (
-              <ListEmpty
-                title="没有匹配的用户"
-                description="换个关键词或筛选条件试试。"
-                action={
-                  <Button variant="secondary" size="sm" onClick={list.reset}>
-                    清除筛选
-                  </Button>
-                }
-              />
-            ) : (
-              <ListEmpty
-                icon={UserCheck}
-                title="没有用户"
-                description="这不太正常 —— 至少应该有一名管理员。可以用 lumo admin create-user 从命令行创建。"
-              />
-            )
-          }
-        >
-          {items.map((user) => (
-            <UserRow
-              key={user.id}
-              user={user}
-              isSelf={user.id === me?.id}
-              onEdit={() => setEditing(user)}
-              onReset={() => setResetting(user)}
-              onDelete={() => setDeleting(user)}
-            />
-          ))}
-        </ListBody>
-      </ListPanel>
+        </Card>
+      </PageBody>
 
       <CreateUserDialog
         open={creating}
         roles={roles}
         canManageRoles={canManageRoles}
-        onClose={() => setCreating(false)}
+        onClose={closeCreate}
         onDone={() => void query.refetch()}
       />
 
@@ -279,7 +301,7 @@ export function UsersPage() {
         consequence={
           <p>
             <strong className="font-medium text-ink">这一步无法撤销。</strong>
-            他的会话与访问令牌会立即失效。若他还拥有文章或附件， 删除会被拒绝 ——
+            他的会话与访问令牌会立即失效。若他还拥有文章或附件，删除会被拒绝，
             那种情况应该改为停用。
           </p>
         }
@@ -345,154 +367,127 @@ function UserRow({
       ),
   });
 
-  return (
-    <tr className="transition-ui hover:bg-surface-hover">
-      <td className="px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-ink">
-            {user.displayName || user.username}
-          </span>
-          {isSelf ? <Badge tone="seal">你</Badge> : null}
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs text-ink-muted">@{user.username}</span>
-          <span className="token text-xs text-ink-subtle">{user.email}</span>
-        </div>
-      </td>
+  const name = user.displayName || user.username;
+  const selfReason = "不能停用或删除自己，这类自锁没有后门，只能改库恢复";
 
-      <td className="px-4 py-2.5">
-        <div className="flex flex-wrap gap-1">
+  return (
+    <Entity>
+      <EntityStart>
+        <Avatar src={user.avatarUrl} name={name} size="sm" />
+        <EntityField
+          width="max-w-md"
+          title={name}
+          extra={isSelf ? <Badge tone="seal">你</Badge> : null}
+          description={
+            <>
+              <span>@{user.username}</span>
+              <span className="token">{user.email}</span>
+            </>
+          }
+        />
+      </EntityStart>
+
+      <EntityEnd>
+        <div className="hidden flex-wrap justify-end gap-1 sm:flex">
           {(user.roles ?? []).length === 0 ? (
             <span className="text-xs text-ink-subtle">无角色</span>
           ) : (
             (user.roles ?? []).map((role) => (
-              <Badge key={role.id} tone={role.builtin ? "outline" : "neutral"}>
+              <Badge key={role.id} tone="outline">
                 {role.label || role.name}
               </Badge>
             ))
           )}
         </div>
-      </td>
 
-      <td className="px-4 py-2.5">
         {user.disabled ? (
-          <Badge tone="danger">
-            <UserX aria-hidden="true" />
-            已停用
-          </Badge>
+          <StatusDot state="danger">已停用</StatusDot>
         ) : (
-          <Badge tone="ok">
-            <UserCheck aria-hidden="true" />
-            正常
-          </Badge>
+          <StatusDot state="ok">正常</StatusDot>
         )}
-      </td>
 
-      <td className="px-4 py-2.5 text-sm whitespace-nowrap text-ink-muted">
-        {user.lastLoginAt ? (
-          <time
-            dateTime={user.lastLoginAt}
-            title={absoluteDate(user.lastLoginAt)}
-          >
-            {relativeTime(user.lastLoginAt)}
-          </time>
-        ) : (
-          <span className="text-ink-subtle">从未登录</span>
-        )}
-      </td>
+        <EntityMeta hideOnMobile>
+          {user.lastLoginAt ? (
+            <time
+              dateTime={user.lastLoginAt}
+              title={absoluteDate(user.lastLoginAt)}
+            >
+              最近登录 {relativeTime(user.lastLoginAt)}
+            </time>
+          ) : (
+            <span>从未登录</span>
+          )}
+        </EntityMeta>
 
-      <td className="px-4 py-2.5 text-sm whitespace-nowrap text-ink-muted">
-        {relativeTime(user.createdAt)}
-      </td>
-
-      <td className="w-px px-4 py-2.5 text-right whitespace-nowrap">
-        <div className="flex items-center justify-end gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onEdit}
-            aria-label={`编辑 ${user.username}`}
-            title="编辑资料与角色"
-          >
+        <EntityActions label={`用户 ${user.username} 的操作`}>
+          <DropdownMenuItem onSelect={onEdit}>
             <Pencil aria-hidden="true" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onReset}
-            aria-label={`重置 ${user.username} 的口令`}
-            title="重置口令"
-          >
+            编辑资料
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onReset}>
             <KeyRound aria-hidden="true" />
-          </Button>
-
+            重置口令
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {/*
-            自锁防护：不显示点了必然 409 的按钮。
+            自锁防护：对自己禁用，而不是点了再吃一个 409。
             服务端是权威，这里只是少让人白跑一趟。
           */}
-          {isSelf ? (
-            <span
-              className="px-1 text-xs text-ink-subtle"
-              title="不能停用或删除自己 —— 这类自锁没有后门，只能改库恢复"
-            >
-              不可停用
-            </span>
-          ) : (
-            <>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => setConfirmToggle(true)}
-                disabled={setStatus.isPending}
-                aria-label={`${user.disabled ? "恢复" : "停用"} ${user.username}`}
-                title={user.disabled ? "恢复账号" : "停用账号"}
-                className={user.disabled ? "hover:text-ok" : "hover:text-warn"}
-              >
-                {user.disabled ? (
-                  <UserCheck aria-hidden="true" />
-                ) : (
-                  <UserX aria-hidden="true" />
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={onDelete}
-                aria-label={`删除 ${user.username}`}
-                title="删除"
-                className="hover:text-danger"
-              >
-                <Trash2 aria-hidden="true" />
-              </Button>
-            </>
-          )}
-        </div>
-
-        <ConfirmDialog
-          open={confirmToggle}
-          onOpenChange={setConfirmToggle}
-          destructive={!user.disabled}
-          title={`${user.disabled ? "恢复" : "停用"}「${user.displayName || user.username}」？`}
-          consequence={
-            user.disabled ? (
-              <p>恢复后他可以重新登录，权限与停用前一致。</p>
+          <DropdownMenuItem
+            disabled={isSelf}
+            title={isSelf ? selfReason : undefined}
+            onSelect={() => setConfirmToggle(true)}
+          >
+            {user.disabled ? (
+              <UserCheck aria-hidden="true" />
             ) : (
-              <p>
-                他的会话与访问令牌会**立即失效**，已登录的页面下一次请求就会被登出。
-                内容不受影响，随时可以恢复。
-                {isAdmin ? "他是管理员，停用后站点可能失去管理能力。" : ""}
-              </p>
-            )
-          }
-          confirmLabel={user.disabled ? "恢复" : "停用"}
-          pending={setStatus.isPending}
-          onConfirm={async () => {
-            await setStatus.mutateAsync(!user.disabled).catch(() => {});
-            setConfirmToggle(false);
-          }}
-        />
-      </td>
-    </tr>
+              <UserX aria-hidden="true" />
+            )}
+            {user.disabled ? "恢复账号" : "停用账号"}
+            {isSelf ? (
+              <span className="ml-auto text-xs text-ink-subtle">自己</span>
+            ) : null}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            danger
+            disabled={isSelf}
+            title={isSelf ? selfReason : undefined}
+            onSelect={onDelete}
+          >
+            <Trash2 aria-hidden="true" />
+            删除
+            {isSelf ? (
+              <span className="ml-auto text-xs text-ink-subtle">自己</span>
+            ) : null}
+          </DropdownMenuItem>
+        </EntityActions>
+      </EntityEnd>
+
+      <ConfirmDialog
+        open={confirmToggle}
+        onOpenChange={setConfirmToggle}
+        destructive={!user.disabled}
+        title={`${user.disabled ? "恢复" : "停用"}「${name}」？`}
+        consequence={
+          user.disabled ? (
+            <p>恢复后他可以重新登录，权限与停用前一致。</p>
+          ) : (
+            <p>
+              他的会话与访问令牌会
+              <strong className="font-medium text-ink">立即失效</strong>
+              ，已登录的页面下一次请求就会被登出。内容不受影响，随时可以恢复。
+              {isAdmin ? "他是管理员，停用后站点可能失去管理能力。" : ""}
+            </p>
+          )
+        }
+        confirmLabel={user.disabled ? "恢复" : "停用"}
+        pending={setStatus.isPending}
+        onConfirm={async () => {
+          await setStatus.mutateAsync(!user.disabled).catch(() => {});
+          setConfirmToggle(false);
+        }}
+      />
+    </Entity>
   );
 }
 
@@ -552,7 +547,15 @@ function CreateUserDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) {
+          setError("");
+          onClose();
+        }
+      }}
+    >
       <DialogContent>
         <form
           onSubmit={(event) => {
@@ -570,12 +573,9 @@ function CreateUserDialog({
 
           <DialogBody className="flex flex-col gap-4">
             {error ? (
-              <div
-                role="alert"
-                className="rounded-control border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
-              >
+              <Alert tone="danger" title="没有创建">
                 {error}
-              </div>
+              </Alert>
             ) : null}
 
             <Field>
@@ -645,8 +645,8 @@ function CreateUserDialog({
             <Button variant="secondary" onClick={onClose}>
               取消
             </Button>
-            <Button type="submit" variant="primary" disabled={create.isPending}>
-              {create.isPending ? "正在创建" : "创建用户"}
+            <Button type="submit" variant="primary" loading={create.isPending}>
+              创建用户
             </Button>
           </DialogFooter>
         </form>
@@ -765,8 +765,8 @@ function EditUserDialog({
             <Button variant="secondary" onClick={onClose}>
               取消
             </Button>
-            <Button variant="primary" type="submit" disabled={save.isPending}>
-              {save.isPending ? "正在保存" : "保存"}
+            <Button variant="primary" type="submit" loading={save.isPending}>
+              保存
             </Button>
           </DialogFooter>
         </form>
@@ -808,6 +808,8 @@ function ResetPasswordDialog({
     onError: (err) => setError(err instanceof Error ? err.message : "重置失败"),
   });
 
+  const mismatch = confirm !== "" && password !== confirm;
+
   return (
     <Dialog
       open={user !== null}
@@ -820,7 +822,7 @@ function ResetPasswordDialog({
         }
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent size="sm">
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -837,19 +839,16 @@ function ResetPasswordDialog({
               重置「{user?.displayName || user?.username}」的口令
             </DialogTitle>
             <DialogDescription>
-              重置后他的全部会话与访问令牌**立即失效**，需要用新口令重新登录。
+              重置后他的全部会话与访问令牌立即失效，需要用新口令重新登录。
               已发布的文章与附件不受影响。
             </DialogDescription>
           </DialogHeader>
 
           <DialogBody className="flex flex-col gap-4">
             {error ? (
-              <div
-                role="alert"
-                className="rounded-control border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
-              >
+              <Alert tone="danger" title="没有重置">
                 {error}
-              </div>
+              </Alert>
             ) : null}
 
             <Field>
@@ -882,11 +881,11 @@ function ResetPasswordDialog({
                 }}
                 autoComplete="new-password"
                 required
-                aria-invalid={error ? true : undefined}
-                aria-describedby={error ? "reset-error" : undefined}
+                aria-invalid={mismatch ? true : undefined}
+                aria-describedby={mismatch ? "reset-error" : undefined}
               />
               <FieldError id="reset-error">
-                {confirm && password !== confirm ? "两次输入不一致" : ""}
+                {mismatch ? "两次输入不一致" : ""}
               </FieldError>
             </Field>
           </DialogBody>
@@ -898,9 +897,10 @@ function ResetPasswordDialog({
             <Button
               type="submit"
               variant="primary"
-              disabled={reset.isPending || !password}
+              loading={reset.isPending}
+              disabled={!password || mismatch}
             >
-              {reset.isPending ? "正在重置" : "重置口令"}
+              重置口令
             </Button>
           </DialogFooter>
         </form>
@@ -920,42 +920,28 @@ function RolePicker({
   onChange: (selected: string[]) => void;
 }) {
   return (
-    <fieldset className="flex flex-col gap-2">
-      <legend className="flex items-center gap-1.5 text-sm font-medium text-ink">
+    <fieldset className="flex flex-col gap-1">
+      <legend className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-ink">
         <ShieldCheck aria-hidden="true" className="size-4 text-ink-muted" />
         角色
       </legend>
-      <div className="flex flex-col gap-1.5">
-        {roles.map((role) => (
-          <label
-            key={role.id}
-            className="flex cursor-pointer items-start gap-2 rounded-control px-2 py-1.5 hover:bg-surface-hover"
-          >
-            <input
-              type="checkbox"
-              checked={selected.includes(role.name)}
-              onChange={(e) =>
-                onChange(
-                  e.target.checked
-                    ? [...selected, role.name]
-                    : selected.filter((name) => name !== role.name),
-                )
-              }
-              className="mt-0.5 size-4 cursor-pointer rounded-[3px] border-line-strong accent-seal"
-            />
-            <span className="flex flex-col">
-              <span className="text-sm text-ink">
-                {role.label || role.name}
-              </span>
-              {role.description ? (
-                <span className="text-xs text-ink-muted">
-                  {role.description}
-                </span>
-              ) : null}
-            </span>
-          </label>
-        ))}
-      </div>
+      {roles.map((role) => (
+        <CheckboxRow
+          key={role.id}
+          id={`new-role-${role.id}`}
+          checked={selected.includes(role.name)}
+          onCheckedChange={(checked) =>
+            onChange(
+              checked
+                ? [...selected, role.name]
+                : selected.filter((name) => name !== role.name),
+            )
+          }
+          label={role.label || role.name}
+          description={role.description || undefined}
+          className="-mx-2"
+        />
+      ))}
     </fieldset>
   );
 }

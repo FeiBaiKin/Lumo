@@ -1,21 +1,30 @@
 import { api } from "@/api/client";
+import { runMutation } from "@/api/mutation";
 import { useAuth } from "@/components/auth/auth-provider";
-import { ListPanel } from "@/components/data/list-panel";
-import { Badge } from "@/components/ui/badge";
+import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/panel";
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  DescriptionDetail,
+  DescriptionList,
+  DescriptionTerm,
+} from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/states";
+import { StatusDot } from "@/components/ui/status-dot";
+import { count } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { useQuery } from "@tanstack/react-query";
-import { Database, Info, Server } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Database, Info, RefreshCw, Server } from "lucide-react";
 
 /**
  * 关于页。
  *
  * 放三类信息，都是站点出问题时**第一个要看**的东西：
  *   - 版本与构建信息（提 issue 时要贴的就是它）
- *   - 运行环境（Go 版本、数据库连接、存储驱动）
- *   - 搜索引擎的索引状态与重建入口
+ *   - 全文搜索索引的状态与重建入口
+ *   - 运行形态（单一二进制、数据库、许可证）
  *
  * 构建信息经 `/healthz` 取得 —— 那个端点本就返回版本号，
  * 而它是免认证的（供负载均衡探活），故这里也在登录后调用它。
@@ -31,6 +40,7 @@ type Health = {
 export function AboutPage() {
   useDocumentTitle("关于");
   const { user, permissions } = useAuth();
+  const canManage = permissions.has("settings:manage");
 
   const health = useQuery({
     queryKey: ["health"],
@@ -45,7 +55,7 @@ export function AboutPage() {
 
   const search = useQuery({
     queryKey: ["search-status"],
-    enabled: permissions.has("settings:manage"),
+    enabled: canManage,
     queryFn: async () => {
       const { data, response } = await api.GET("/api/v1/console/search/status");
       if (!response.ok) {
@@ -55,127 +65,160 @@ export function AboutPage() {
     },
   });
 
+  const reindex = useMutation({
+    mutationFn: () =>
+      runMutation(() => api.POST("/api/v1/console/search/reindex"), {
+        success: "已开始重建全文索引",
+        invalidate: ["search-status"],
+      }),
+  });
+
+  const healthy = health.data?.status === "ok";
+
   return (
     <>
-      <PageHeader title="关于" description="版本、运行环境与搜索索引状态" />
+      <PageHeader
+        icon={Info}
+        title="关于"
+        description="版本、运行环境与搜索索引状态"
+      />
 
-      <div className="grid max-w-4xl gap-4 lg:grid-cols-2">
-        <ListPanel
-          title="构建信息"
-          actions={
-            health.data ? (
-              <Badge tone={health.data.status === "ok" ? "ok" : "warn"}>
-                {health.data.status}
-              </Badge>
-            ) : null
-          }
-        >
-          <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-2 border-line border-t p-4 text-sm">
-            <dt className="text-ink-muted">Lumo 版本</dt>
-            <dd className="token text-ink">
-              {health.isLoading ? (
-                <Skeleton className="h-4 w-32" />
-              ) : (
-                health.data?.version || "—"
-              )}
-            </dd>
+      <PageBody>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader
+              title="构建信息"
+              actions={
+                health.data ? (
+                  <StatusDot state={healthy ? "ok" : "warn"}>
+                    {healthy ? "运行正常" : health.data.status}
+                  </StatusDot>
+                ) : null
+              }
+            />
+            <CardBody>
+              <DescriptionList>
+                <DescriptionTerm>Lumo 版本</DescriptionTerm>
+                <DescriptionDetail className="token">
+                  {health.isLoading ? (
+                    <Skeleton className="h-4 w-32" />
+                  ) : (
+                    health.data?.version || "—"
+                  )}
+                </DescriptionDetail>
 
-            <dt className="text-ink-muted">提交</dt>
-            <dd className="token text-ink">{health.data?.commit || "—"}</dd>
+                <DescriptionTerm>提交</DescriptionTerm>
+                <DescriptionDetail className="token">
+                  {health.data?.commit || "—"}
+                </DescriptionDetail>
 
-            <dt className="text-ink-muted">构建时间</dt>
-            <dd className="token text-ink">{health.data?.date || "—"}</dd>
+                <DescriptionTerm>构建时间</DescriptionTerm>
+                <DescriptionDetail className="token">
+                  {health.data?.date || "—"}
+                </DescriptionDetail>
 
-            <dt className="text-ink-muted">当前用户</dt>
-            <dd className="text-ink">
-              {user?.displayName || user?.username}
-              <span className="ml-2 text-xs text-ink-muted">
-                {user?.roles?.join("、") || "无角色"}
-              </span>
-            </dd>
+                <DescriptionTerm>当前用户</DescriptionTerm>
+                <DescriptionDetail className="flex flex-wrap items-baseline gap-2">
+                  <span>{user?.displayName || user?.username}</span>
+                  <span className="text-xs text-ink-muted">
+                    {user?.roles?.join("、") || "无角色"}
+                  </span>
+                </DescriptionDetail>
 
-            <dt className="text-ink-muted">权限数</dt>
-            <dd className="tabular text-ink">{permissions.size}</dd>
-          </dl>
-        </ListPanel>
+                <DescriptionTerm>权限数</DescriptionTerm>
+                <DescriptionDetail className="tabular">
+                  {permissions.size}
+                </DescriptionDetail>
+              </DescriptionList>
+            </CardBody>
+          </Card>
 
-        {/*
-          搜索索引状态。只对 settings:manage 持有者显示 ——
-          服务端的这个端点就要这个权限，显示了也只会得到 403。
-        */}
-        {permissions.has("settings:manage") ? (
-          <ListPanel
-            title="全文搜索索引"
-            badge={
-              <Database aria-hidden="true" className="size-4 text-ink-muted" />
-            }
-          >
-            <div className="flex flex-col gap-3 border-line border-t p-4">
-              {search.isLoading ? (
-                <Skeleton className="h-16 w-full" />
-              ) : search.error ? (
-                <p className="text-sm text-ink-muted">
-                  搜索模块可能未装配（{search.error.message}）。
-                </p>
-              ) : (
-                <>
-                  <dl className="grid grid-cols-[6rem_1fr] gap-x-3 gap-y-2 text-sm">
-                    <dt className="text-ink-muted">内容总数</dt>
-                    <dd className="tabular text-ink">
-                      {search.data?.total ?? 0}
-                    </dd>
-                    <dt className="text-ink-muted">已建索引</dt>
-                    <dd className="tabular text-ink">
-                      {search.data?.indexed ?? 0}
-                    </dd>
-                    <dt className="text-ink-muted">待重建</dt>
-                    <dd className="tabular text-ink">
-                      {search.data?.pending ?? 0}
-                      {(search.data?.pending ?? 0) > 0 ? (
-                        <span className="ml-2 text-xs text-warn">
-                          后台每 2 秒对账一批
-                        </span>
-                      ) : null}
-                    </dd>
-                  </dl>
-
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="self-start"
-                    onClick={async () => {
-                      await api.POST("/api/v1/console/search/reindex");
-                      void search.refetch();
-                    }}
-                  >
-                    重建全部索引
-                  </Button>
-                  <p className="text-xs text-ink-muted">
-                    索引由后台按内容的更新时间自动对账，通常不需要手动重建。
-                    切词规则改动后才需要。
+          {/*
+            搜索索引状态。只对 settings:manage 持有者显示 ——
+            服务端的这个端点就要这个权限，显示了也只会得到 403。
+          */}
+          {canManage ? (
+            <Card>
+              <CardHeader
+                title="全文搜索索引"
+                badge={
+                  <Database
+                    aria-hidden="true"
+                    className="size-4 text-ink-muted"
+                  />
+                }
+                actions={
+                  search.data ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      loading={reindex.isPending}
+                      onClick={() => reindex.mutate()}
+                    >
+                      <RefreshCw aria-hidden="true" />
+                      重建全部索引
+                    </Button>
+                  ) : null
+                }
+              />
+              <CardBody className="flex flex-col gap-3">
+                {search.isLoading ? (
+                  <Skeleton className="h-20 w-full" />
+                ) : search.error ? (
+                  <p className="text-sm text-ink-muted">
+                    搜索模块可能未装配（{search.error.message}）。
                   </p>
-                </>
-              )}
-            </div>
-          </ListPanel>
-        ) : null}
-      </div>
+                ) : (
+                  <>
+                    <DescriptionList>
+                      <DescriptionTerm>内容总数</DescriptionTerm>
+                      <DescriptionDetail className="tabular">
+                        {count(search.data?.total)}
+                      </DescriptionDetail>
+                      <DescriptionTerm>已建索引</DescriptionTerm>
+                      <DescriptionDetail className="tabular">
+                        {count(search.data?.indexed)}
+                      </DescriptionDetail>
+                      <DescriptionTerm>待重建</DescriptionTerm>
+                      <DescriptionDetail className="flex items-center gap-2">
+                        <span className="tabular">
+                          {count(search.data?.pending)}
+                        </span>
+                        {(search.data?.pending ?? 0) > 0 ? (
+                          <StatusDot state="warn" pulse>
+                            后台每 2 秒对账一批
+                          </StatusDot>
+                        ) : (
+                          <StatusDot state="ok">已全部对账</StatusDot>
+                        )}
+                      </DescriptionDetail>
+                    </DescriptionList>
+                    <p className="text-xs text-ink-muted">
+                      索引由后台按内容的更新时间自动对账，通常不需要手动重建；
+                      切词规则改动后才需要。
+                    </p>
+                  </>
+                )}
+              </CardBody>
+            </Card>
+          ) : null}
+        </div>
 
-      <div className="mt-4 max-w-4xl">
-        <ListPanel title="技术栈">
-          <div className="flex flex-col gap-2 border-line border-t p-4 text-sm text-ink-muted">
+        <Card>
+          <CardHeader title="运行形态" />
+          <CardBody className="flex flex-col gap-2 text-sm text-ink-muted">
             <p className="flex items-start gap-2">
               <Server aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-              Go 单一静态二进制，PostgreSQL，界面为 go:embed 进二进制的 React
-              SPA。
+              Go 单一静态二进制，PostgreSQL 数据库；后台界面经 go:embed
+              编译进同一份二进制。
             </p>
             <p className="flex items-start gap-2">
               <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
               Lumo 以 GPL-3.0 发布。进度与设计取舍见仓库内的约束文档。
             </p>
-          </div>
-        </ListPanel>
-      </div>
+          </CardBody>
+        </Card>
+      </PageBody>
     </>
   );
 }

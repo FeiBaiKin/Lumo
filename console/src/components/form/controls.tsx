@@ -7,6 +7,7 @@ import {
   widgetFor,
 } from "@/components/form/schema";
 import { Button } from "@/components/ui/button";
+import { Inset } from "@/components/ui/card";
 import {
   Field,
   FieldDescription,
@@ -457,7 +458,7 @@ function RepeaterControl({
             ? (item as Record<string, unknown>)
             : {};
         return (
-          <div
+          <Inset
             /*
              * 下标作 key 在这里是安全的：条目是纯数据对象（服务端存的是普通 JSON，
              * 没有 id），而每个子控件都是完全受控的。加一个合成 id 反而会破坏提交 ——
@@ -465,7 +466,6 @@ function RepeaterControl({
              */
             // biome-ignore lint/suspicious/noArrayIndexKey: 纯数据对象，无稳定标识可用
             key={index}
-            className="rounded-panel border border-line bg-surface-raised p-3"
           >
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-sm font-medium text-ink">
@@ -493,7 +493,7 @@ function RepeaterControl({
                 update(next);
               },
             })}
-          </div>
+          </Inset>
         );
       })}
       <Button
@@ -600,7 +600,7 @@ function renderControl(
           ? (control.value as Record<string, unknown>)
           : {};
       return (
-        <div className="rounded-panel border border-line bg-surface-raised p-3">
+        <Inset>
           {renderGroup({
             basePath: control.path,
             schema: (control.schema.properties
@@ -610,7 +610,7 @@ function renderControl(
             disabled: control.disabled,
             onChange: control.onChange,
           })}
-        </div>
+        </Inset>
       );
     }
     default:

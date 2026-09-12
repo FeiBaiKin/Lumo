@@ -6,8 +6,9 @@ import type { ComponentProps } from "react";
 /**
  * 下拉选择。
  *
- * 用于「从一组固定选项里选一个」。若选项超过约 15 条或需要搜索，
- * 应改用带筛选的组合框 —— 长下拉在后台是常见的交互债。
+ * 用于表单里「从一组固定选项里选一个」。列表页的筛选条不用它 ——
+ * 那里用 FilterMenu（下拉菜单的单选形态），因为筛选项要显示「状态：已发布」
+ * 这样的「名 + 值」，而不是只显示值。
  */
 
 export const Select = SelectPrimitive.Root;
@@ -26,6 +27,7 @@ export function SelectTrigger({
         "rounded-control border border-line-strong bg-surface px-3 text-md text-ink",
         "hover:border-ink-subtle",
         "data-[placeholder]:text-ink-subtle",
+        "aria-invalid:border-danger",
         "disabled:cursor-not-allowed disabled:bg-surface-raised disabled:text-ink-muted",
         "[&>span]:truncate",
         className,
@@ -54,8 +56,8 @@ export function SelectContent({
       <SelectPrimitive.Content
         position={position}
         className={cn(
-          "panel-in relative z-popover max-h-72 min-w-[8rem] overflow-hidden",
-          "shadow-overlay rounded-overlay border border-line bg-surface",
+          "popover-in relative z-popover max-h-72 min-w-[8rem] overflow-hidden",
+          "rounded-overlay border border-line bg-surface shadow-popover",
           position === "popper" &&
             "data-[side=bottom]:mt-1 data-[side=top]:mb-1",
           className,

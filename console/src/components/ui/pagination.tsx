@@ -3,12 +3,13 @@ import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 /**
- * 分页条。
+ * 分页条（Halo 的 VPagination）。
  *
- * 页码序列的省略规则与阶段 4 主题前台的翻页保持同一套思路：
- * 首尾恒显、当前页前后各一页、其余折叠成省略号，避免页数多了以后拉出一长条。
+ * 左侧「共 N 条」，右侧「每页条数 + 上一页 / 页码 / 下一页」。
+ * 页码序列的省略规则与主题前台的翻页保持同一套思路：
+ * 首尾恒显、当前页前后各一页、其余折叠成省略号。
  *
- * 采用 offset 分页（agent.md §6）：后台表格需要跳页，游标分页做不到。
+ * 采用 offset 分页（agent.md §6）：后台列表需要跳页，游标分页做不到。
  */
 
 /** 生成要显示的页码；0 表示省略号。 */
@@ -59,8 +60,6 @@ export function Pagination({
   className?: string;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / size));
-  const from = total === 0 ? 0 : (page - 1) * size + 1;
-  const to = Math.min(page * size, total);
   const pages = pageWindow(page, totalPages);
 
   return (
@@ -70,22 +69,18 @@ export function Pagination({
         className,
       )}
     >
-      {/*
-        「第 X–Y 条，共 N 条」比单说「共 N 页」有用：
-        用户往往在找一个已知数量的集合，而不是在找第几页。
-      */}
-      <p className="tabular text-xs text-ink-muted">
-        {total === 0 ? "没有记录" : `第 ${from}–${to} 条，共 ${total} 条`}
+      <p className="tabular text-sm text-ink-muted">
+        {total === 0 ? "没有记录" : `共 ${total} 条`}
       </p>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         {onSizeChange ? (
-          <label className="flex items-center gap-1.5 text-xs text-ink-muted">
+          <label className="flex items-center gap-1.5 text-sm text-ink-muted">
             每页
             <select
               value={size}
               onChange={(event) => onSizeChange(Number(event.target.value))}
-              className="transition-ui h-7 rounded-control border border-line-strong bg-surface px-1.5 text-xs text-ink hover:border-ink-subtle"
+              className="transition-ui h-8 rounded-control border border-line-strong bg-surface px-1.5 text-sm text-ink hover:border-ink-subtle"
             >
               {[10, 20, 50, 100].map((value) => (
                 <option key={value} value={value}>
@@ -93,6 +88,7 @@ export function Pagination({
                 </option>
               ))}
             </select>
+            条
           </label>
         ) : null}
 
@@ -128,7 +124,7 @@ export function Pagination({
                   onClick={() => onPageChange(value)}
                   aria-current={value === page ? "page" : undefined}
                   aria-label={`第 ${value} 页`}
-                  className="tabular text-xs"
+                  className="tabular text-sm"
                 >
                   {value}
                 </Button>

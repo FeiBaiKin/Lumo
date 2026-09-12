@@ -6,9 +6,9 @@ import type { ComponentProps, ReactNode } from "react";
 /**
  * 三种「没有正常内容可显示」的状态。
  *
- * 检索给出的 High 级要求是「空状态给方向而非留白」：一个空表格必须告诉用户
- * 下一步能做什么。故 EmptyState 的 action 不是可选项 —— 没有可执行动作的空状态
- * 就是一块空白，只是多了行字。
+ * 检索给出的 High 级要求是「空状态给方向而非留白」：一个空列表必须告诉用户
+ * 下一步能做什么。EmptyState 的图标放在一枚浅色圆盘里 —— 这是 Halo 的 VEmpty
+ * 在没有插图时的形态，比一个孤零零的线条图标更像「这里本该有东西」。
  */
 
 /** 骨架屏。加载中的占位必须与真实内容的尺寸一致，否则内容到位时会跳一下。 */
@@ -25,18 +25,18 @@ export function Skeleton({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-/** 表格骨架：默认渲染若干行，列宽由调用方给。 */
-export function TableSkeleton({
-  rows = 6,
-  className,
-}: { rows?: number; className?: string }) {
+/** 一行实体的骨架：缩略图位 + 两行文字 + 右侧元信息。 */
+export function EntitySkeleton({ thumb = false }: { thumb?: boolean }) {
   return (
-    <div className={cn("flex flex-col gap-2 p-4", className)} aria-busy="true">
-      {Array.from({ length: rows }, (_, i) => (
-        // 骨架行是纯装饰且数量固定，用下标作 key 不会引起重排问题。
-        // biome-ignore lint/suspicious/noArrayIndexKey: 静态占位列表
-        <Skeleton key={i} className="h-8 w-full" />
-      ))}
+    <div className="flex items-center gap-4 px-4 py-3" aria-hidden="true">
+      <Skeleton className="size-4 shrink-0" />
+      {thumb ? <Skeleton className="h-thumb-h w-thumb-w shrink-0" /> : null}
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <Skeleton className="h-4 w-2/5" />
+        <Skeleton className="h-3 w-1/4" />
+      </div>
+      <Skeleton className="h-3 w-16" />
+      <Skeleton className="h-3 w-12" />
     </div>
   );
 }
@@ -48,26 +48,29 @@ export function EmptyState({
   action,
   className,
 }: {
-  // 显式 `| undefined`：exactOptionalPropertyTypes 下，透传一个可选值时必须允许 undefined
   icon?: LucideIcon | undefined;
   title: string;
-  description: string;
+  description?: string | undefined;
   action?: ReactNode;
   className?: string;
 }) {
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 px-6 py-14 text-center",
+        "flex flex-col items-center justify-center gap-3 px-6 py-16 text-center",
         className,
       )}
     >
-      <Icon aria-hidden="true" className="size-7 text-ink-subtle" />
+      <span className="flex size-14 items-center justify-center rounded-full bg-surface-active text-ink-subtle">
+        <Icon aria-hidden="true" className="size-6" />
+      </span>
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-ink">{title}</p>
-        <p className="max-w-sm text-sm text-ink-muted">{description}</p>
+        <p className="text-md font-medium text-ink">{title}</p>
+        {description ? (
+          <p className="max-w-sm text-sm text-ink-muted">{description}</p>
+        ) : null}
       </div>
-      {action}
+      {action ? <div className="mt-1 flex gap-2">{action}</div> : null}
     </div>
   );
 }
@@ -75,8 +78,8 @@ export function EmptyState({
 /**
  * 错误状态。
  *
- * 说明「发生了什么」并给出「怎么重试」，不道歉、不含糊（frontend-design 的文案要求）。
- * 原始错误信息原样展示：后台的使用者多半是站长本人，含糊其辞只会让他去翻服务端日志。
+ * 说明「发生了什么」并给出「怎么重试」。原始错误信息原样展示：
+ * 后台的使用者多半是站长本人，含糊其辞只会让他去翻服务端日志。
  */
 export function ErrorState({
   title = "载入失败",
@@ -86,8 +89,6 @@ export function ErrorState({
 }: {
   title?: string;
   message: string;
-  // 显式 `| undefined`：exactOptionalPropertyTypes 下，调用方常把
-  // 「可能没有重试回调」的可选值直接透传进来
   onRetry?: (() => void) | undefined;
   className?: string;
 }) {
@@ -95,22 +96,19 @@ export function ErrorState({
     <div
       role="alert"
       className={cn(
-        "flex flex-col items-center justify-center gap-3 px-6 py-14 text-center",
+        "flex flex-col items-center justify-center gap-3 px-6 py-16 text-center",
         className,
       )}
     >
-      <AlertTriangle aria-hidden="true" className="size-7 text-danger" />
+      <span className="flex size-14 items-center justify-center rounded-full bg-danger-soft text-danger">
+        <AlertTriangle aria-hidden="true" className="size-6" />
+      </span>
       <div className="flex flex-col gap-1">
-        <p className="font-medium text-ink">{title}</p>
+        <p className="text-md font-medium text-ink">{title}</p>
         <p className="token max-w-md text-sm text-ink-muted">{message}</p>
       </div>
       {onRetry ? (
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={onRetry}
-          // 图标传达「这是重试」，文字说明重试什么
-        >
+        <Button variant="secondary" size="sm" onClick={onRetry}>
           <RotateCw aria-hidden="true" />
           重新载入
         </Button>

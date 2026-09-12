@@ -1,48 +1,59 @@
 import { api } from "@/api/client";
-import type { components } from "@/api/schema";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
-  type Column,
+  FilterMenu,
+  type FilterOption,
   ListBody,
   ListEmpty,
-  ListPanel,
-  ToolbarSearch,
-} from "@/components/data/list-panel";
-import { Badge } from "@/components/ui/badge";
+  ListToolbar,
+} from "@/components/data/entity";
+import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
-import { Input, InputAffix } from "@/components/ui/input";
+import { Card, CardHeader } from "@/components/ui/card";
+import { SearchInput } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { PageHeader } from "@/components/ui/panel";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useDebouncedSearch, useListParams } from "@/lib/use-list-params";
+import {
+  ContentBulkActions,
+  ContentRow,
+  type Status,
+} from "@/pages/content/posts";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Plus, Search, X } from "lucide-react";
+import { FileText, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router";
-
-type Post = components["schemas"]["Post"];
 
 /**
  * 独立页面列表。
  *
- * 与文章列表共用行渲染（PostRow），但**不复用**「按分类筛选」「按标签筛选」
- * 与置顶展示：页面的数据形态里没有这些（服务端对 page 忽略它们）。
- * 筛选条上留一个用不上的下拉，比没有这个下拉更糟 ——
+ * 与文章列表共用行渲染与批量逻辑（ContentRow / ContentBulkActions），
+ * 但**不复用**「按分类筛选」「按标签筛选」：页面的数据形态里没有这些
+ * （服务端对 page 忽略它们）。筛选条上留一个用不上的下拉，比没有这个下拉更糟 ——
  * 用户会以为筛选没生效。
  */
 
+const STATUS_OPTIONS: FilterOption[] = [
+  { value: "", label: "全部" },
+  { value: "draft", label: "草稿" },
+  { value: "published", label: "已发布" },
+  { value: "trashed", label: "回收站" },
+];
+
 export function PagesPage() {
   useDocumentTitle("页面");
+  const { can } = useAuth();
+  const canWrite = can("pages:write");
+  const canPublish = can("pages:publish");
+  const canDeleteAny = can("pages:delete_any");
   const list = useListParams();
   const [search, setSearch] = useDebouncedSearch(list.filter("q"), (value) =>
     list.setFilter("q", value),
   );
+
+  const status = list.filter("status") as Status | "";
+  const trashedView = status === "trashed";
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const query = useQuery({
     queryKey: ["pages", list.page, list.size, list.filters],
@@ -52,15 +63,7 @@ export function PagesPage() {
           query: {
             page: list.page,
             size: list.size,
-            ...(list.filter("status")
-              ? {
-                  status: list.filter("status") as
-                    | "draft"
-                    | "published"
-                    | "scheduled"
-                    | "trashed",
-                }
-              : {}),
+            ...(status ? { status } : {}),
             ...(list.filter("q") ? { q: list.filter("q") } : {}),
           },
         },
@@ -74,74 +77,175 @@ export function PagesPage() {
 
   const items = query.data?.items ?? [];
   const total = query.data?.total ?? 0;
-  const status = list.filter("status");
 
-  const columns: Column[] = [
-    { label: "标题" },
-    { label: "状态" },
-    { label: "作者" },
-    { label: "模板" },
-    { label: "更新时间" },
-    { label: "" },
-  ];
+  // 翻页或换筛选后清空选择：勾选的是上一屏的东西
+  const listKey = `${list.page}|${list.size}|${JSON.stringify(list.filters)}`;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: listKey 是刻意的触发条件
+  useEffect(() => {
+    setSelected(new Set());
+  }, [listKey]);
+
+  const allSelected =
+    items.length > 0 && items.every((item) => selected.has(item.id));
+  const someSelected = items.some((item) => selected.has(item.id));
+
+  function toggle(id: number, checked: boolean) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  const refresh = () => {
+    setSelected(new Set());
+    void query.refetch();
+  };
 
   return (
     <>
       <PageHeader
+        icon={FileText}
         title="页面"
-        description="关于、联系这类不随时间增长的独立页面；地址是根路径 /<slug>"
         actions={
-          <Button variant="primary" asChild>
-            <Link to="/pages/new">
-              <Plus aria-hidden="true" />
-              新建页面
-            </Link>
-          </Button>
-        }
-      />
-
-      <ListPanel
-        toolbar={
           <>
-            <ToolbarSearch>
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="按标题筛选"
-                aria-label="筛选页面"
-                className="pl-8"
-              />
-              <InputAffix side="left">
-                <Search aria-hidden="true" />
-              </InputAffix>
-            </ToolbarSearch>
-
-            <Select
-              value={status || "all"}
-              onValueChange={(value) =>
-                list.setFilter("status", value === "all" ? "" : value)
-              }
-            >
-              <SelectTrigger className="w-44" aria-label="按状态筛选">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">全部（不含回收站）</SelectItem>
-                <SelectItem value="draft">草稿</SelectItem>
-                <SelectItem value="published">已发布</SelectItem>
-                <SelectItem value="trashed">回收站</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {list.hasFilters ? (
-              <Button variant="ghost" size="sm" onClick={list.reset}>
-                <X aria-hidden="true" />
-                清除筛选
+            <Button variant="secondary" size="sm" asChild>
+              {trashedView ? (
+                <Link to="/pages">
+                  <FileText aria-hidden="true" />
+                  全部页面
+                </Link>
+              ) : (
+                <Link to="/pages?status=trashed">
+                  <Trash2 aria-hidden="true" />
+                  回收站
+                </Link>
+              )}
+            </Button>
+            {canWrite ? (
+              <Button variant="primary" size="sm" asChild>
+                <Link to="/pages/new">
+                  <Plus aria-hidden="true" />
+                  新建
+                </Link>
               </Button>
             ) : null}
           </>
         }
-        footer={
+      />
+
+      <PageBody>
+        <Card>
+          <CardHeader>
+            <ListToolbar
+              selectAll={{
+                checked: allSelected,
+                indeterminate: someSelected && !allSelected,
+                onChange: (checked) =>
+                  setSelected(
+                    checked ? new Set(items.map((item) => item.id)) : new Set(),
+                  ),
+                disabled: items.length === 0,
+              }}
+              search={
+                <SearchInput
+                  value={search}
+                  onValueChange={setSearch}
+                  placeholder="按标题搜索"
+                  aria-label="搜索页面"
+                  className="max-w-xs"
+                />
+              }
+              bulk={
+                selected.size > 0 ? (
+                  <ContentBulkActions
+                    kind="page"
+                    ids={[...selected]}
+                    trashedView={trashedView}
+                    canPublish={canPublish}
+                    canDeleteAny={canDeleteAny}
+                    onDone={refresh}
+                    onClear={() => setSelected(new Set())}
+                  />
+                ) : undefined
+              }
+              filters={
+                <FilterMenu
+                  label="状态"
+                  value={status}
+                  options={STATUS_OPTIONS}
+                  onChange={(value) => list.setFilter("status", value)}
+                />
+              }
+              hasFilters={list.hasFilters}
+              onClearFilters={list.reset}
+              onRefresh={refresh}
+              refreshing={query.isFetching}
+            />
+          </CardHeader>
+
+          <ListBody
+            isLoading={query.isLoading}
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            isEmpty={items.length === 0}
+            thumb
+            empty={
+              trashedView ? (
+                <ListEmpty
+                  icon={Trash2}
+                  title="回收站是空的"
+                  description="删除的页面会先放进回收站，可以随时还原。"
+                  action={
+                    <Button variant="secondary" size="sm" asChild>
+                      <Link to="/pages">查看全部页面</Link>
+                    </Button>
+                  }
+                />
+              ) : list.hasFilters ? (
+                <ListEmpty
+                  title="没有匹配的页面"
+                  description="换个关键词或状态试试。"
+                  action={
+                    <Button variant="secondary" size="sm" onClick={list.reset}>
+                      清除筛选
+                    </Button>
+                  }
+                />
+              ) : (
+                <ListEmpty
+                  icon={FileText}
+                  title="还没有独立页面"
+                  description="「关于」「联系」这类内容适合做成页面：它不出现在文章流里，地址也更短。"
+                  action={
+                    canWrite ? (
+                      <Button variant="primary" size="sm" asChild>
+                        <Link to="/pages/new">新建页面</Link>
+                      </Button>
+                    ) : null
+                  }
+                />
+              )
+            }
+          >
+            {items.map((page) => (
+              <ContentRow
+                key={page.id}
+                kind="page"
+                post={page}
+                checked={selected.has(page.id)}
+                onToggle={(checked) => toggle(page.id, checked)}
+                canPublish={canPublish}
+                canDeleteAny={canDeleteAny}
+                onChanged={refresh}
+              />
+            ))}
+          </ListBody>
+
           <Pagination
             page={list.page}
             size={list.size}
@@ -149,121 +253,8 @@ export function PagesPage() {
             onPageChange={list.setPage}
             onSizeChange={list.setSize}
           />
-        }
-      >
-        <ListBody
-          columns={columns}
-          isLoading={query.isLoading}
-          error={query.error}
-          onRetry={() => void query.refetch()}
-          isEmpty={items.length === 0}
-          empty={
-            list.hasFilters ? (
-              <ListEmpty
-                title="没有匹配的页面"
-                description="换个关键词或状态试试。"
-                action={
-                  <Button variant="secondary" size="sm" onClick={list.reset}>
-                    清除筛选
-                  </Button>
-                }
-              />
-            ) : (
-              <ListEmpty
-                icon={FileText}
-                title="还没有独立页面"
-                description="「关于」「联系」这类内容适合做成页面：它不出现在文章流里，地址也更短。"
-                action={
-                  <Button variant="primary" size="sm" asChild>
-                    <Link to="/pages/new">新建页面</Link>
-                  </Button>
-                }
-              />
-            )
-          }
-        >
-          {items.map((page) => (
-            <PageRow key={page.id} page={page} />
-          ))}
-        </ListBody>
-      </ListPanel>
+        </Card>
+      </PageBody>
     </>
   );
-}
-
-/**
- * 页面行。
- *
- * 与文章的差别只有「模板」一列：页面可以指定主题提供的 `page-*.html`，
- * 这决定了它长什么样，是页面独有的属性。故这里不复用 PostRow 的渲染，
- * 而在同一套视觉规则下手写一行。
- */
-function PageRow({ page }: { page: Post }) {
-  const { can } = useAuth();
-
-  return (
-    <tr className="transition-ui hover:bg-surface-hover">
-      <td className="max-w-md px-4 py-2.5">
-        <Link
-          to={`/pages/${page.id}`}
-          className="transition-ui block truncate font-medium text-ink hover:text-seal"
-        >
-          {page.title || "（无标题）"}
-        </Link>
-        <code className="token mt-0.5 block text-xs text-ink-subtle">
-          /{page.slug}
-        </code>
-      </td>
-      <td className="px-4 py-2.5">
-        <PageStatusBadge status={page.status} />
-      </td>
-      <td className="px-4 py-2.5 text-sm whitespace-nowrap text-ink-muted">
-        {page.author?.displayName || page.author?.username || "—"}
-      </td>
-      <td className="px-4 py-2.5">
-        {page.template ? (
-          <code className="text-xs text-ink-muted">{page.template}.html</code>
-        ) : (
-          <span className="text-xs text-ink-subtle">page.html</span>
-        )}
-      </td>
-      <td className="px-4 py-2.5 text-sm whitespace-nowrap text-ink-muted">
-        {page.publishedAt ? (
-          <time dateTime={page.publishedAt}>
-            {new Date(page.publishedAt).toLocaleDateString("zh-CN")}
-          </time>
-        ) : (
-          <time dateTime={page.updatedAt}>
-            更新于 {new Date(page.updatedAt).toLocaleDateString("zh-CN")}
-          </time>
-        )}
-      </td>
-      <td className="w-px px-4 py-2.5 text-right whitespace-nowrap">
-        <Button
-          variant="ghost"
-          size="sm"
-          asChild
-          disabled={!can("pages:write")}
-        >
-          <Link to={`/pages/${page.id}`}>编辑</Link>
-        </Button>
-      </td>
-    </tr>
-  );
-}
-
-function PageStatusBadge({ status }: { status: string }) {
-  const map: Record<
-    string,
-    { label: string; tone: "neutral" | "ok" | "warn" | "danger" }
-  > = {
-    draft: { label: "草稿", tone: "neutral" },
-    published: { label: "已发布", tone: "ok" },
-    scheduled: { label: "定时", tone: "warn" },
-    trashed: { label: "回收站", tone: "danger" },
-  };
-  // 服务端未来新增状态时退回「草稿」而不是渲染空白：
-  // 一个没有状态标签的行会让人以为数据没加载出来。
-  const meta = map[status] ?? { label: status, tone: "neutral" as const };
-  return <Badge tone={meta.tone}>{meta.label}</Badge>;
 }

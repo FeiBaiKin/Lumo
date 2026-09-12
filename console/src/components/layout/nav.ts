@@ -1,14 +1,14 @@
 import {
+  BookOpen,
   FileText,
-  Files,
   FolderTree,
   HardDrive,
   Image,
   Info,
   LayoutDashboard,
+  ListTree,
   type LucideIcon,
   Mail,
-  Menu as MenuIcon,
   MessageSquare,
   Palette,
   ScrollText,
@@ -16,6 +16,7 @@ import {
   Settings,
   ShieldCheck,
   Tags,
+  UserRound,
   Users,
 } from "lucide-react";
 
@@ -38,6 +39,8 @@ export type NavItem = {
   permission?: string;
   /** 只在精确匹配时高亮（用于「概览」这类根路径项）。 */
   end?: boolean;
+  /** 命令面板里的检索关键词（含拼音），便于用中文输入法习惯查找。 */
+  keywords?: string;
 };
 
 export type NavGroup = {
@@ -48,24 +51,54 @@ export type NavGroup = {
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "仪表盘",
-    items: [{ label: "概览", to: "/", icon: LayoutDashboard, end: true }],
+    items: [
+      {
+        label: "概览",
+        to: "/",
+        icon: LayoutDashboard,
+        end: true,
+        keywords: "dashboard gailan shouye home",
+      },
+    ],
   },
   {
     label: "内容",
     items: [
-      { label: "文章", to: "/posts", icon: FileText },
-      { label: "页面", to: "/pages", icon: Files },
+      {
+        label: "文章",
+        to: "/posts",
+        icon: BookOpen,
+        keywords: "posts wenzhang",
+      },
+      { label: "页面", to: "/pages", icon: FileText, keywords: "pages yemian" },
       // 分类与标签不设权限门槛：服务端对 Console 平面的读操作对任何已认证用户开放
       // （见 internal/taxonomy/handler.go 的说明 —— 作者写文章要能选分类）。
       // 写操作在页面内部按 taxonomies:manage 收起。
-      { label: "分类", to: "/categories", icon: FolderTree },
-      { label: "标签", to: "/tags", icon: Tags },
-      { label: "评论", to: "/comments", icon: MessageSquare },
+      {
+        label: "分类",
+        to: "/categories",
+        icon: FolderTree,
+        keywords: "categories fenlei",
+      },
+      { label: "标签", to: "/tags", icon: Tags, keywords: "tags biaoqian" },
+      {
+        label: "评论",
+        to: "/comments",
+        icon: MessageSquare,
+        keywords: "comments pinglun",
+      },
     ],
   },
   {
     label: "媒体",
-    items: [{ label: "附件", to: "/media", icon: Image }],
+    items: [
+      {
+        label: "附件",
+        to: "/media",
+        icon: Image,
+        keywords: "media fujian tupian",
+      },
+    ],
   },
   {
     label: "外观",
@@ -78,24 +111,33 @@ export const NAV_GROUPS: NavGroup[] = [
         to: "/themes",
         icon: Palette,
         permission: "themes:manage",
+        keywords: "themes zhuti",
       },
       {
         label: "菜单",
         to: "/menus",
-        icon: MenuIcon,
+        icon: ListTree,
         permission: "menus:manage",
+        keywords: "menus caidan daohang",
       },
     ],
   },
   {
     label: "用户",
     items: [
-      { label: "用户", to: "/users", icon: Users, permission: "users:manage" },
+      {
+        label: "用户",
+        to: "/users",
+        icon: Users,
+        permission: "users:manage",
+        keywords: "users yonghu",
+      },
       {
         label: "角色",
         to: "/roles",
         icon: ShieldCheck,
         permission: "roles:manage",
+        keywords: "roles juese quanxian",
       },
     ],
   },
@@ -104,53 +146,68 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       // 设置的**全部**端点（含读取）都要求 settings:manage，见 internal/settings/handler.go
       // 里的 manage 中间件 —— 未授权用户不该看到站点的 SMTP 主机与存储配置。
-      // 故这一组整体按权限显隐。侧栏只列四个常用分组，
-      // 其余分组（如 comment）在设置页的标签栏里可以切到。
       {
         label: "站点",
         to: "/settings/site",
         icon: Settings,
         permission: "settings:manage",
+        keywords: "settings site zhandian shezhi",
       },
       {
         label: "SEO",
         to: "/settings/seo",
         icon: Search,
         permission: "settings:manage",
+        keywords: "seo sousuo",
       },
       {
         label: "邮件",
         to: "/settings/mail",
         icon: Mail,
         permission: "settings:manage",
+        keywords: "mail smtp youjian",
       },
       {
         label: "存储",
         to: "/settings/storage",
         icon: HardDrive,
         permission: "settings:manage",
+        keywords: "storage s3 cunchu",
       },
     ],
   },
   {
     label: "系统",
     items: [
-      { label: "关于", to: "/about", icon: Info },
+      {
+        label: "关于",
+        to: "/about",
+        icon: Info,
+        keywords: "about guanyu banben",
+      },
       {
         label: "日志",
         to: "/logs",
         icon: ScrollText,
         permission: "settings:manage",
+        keywords: "logs rizhi",
       },
     ],
   },
 ];
 
+/** 不进侧栏、但要在命令面板与面包屑里出现的页面。 */
+export const EXTRA_ROUTES: NavItem[] = [
+  {
+    label: "个人中心",
+    to: "/profile",
+    icon: UserRound,
+    keywords: "profile geren zhanghao mima lingpai token",
+  },
+];
+
 /**
- * 面包屑用的路径 → 名称表。
- *
- * 与 NAV_GROUPS 分开维护：导航里有「新建文章」这类不出现在侧栏的页面，
- * 而侧栏项的中文名与页面标题也可能不同（侧栏「概览」，标题「仪表盘」）。
+ * 路径 → 名称表，供文档标题与移动端顶栏使用。
  */
 export const ROUTE_LABELS: Record<string, string> = {
   "/": "概览",
@@ -167,13 +224,20 @@ export const ROUTE_LABELS: Record<string, string> = {
   "/settings": "设置",
   "/about": "关于",
   "/logs": "日志",
+  "/profile": "个人中心",
 };
+
+/** 判断某个导航项是否对应当前路径。 */
+export function isActivePath(item: NavItem, pathname: string): boolean {
+  if (item.end) {
+    return item.to === pathname;
+  }
+  return pathname === item.to || pathname.startsWith(`${item.to}/`);
+}
 
 /** 按当前路径找出所属分组，供侧栏在移动端折叠时显示上下文。 */
 export function groupOf(pathname: string): NavGroup | undefined {
   return NAV_GROUPS.find((group) =>
-    group.items.some((item) =>
-      item.end ? item.to === pathname : pathname.startsWith(item.to),
-    ),
+    group.items.some((item) => isActivePath(item, pathname)),
   );
 }

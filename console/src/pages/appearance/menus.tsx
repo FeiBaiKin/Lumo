@@ -2,8 +2,19 @@ import { api } from "@/api/client";
 import { runMutation } from "@/api/mutation";
 import type { components } from "@/api/schema";
 import { useAuth } from "@/components/auth/auth-provider";
-import { ListEmpty, ListPanel } from "@/components/data/list-panel";
+import {
+  Entity,
+  EntityActions,
+  EntityEnd,
+  EntityField,
+  EntityList,
+  EntityStart,
+  ListEmpty,
+} from "@/components/data/entity";
+import { PageBody, PageHeader } from "@/components/layout/page-header";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, Inset } from "@/components/ui/card";
 import {
   ConfirmDialog,
   Dialog,
@@ -13,9 +24,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/panel";
 import {
   Select,
   SelectContent,
@@ -23,16 +37,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ErrorState, Skeleton } from "@/components/ui/states";
-import { Switch } from "@/components/ui/toggle";
+import { EntitySkeleton, ErrorState, Skeleton } from "@/components/ui/states";
+import { CheckboxRow, Switch } from "@/components/ui/toggle";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
   ExternalLink,
   GripVertical,
-  Menu as MenuIcon,
+  ListTree,
   Pencil,
   Plus,
   Trash2,
@@ -40,7 +55,7 @@ import {
 import { useMemo, useState } from "react";
 
 /**
- * 菜单管理。
+ * 菜单管理（形态对齐 Halo 的菜单页：左列表、右条目树）。
  *
  * 条目树**整体替换**式保存（agent.md §8）：菜单是一次性编辑、一次性保存的表单，
  * 逐条 diff 要处理移动、重排、删除与重建的交叉情形，出错概率远大于收益。
@@ -49,14 +64,13 @@ import { useMemo, useState } from "react";
  * 站内条目（文章 / 页面 / 分类 / 标签）的地址**不落库、读取时解析**：
  * 记录改名或改 slug 后菜单自动跟随，指向已删除或未发布记录的条目
  * 在前台被跳过（不留死链），在后台保留可见（便于修）。
- * 故这里对站内条目显示的是「解析出来的地址」与「已失效」两种状态。
  */
 
 type Menu = components["schemas"]["Menu"];
 type ItemNode = components["schemas"]["ItemNode"];
 type MenuItemInput = components["schemas"]["MenuItemInput"];
 
-/** 编辑中的条目：有客户端 id 以便拖拽与嵌套时稳定引用。 */
+/** 编辑中的条目：有客户端 key 以便嵌套时稳定引用。 */
 type DraftItem = {
   key: string;
   label: string;
@@ -149,14 +163,19 @@ function countItems(items: DraftItem[]): number {
   return items.reduce((sum, item) => sum + 1 + countItems(item.children), 0);
 }
 
+type MenuForm = { name: string; slug: string; description: string };
+
+const EMPTY_MENU: MenuForm = { name: "", slug: "", description: "" };
+
 export function MenusPage() {
   useDocumentTitle("菜单");
   const { can } = useAuth();
   const editable = can("menus:manage");
 
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", slug: "", description: "" });
+  const [form, setForm] = useState<MenuForm>(EMPTY_MENU);
   const [formError, setFormError] = useState("");
   const [deleting, setDeleting] = useState<Menu | null>(null);
 
@@ -172,12 +191,10 @@ export function MenusPage() {
   });
 
   const menus = query.data ?? [];
+  const current = menus.find((menu) => menu.id === selectedId) ?? menus[0];
 
   const saveMenu = useMutation({
-    mutationFn: async (payload: {
-      id: number | null;
-      body: { name: string; slug: string; description: string };
-    }) => {
+    mutationFn: async (payload: { id: number | null; body: MenuForm }) => {
       if (payload.id) {
         return runMutation(
           () =>
@@ -206,22 +223,33 @@ export function MenusPage() {
       ),
   });
 
+  function openCreate(preset: MenuForm = EMPTY_MENU) {
+    setEditingId(null);
+    setForm(preset);
+    setFormError("");
+    setFormOpen(true);
+  }
+
+  function openRename(menu: Menu) {
+    setEditingId(menu.id);
+    setForm({
+      name: menu.name,
+      slug: menu.slug,
+      description: menu.description,
+    });
+    setFormError("");
+    setFormOpen(true);
+  }
+
   return (
     <>
       <PageHeader
+        icon={ListTree}
         title="菜单"
         description="前台导航用的条目树。站内条目的地址在读取时解析，记录改名后自动跟随"
         actions={
           editable ? (
-            <Button
-              variant="primary"
-              onClick={() => {
-                setEditingId(null);
-                setForm({ name: "", slug: "", description: "" });
-                setFormError("");
-                setFormOpen(true);
-              }}
-            >
+            <Button variant="primary" onClick={() => openCreate()}>
               <Plus aria-hidden="true" />
               新建菜单
             </Button>
@@ -229,68 +257,123 @@ export function MenusPage() {
         }
       />
 
-      {query.isLoading ? (
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      ) : query.error ? (
-        <ErrorState
-          message={query.error.message}
-          onRetry={() => void query.refetch()}
-        />
-      ) : menus.length === 0 ? (
-        <ListPanel>
-          <ListEmpty
-            icon={MenuIcon}
-            title="还没有菜单"
-            description="菜单决定前台的导航结构。主题通常引用一个名为 primary 的菜单。"
-            action={
-              editable ? (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => {
-                    setEditingId(null);
-                    setForm({
-                      name: "主导航",
-                      slug: "primary",
-                      description: "",
-                    });
-                    setFormOpen(true);
-                  }}
-                >
-                  新建菜单
-                </Button>
-              ) : null
-            }
-          />
-        </ListPanel>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {menus.map((menu) => (
-            <MenuCard
-              key={menu.id}
-              menu={menu}
-              editable={editable}
-              onEdit={() => {
-                setEditingId(menu.id);
-                setForm({
-                  name: menu.name,
-                  slug: menu.slug,
-                  description: menu.description,
-                });
-                setFormError("");
-                setFormOpen(true);
-              }}
-              onDelete={() => setDeleting(menu)}
+      <PageBody>
+        {query.isLoading ? (
+          <Card className="flex flex-col md:flex-row" aria-busy="true">
+            <div className="divide-y divide-line border-line border-b md:w-72 md:shrink-0 md:border-r md:border-b-0">
+              <EntitySkeleton />
+              <EntitySkeleton />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-40 w-full" />
+            </div>
+          </Card>
+        ) : query.error ? (
+          <Card>
+            <ErrorState
+              message={query.error.message}
+              onRetry={() => void query.refetch()}
             />
-          ))}
-        </div>
-      )}
+          </Card>
+        ) : menus.length === 0 || !current ? (
+          <Card>
+            <ListEmpty
+              icon={ListTree}
+              title="还没有菜单"
+              description="菜单决定前台的导航结构。主题通常引用一个名为 primary 的菜单。"
+              action={
+                editable ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() =>
+                      openCreate({
+                        name: "主导航",
+                        slug: "primary",
+                        description: "",
+                      })
+                    }
+                  >
+                    新建菜单
+                  </Button>
+                ) : null
+              }
+            />
+          </Card>
+        ) : (
+          <Card className="flex flex-col overflow-hidden md:flex-row">
+            <div className="border-line border-b md:w-72 md:shrink-0 md:border-r md:border-b-0">
+              <EntityList>
+                {menus.map((menu) => {
+                  const selected = menu.id === current.id;
+                  return (
+                    <Entity
+                      key={menu.id}
+                      selected={selected}
+                      className="cursor-pointer"
+                      onClick={() => setSelectedId(menu.id)}
+                    >
+                      <EntityStart>
+                        <EntityField
+                          title={
+                            <button
+                              type="button"
+                              onClick={() => setSelectedId(menu.id)}
+                              aria-current={selected ? "true" : undefined}
+                              className="truncate text-left"
+                            >
+                              {menu.name}
+                            </button>
+                          }
+                          description={
+                            <>
+                              <code className="token">{menu.slug}</code>
+                              <span className="tabular">
+                                {menu.itemCount} 个条目
+                              </span>
+                            </>
+                          }
+                        />
+                      </EntityStart>
+                      <EntityEnd>
+                        {editable ? (
+                          <EntityActions label={`菜单 ${menu.name} 的操作`}>
+                            <DropdownMenuItem onSelect={() => openRename(menu)}>
+                              <Pencil aria-hidden="true" />
+                              重命名
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              danger
+                              onSelect={() => setDeleting(menu)}
+                            >
+                              <Trash2 aria-hidden="true" />
+                              删除
+                            </DropdownMenuItem>
+                          </EntityActions>
+                        ) : null}
+                      </EntityEnd>
+                    </Entity>
+                  );
+                })}
+              </EntityList>
+            </div>
+
+            <div className="min-w-0 flex-1">
+              {/* key 让切换菜单时编辑器整体重建，草稿不会串到另一个菜单上 */}
+              <ItemTreeEditor
+                key={current.id}
+                menu={current}
+                editable={editable}
+              />
+            </div>
+          </Card>
+        )}
+      </PageBody>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent size="sm">
           <form
             onSubmit={async (event) => {
               event.preventDefault();
@@ -300,7 +383,7 @@ export function MenusPage() {
                 return;
               }
               try {
-                await saveMenu.mutateAsync({
+                const saved = await saveMenu.mutateAsync({
                   id: editingId,
                   body: {
                     name: form.name.trim(),
@@ -308,6 +391,12 @@ export function MenusPage() {
                     description: form.description.trim(),
                   },
                 });
+                if (!editingId && saved && typeof saved === "object") {
+                  const created = saved as { id?: number };
+                  if (created.id) {
+                    setSelectedId(created.id);
+                  }
+                }
                 setFormOpen(false);
               } catch {
                 // 已播报
@@ -315,17 +404,10 @@ export function MenusPage() {
             }}
           >
             <DialogHeader>
-              <DialogTitle>{editingId ? "编辑菜单" : "新建菜单"}</DialogTitle>
+              <DialogTitle>{editingId ? "重命名菜单" : "新建菜单"}</DialogTitle>
             </DialogHeader>
             <DialogBody className="flex flex-col gap-4">
-              {formError ? (
-                <div
-                  role="alert"
-                  className="rounded-control border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
-                >
-                  {formError}
-                </div>
-              ) : null}
+              {formError ? <Alert tone="danger">{formError}</Alert> : null}
 
               <Field>
                 <FieldLabel htmlFor="menu-name">名称</FieldLabel>
@@ -339,7 +421,7 @@ export function MenusPage() {
               </Field>
 
               <Field>
-                <FieldLabel htmlFor="menu-slug">主题引用名（slug）</FieldLabel>
+                <FieldLabel htmlFor="menu-slug">主题引用名</FieldLabel>
                 <Input
                   id="menu-slug"
                   value={form.slug}
@@ -372,9 +454,9 @@ export function MenusPage() {
               <Button
                 type="submit"
                 variant="primary"
-                disabled={saveMenu.isPending}
+                loading={saveMenu.isPending}
               >
-                {saveMenu.isPending ? "正在保存" : "保存"}
+                保存
               </Button>
             </DialogFooter>
           </form>
@@ -389,8 +471,8 @@ export function MenusPage() {
           <p>
             <strong className="font-medium text-ink">这一步无法撤销。</strong>
             菜单下的 {deleting?.itemCount ?? 0} 个条目会一并删除。
-            若主题正在引用它（slug <code>{deleting?.slug}</code>
-            ），前台导航会变空。
+            若主题正在引用它（引用名 <code>{deleting?.slug}</code>），
+            前台导航会变空。
           </p>
         }
         confirmLabel="删除"
@@ -400,6 +482,9 @@ export function MenusPage() {
             return;
           }
           await removeMenu.mutateAsync(deleting.id).catch(() => {});
+          if (deleting.id === selectedId) {
+            setSelectedId(null);
+          }
           setDeleting(null);
         }}
       />
@@ -407,83 +492,35 @@ export function MenusPage() {
   );
 }
 
-/** 一个菜单：标题 + 条目树编辑器。 */
-function MenuCard({
-  menu,
-  editable,
-  onEdit,
-  onDelete,
-}: {
-  menu: Menu;
-  editable: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <ListPanel
-      title={menu.name}
-      description={`主题引用名 ${menu.slug} · ${menu.itemCount} 个条目`}
-      actions={
-        <>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded((v) => !v)}
-          >
-            <ChevronRight
-              aria-hidden="true"
-              className={cn("transition-transform", expanded && "rotate-90")}
-            />
-            {expanded ? "收起条目" : "编辑条目"}
-          </Button>
-          {editable ? (
-            <>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={onEdit}
-                aria-label={`重命名 ${menu.name}`}
-              >
-                <Pencil aria-hidden="true" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                onClick={onDelete}
-                aria-label={`删除 ${menu.name}`}
-                className="hover:text-danger"
-              >
-                <Trash2 aria-hidden="true" />
-              </Button>
-            </>
-          ) : null}
-        </>
-      }
-    >
-      {expanded ? (
-        <ItemTreeEditor menu={menu} editable={editable} />
-      ) : (
-        <div className="px-4 py-3">
-          <p className="text-sm text-ink-muted">
-            点「编辑条目」展开条目树。条目改动要整体保存一次才生效。
-          </p>
-        </div>
-      )}
-    </ListPanel>
-  );
-}
-
-/** 条目树编辑器。 */
+/** 条目树编辑器：右栏。顶部是菜单名与动作，下面是可嵌套的条目卡片。 */
 function ItemTreeEditor({ menu, editable }: { menu: Menu; editable: boolean }) {
-  const [items, setItems] = useState<DraftItem[]>(() =>
-    // 初次展开时从菜单数据初始化。展开是个显式动作，
-    // 故这里用惰性初始值即可，不需要与服务端的后续变化同步 ——
-    // 真要同步也应该由用户点「重新载入」触发，而不是悄悄覆盖正在编辑的树。
-    (menu.items ?? []).map(toDraft),
-  );
+  /*
+   * 条目要单独取：菜单列表接口只回 itemCount，不带 items（列表里带全部条目树会让
+   * 十个菜单的列表拖着几百个条目）。数据到达后只填一次；之后服务端再变
+   * 也不悄悄覆盖正在编辑的树，要同步由用户点「放弃修改」触发。
+   */
+  const itemsQuery = useQuery({
+    queryKey: ["menus", menu.id, "items"],
+    queryFn: async () => {
+      const { data, response } = await api.GET(
+        "/api/v1/console/menus/{id}/items",
+        { params: { path: { id: menu.id } } },
+      );
+      if (!response.ok) {
+        throw new Error(`载入条目失败（HTTP ${response.status}）`);
+      }
+      return data?.items ?? [];
+    },
+  });
+  const [items, setItems] = useState<DraftItem[]>([]);
+  const [filledFor, setFilledFor] = useState<number | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
+  const [dirty, setDirty] = useState(false);
+
+  if (itemsQuery.data && filledFor !== menu.id) {
+    setItems(itemsQuery.data.map(toDraft));
+    setFilledFor(menu.id);
+  }
 
   const total = useMemo(() => countItems(items), [items]);
 
@@ -497,6 +534,7 @@ function ItemTreeEditor({ menu, editable }: { menu: Menu; editable: boolean }) {
           }),
         { success: "菜单条目已保存", invalidate: ["menus"] },
       ),
+    onSuccess: () => setDirty(false),
   });
 
   function validate(): string[] {
@@ -549,18 +587,23 @@ function ItemTreeEditor({ menu, editable }: { menu: Menu; editable: boolean }) {
     return out;
   }
 
+  function change(next: (prev: DraftItem[]) => DraftItem[]) {
+    setItems(next);
+    setDirty(true);
+  }
+
   function patch(key: string, changes: Partial<DraftItem>) {
-    setItems((prev) =>
+    change((prev) =>
       updateTree(prev, key, (item) => ({ ...item, ...changes })),
     );
   }
 
   function remove(key: string) {
-    setItems((prev) => updateTree(prev, key, () => null));
+    change((prev) => updateTree(prev, key, () => null));
   }
 
   function addChild(key: string) {
-    setItems((prev) =>
+    change((prev) =>
       updateTree(prev, key, (item) => ({
         ...item,
         children: [...item.children, emptyDraft()],
@@ -569,7 +612,7 @@ function ItemTreeEditor({ menu, editable }: { menu: Menu; editable: boolean }) {
   }
 
   function move(key: string, direction: -1 | 1) {
-    setItems((prev) => moveInTree(prev, key, direction));
+    change((prev) => moveInTree(prev, key, direction));
   }
 
   function renderLevel(list: DraftItem[], depth: number): React.ReactNode {
@@ -596,82 +639,98 @@ function ItemTreeEditor({ menu, editable }: { menu: Menu; editable: boolean }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 border-line border-t p-4">
-      {errors.length > 0 ? (
-        <div
-          role="alert"
-          className="flex flex-col gap-1 rounded-control border border-danger bg-danger-soft px-3 py-2"
-        >
-          {errors.map((message) => (
-            <p key={message} className="text-sm text-danger">
-              {message}
-            </p>
-          ))}
-        </div>
-      ) : null}
-
-      {items.length === 0 ? (
-        <div className="rounded-panel border border-line border-dashed px-4 py-8 text-center">
-          <p className="text-sm text-ink-muted">
-            这个菜单还没有条目。加一条，它就会出现在前台导航里。
+    <div className="flex flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-line border-b px-4 py-3">
+        <div className="flex min-w-0 flex-col">
+          <h2 className="truncate text-lg font-semibold text-ink">
+            {menu.name}
+          </h2>
+          <p className="tabular text-xs text-ink-muted">
+            {total} / {MAX_ITEMS} 条，最多 {MAX_DEPTH} 级
+            {dirty ? "，有未保存的修改" : ""}
           </p>
         </div>
-      ) : (
-        renderLevel(items, 1)
-      )}
+        {editable ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={total >= MAX_ITEMS}
+              onClick={() => change((prev) => [...prev, emptyDraft()])}
+            >
+              <Plus aria-hidden="true" />
+              添加顶层条目
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={save.isPending || !dirty}
+              onClick={() => {
+                setItems((itemsQuery.data ?? []).map(toDraft));
+                setErrors([]);
+                setDirty(false);
+              }}
+            >
+              放弃修改
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              loading={save.isPending}
+              onClick={async () => {
+                const problems = validate();
+                setErrors(problems);
+                if (problems.length > 0) {
+                  return;
+                }
+                try {
+                  await save.mutateAsync();
+                } catch {
+                  // 已播报
+                }
+              }}
+            >
+              保存菜单
+            </Button>
+          </div>
+        ) : (
+          <p className="text-xs text-ink-muted">
+            你没有 menus:manage 权限，只能查看。
+          </p>
+        )}
+      </div>
 
-      {editable ? (
-        <div className="flex flex-wrap items-center gap-3 border-line border-t pt-4">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={total >= MAX_ITEMS}
-            onClick={() => setItems((prev) => [...prev, emptyDraft()])}
-          >
-            <Plus aria-hidden="true" />
-            添加顶层条目
-          </Button>
+      <div className="flex flex-col gap-4 p-4">
+        {errors.length > 0 ? (
+          <Alert tone="danger" title={`有 ${errors.length} 处需要修改`}>
+            <ul className="flex flex-col gap-0.5">
+              {errors.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+          </Alert>
+        ) : null}
 
-          <Button
-            variant="primary"
-            disabled={save.isPending}
-            onClick={async () => {
-              const problems = validate();
-              setErrors(problems);
-              if (problems.length > 0) {
-                return;
-              }
-              try {
-                await save.mutateAsync();
-              } catch {
-                // 已播报
-              }
-            }}
-          >
-            {save.isPending ? "正在保存" : "保存菜单"}
-          </Button>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={save.isPending}
-            onClick={() => {
-              setItems((menu.items ?? []).map(toDraft));
-              setErrors([]);
-            }}
-          >
-            放弃修改
-          </Button>
-
-          <span className="tabular text-xs text-ink-muted">
-            {total} / {MAX_ITEMS} 条 · 最多 {MAX_DEPTH} 级
-          </span>
-        </div>
-      ) : (
-        <p className="text-xs text-ink-muted">
-          你没有 menus:manage 权限，只能查看。
-        </p>
-      )}
+        {itemsQuery.isLoading ? (
+          <div className="flex flex-col gap-2" aria-busy="true">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
+        ) : itemsQuery.error ? (
+          <ErrorState
+            message={itemsQuery.error.message}
+            onRetry={() => void itemsQuery.refetch()}
+          />
+        ) : items.length === 0 ? (
+          <div className="rounded-control border border-line-strong border-dashed px-4 py-10 text-center">
+            <p className="text-sm text-ink-muted">
+              这个菜单还没有条目。加一条，它就会出现在前台导航里。
+            </p>
+          </div>
+        ) : (
+          renderLevel(items, 1)
+        )}
+      </div>
     </div>
   );
 }
@@ -695,18 +754,18 @@ function ItemRow({
   onMove: (direction: -1 | 1) => void;
 }) {
   return (
-    <div className="rounded-panel border border-line bg-surface-raised p-3">
+    <Inset>
       <div className="flex flex-wrap items-start gap-2">
-        {/* 拖拽手柄。用按钮而不是纯图标：它需要可聚焦、可用键盘操作 */}
+        {/* 上下移动。用按钮而不是纯图标：它需要可聚焦、可用键盘操作 */}
         <div className="flex flex-col items-center gap-0.5 pt-0.5">
           <button
             type="button"
             onClick={() => onMove(-1)}
             disabled={!editable}
-            aria-label={`把「${item.label}」上移`}
+            aria-label={`把「${item.label || "未命名"}」上移`}
             className="transition-ui flex size-5 items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink disabled:opacity-40"
           >
-            <ChevronRight aria-hidden="true" className="size-3.5 -rotate-90" />
+            <ChevronUp aria-hidden="true" className="size-3.5" />
           </button>
           <GripVertical
             aria-hidden="true"
@@ -716,10 +775,10 @@ function ItemRow({
             type="button"
             onClick={() => onMove(1)}
             disabled={!editable}
-            aria-label={`把「${item.label}」下移`}
+            aria-label={`把「${item.label || "未命名"}」下移`}
             className="transition-ui flex size-5 items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink disabled:opacity-40"
           >
-            <ChevronRight aria-hidden="true" className="size-3.5 rotate-90" />
+            <ChevronDown aria-hidden="true" className="size-3.5" />
           </button>
         </div>
 
@@ -792,7 +851,7 @@ function ItemRow({
                 variant="ghost"
                 size="icon-sm"
                 onClick={onAddChild}
-                aria-label={`在「${item.label}」下加子条目`}
+                aria-label={`在「${item.label || "未命名"}」下加子条目`}
                 title="加子条目"
               >
                 <Plus aria-hidden="true" />
@@ -802,7 +861,7 @@ function ItemRow({
               variant="ghost"
               size="icon-sm"
               onClick={onRemove}
-              aria-label={`删除条目「${item.label}」`}
+              aria-label={`删除条目「${item.label || "未命名"}」`}
               title="删除"
               className="hover:text-danger"
             >
@@ -812,13 +871,11 @@ function ItemRow({
         ) : null}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-4 pl-7">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 pl-7">
         {/*
-          三个控件都用显式 id + htmlFor 关联，而不是把控件包在 label 里。
-          理由：Radix 的 Switch 渲染的是 button 而非 input，
-          包在 label 里时「标签与控件是否关联」在 DOM 上看不出来 ——
-          读屏用户听到的是一个没有名字的按钮。显式关联同时也让
-          「点文字就能切换」这件事在两种控件上都成立。
+          开关用显式 id + htmlFor 关联，而不是把控件包在 label 里。
+          Radix 的 Switch 渲染的是 button 而非 input，包在 label 里时
+          「标签与控件是否关联」在 DOM 上看不出来。
         */}
         <div className="flex items-center gap-2 text-xs text-ink-muted">
           <Switch
@@ -835,24 +892,16 @@ function ItemRow({
           </label>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-ink-muted">
-          <input
-            id={`blank-${item.key}`}
-            type="checkbox"
-            checked={item.target === "_blank"}
-            disabled={!editable}
-            onChange={(e) =>
-              onChange({ target: e.target.checked ? "_blank" : "" })
-            }
-            className="size-3.5 cursor-pointer rounded-[3px] border-line-strong accent-seal"
-          />
-          <label
-            htmlFor={`blank-${item.key}`}
-            className="cursor-pointer select-none"
-          >
-            新窗口打开
-          </label>
-        </div>
+        <CheckboxRow
+          id={`blank-${item.key}`}
+          checked={item.target === "_blank"}
+          disabled={!editable}
+          onCheckedChange={(checked) =>
+            onChange({ target: checked ? "_blank" : "" })
+          }
+          label={<span className="text-xs text-ink-muted">新窗口打开</span>}
+          className="px-0 py-0 hover:bg-transparent"
+        />
 
         {item.target === "_blank" ? (
           <div className="flex items-center gap-2 text-xs text-ink-muted">
@@ -880,7 +929,7 @@ function ItemRow({
           </span>
         ) : null}
       </div>
-    </div>
+    </Inset>
   );
 }
 
@@ -947,7 +996,7 @@ function TargetPicker({
           <Input
             value={keyword}
             disabled={!editable}
-            placeholder="筛选…"
+            placeholder="筛选"
             aria-label="筛选可选内容"
             onChange={(e) => setKeyword(e.target.value)}
             className="h-9 w-40"
@@ -969,7 +1018,7 @@ function TargetPicker({
             {options.length === 0 ? (
               <div className="px-2 py-3 text-xs text-ink-muted">
                 {query.isLoading
-                  ? "正在载入…"
+                  ? "正在载入"
                   : `没有可选的${TYPE_META[item.type]?.label ?? "内容"}。先创建一条。`}
               </div>
             ) : (

@@ -8,9 +8,11 @@ import type { ComponentProps } from "react";
  * 复选框与开关。
  *
  * 两者的分工是刻意区分的：
- *   复选框 —— 一组选项里的多选，或表格里的批量选择（提交时才生效）
+ *   复选框 —— 一组选项里的多选，或列表里的批量选择（提交时才生效）
  *   开关 —— 单个设置项的即时生效（拨动即保存）
  * 混用会让用户不知道「这个改动什么时候生效」。
+ *
+ * 选中态用「墨」（主行动色）而不是「印」：勾选是一次动作，与按下主按钮同级。
  */
 
 export function Checkbox({
@@ -22,9 +24,9 @@ export function Checkbox({
       className={cn(
         "transition-ui flex size-4 shrink-0 items-center justify-center rounded-[3px]",
         "border border-line-strong bg-surface",
-        "hover:border-seal",
-        "data-[state=checked]:border-seal data-[state=checked]:bg-seal data-[state=checked]:text-seal-on",
-        "data-[state=indeterminate]:border-seal data-[state=indeterminate]:bg-seal data-[state=indeterminate]:text-seal-on",
+        "hover:border-ink-muted",
+        "data-[state=checked]:border-action data-[state=checked]:bg-action data-[state=checked]:text-action-on",
+        "data-[state=indeterminate]:border-action data-[state=indeterminate]:bg-action data-[state=indeterminate]:text-action-on",
         "disabled:cursor-not-allowed disabled:opacity-55",
         className,
       )}
@@ -41,6 +43,50 @@ export function Checkbox({
   );
 }
 
+/** 复选框 + 文字 + 可选说明，整行可点。 */
+export function CheckboxRow({
+  id,
+  checked,
+  onCheckedChange,
+  label,
+  description,
+  disabled,
+  className,
+}: {
+  id: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  label: React.ReactNode;
+  description?: React.ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        "transition-ui flex cursor-pointer items-start gap-2.5 rounded-control px-2 py-1.5 hover:bg-surface-hover",
+        disabled && "cursor-not-allowed opacity-60",
+        className,
+      )}
+    >
+      <Checkbox
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={(value) => onCheckedChange(value === true)}
+        className="mt-0.5"
+      />
+      <span className="flex min-w-0 flex-col">
+        <span className="text-base text-ink">{label}</span>
+        {description ? (
+          <span className="text-xs text-ink-muted">{description}</span>
+        ) : null}
+      </span>
+    </label>
+  );
+}
+
 export function Switch({
   className,
   ...props
@@ -51,7 +97,7 @@ export function Switch({
         "transition-ui relative inline-flex h-5 w-9 shrink-0 items-center rounded-full",
         "border border-transparent",
         "data-[state=unchecked]:bg-line-strong",
-        "data-[state=checked]:bg-seal",
+        "data-[state=checked]:bg-action",
         "disabled:cursor-not-allowed disabled:opacity-55",
         className,
       )}
@@ -59,15 +105,16 @@ export function Switch({
     >
       <SwitchPrimitive.Thumb
         className={cn(
-          "transition-ui pointer-events-none block size-4 rounded-full bg-white",
+          "transition-ui pointer-events-none block size-4 rounded-full bg-white shadow-card",
           "translate-x-0.5 data-[state=checked]:translate-x-[1.125rem]",
+          "dark:data-[state=checked]:bg-black",
         )}
       />
     </SwitchPrimitive.Root>
   );
 }
 
-/** 开关 + 标签 + 说明的整行，用于设置页。点击整行即可切换。 */
+/** 开关 + 标签 + 说明的整行，用于设置页。点击文字即可切换。 */
 export function SwitchRow({
   id,
   checked,
@@ -75,18 +122,21 @@ export function SwitchRow({
   label,
   description,
   disabled,
+  className,
 }: {
   id: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
-  label: string;
-  description?: string | undefined;
+  label: React.ReactNode;
+  description?: React.ReactNode;
   disabled?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3">
+    <div
+      className={cn("flex items-start justify-between gap-4 py-2", className)}
+    >
       <div className="flex min-w-0 flex-col gap-0.5">
-        {/* label 与开关关联，点文字也能切换 */}
         <label
           htmlFor={id}
           className="text-base font-medium text-ink select-none"

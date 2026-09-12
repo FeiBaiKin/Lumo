@@ -25,7 +25,7 @@ import { useRef } from "react";
  *
  *   1. **不暴露 handle**。父页面通过 onChange 持有最新值即可 ——
  *      再给一个 getMarkdown() 只会让「该读哪个」出现两个答案。
- *      需要重置内容时，用 key 让编辑器整体重建（见 PostEditor 的用法）。
+ *      需要重置内容时，用 key 让编辑器整体重建（见 ContentEditor 的用法）。
  *   2. **回调放 ref**。把 onChange 放进 useEditor 的依赖数组会让编辑器
  *      每次渲染都重建，表现为「打一个字光标就跳回开头」。
  *   3. **语法集必须与服务端对齐**。commonmark 是基础，gfm 补表格、
@@ -71,11 +71,11 @@ function Surface({
       .config((ctx) => {
         ctx.set(rootCtx, root);
         ctx.set(defaultValueCtx, initialContent);
-        // 编辑区本身就是「纸」（agent.md §11.3）
+        // 编辑区本身就是「纸」（agent.md §11.3）；左右留白由页面的内容列负责
         ctx.update(editorViewOptionsCtx, (prev) => ({
           ...prev,
           attributes: {
-            class: cn("prose-editor max-w-none focus:outline-none px-10 py-8"),
+            class: cn("prose-editor max-w-none focus:outline-none py-6"),
             spellcheck: "false",
           },
         }));
@@ -97,7 +97,7 @@ function Surface({
 
   return (
     // min-h 与块编辑器一致，两者切换时页面高度不跳
-    <div className={cn("min-h-[28rem]", className)}>
+    <div className={cn("min-h-[60vh]", className)}>
       <Milkdown />
     </div>
   );

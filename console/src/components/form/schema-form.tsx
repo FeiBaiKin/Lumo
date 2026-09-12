@@ -12,9 +12,9 @@ import {
   labelFor,
   validateGroup,
 } from "@/components/form/schema";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { AlertCircle, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
@@ -34,6 +34,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
  *   3. **服务端的 422 明细按 location 落回对应字段**。服务端才是权威校验方
  *      （JSON Schema 校验器 + Go 侧 Check），它的错误必须能定位到字段，
  *      否则用户只能看到一句「设置校验失败」然后自己猜。
+ *
+ * 版面按 Halo 的 FormKit 风格：字段之间一条细线，标签在上、控件在下。
  */
 
 export type SchemaFormProps = {
@@ -212,20 +214,17 @@ export function SchemaForm({
     >
       {/*
         错误摘要。
-        role="alert" 让它在出现时被播报；tabIndex={-1} 让它可被程序聚焦；
-        每条都链到对应字段。这三件事缺一，摘要就只是「一段红字」。
+        role="alert"（由 Alert 的 danger 语气给出）让它在出现时被播报；
+        tabIndex={-1} 让它可被程序聚焦；每条都链到对应字段。
+        这三件事缺一，摘要就只是「一段红字」。
       */}
       {hasErrors ? (
-        <div
+        <Alert
           ref={summaryRef}
           tabIndex={-1}
-          role="alert"
-          className="flex flex-col gap-1.5 rounded-panel border border-danger bg-danger-soft px-4 py-3"
+          tone="danger"
+          title={`有 ${errorPaths.length + (serverMessages?.length ?? 0)} 处需要修改`}
         >
-          <p className="flex items-center gap-2 text-sm font-medium text-danger">
-            <AlertCircle aria-hidden="true" className="size-4" />有{" "}
-            {errorPaths.length + (serverMessages?.length ?? 0)} 处需要修改
-          </p>
           <ul className="flex flex-col gap-0.5">
             {errorPaths.map((path) => (
               <li key={path}>
@@ -249,10 +248,11 @@ export function SchemaForm({
               </li>
             ))}
           </ul>
-        </div>
+        </Alert>
       ) : null}
 
-      <div className="flex flex-col gap-5">
+      {/* 字段之间一条细线，是长表单的节奏（Halo 的 FormKit 风格） */}
+      <div className="divide-y divide-line">
         {fields.map(([key, field]) => (
           <FieldRow
             key={key}
@@ -272,11 +272,9 @@ export function SchemaForm({
         <Button
           type="submit"
           variant="primary"
-          disabled={disabled || pending || (disableWhenPristine && pristine)}
+          loading={pending}
+          disabled={disabled || (disableWhenPristine && pristine)}
         >
-          {pending ? (
-            <Loader2 aria-hidden="true" className="animate-spin" />
-          ) : null}
           {pending ? "正在保存" : submitLabel}
         </Button>
         <Button
@@ -299,10 +297,10 @@ export function SchemaForm({
   );
 }
 
-/** 把「布尔字段」以外的字段包一层分隔线，让长表单有节奏。 */
+/** 每个字段占一行，行与行之间由父级的分隔线隔开。 */
 function FieldRow(props: Parameters<typeof SchemaField>[0]) {
   return (
-    <div className="border-line border-b pb-5 last:border-b-0 last:pb-0">
+    <div className="py-4 first:pt-0 last:pb-0">
       <SchemaField {...props} />
     </div>
   );
@@ -340,7 +338,7 @@ function pathLabel(schema: GroupSchema, path: string): string {
     // repeater 的路径里有纯数字下标，它没有对应的 Schema 节点
     current = Number.isNaN(Number(part)) ? next : next.items;
   }
-  return names.join(" · ");
+  return names.join(" / ");
 }
 
 /** 按点号路径写值，沿途缺对象就补上。 */

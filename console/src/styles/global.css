@@ -45,49 +45,64 @@
 @theme inline {
   /* 颜色：语义名 → 工具类（bg-chrome / text-ink / border-line …） */
   --color-chrome: var(--chrome);
-  --color-chrome-hover: var(--chrome-hover);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
   --color-surface-hover: var(--surface-hover);
   --color-surface-active: var(--surface-active);
+  --color-surface-inset: var(--surface-inset);
   --color-paper: var(--paper);
   --color-paper-ink: var(--paper-ink);
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-subtle: var(--ink-subtle);
+  --color-action: var(--action);
+  --color-action-hover: var(--action-hover);
+  --color-action-on: var(--action-on);
   --color-seal: var(--seal);
   --color-seal-hover: var(--seal-hover);
   --color-seal-soft: var(--seal-soft);
+  --color-seal-soft-strong: var(--seal-soft-strong);
   --color-seal-on: var(--seal-on);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-ok: var(--ok);
+  --color-ok-dot: var(--ok-dot);
   --color-ok-soft: var(--ok-soft);
   --color-warn: var(--warn);
+  --color-warn-dot: var(--warn-dot);
   --color-warn-soft: var(--warn-soft);
   --color-danger: var(--danger);
+  --color-danger-dot: var(--danger-dot);
   --color-danger-hover: var(--danger-hover);
   --color-danger-soft: var(--danger-soft);
   --color-danger-on: var(--danger-on);
+  --color-neutral-dot: var(--neutral-dot);
+  --color-scrim: var(--scrim);
 
-  /* 圆角：rounded-control / rounded-panel / rounded-paper / rounded-overlay / rounded-full */
+  /* 圆角：rounded-control / rounded-card / rounded-overlay / rounded-widget / rounded-paper / rounded-full */
   --radius-control: var(--corner-control);
-  --radius-panel: var(--corner-panel);
-  --radius-paper: var(--corner-paper);
+  --radius-card: var(--corner-card);
   --radius-overlay: var(--corner-overlay);
+  --radius-widget: var(--corner-widget);
+  --radius-paper: var(--corner-paper);
   --radius-full: var(--corner-full);
 
   /* 字体族 */
   --font-sans: var(--typeface-ui);
   --font-mono: var(--typeface-mono);
 
-  /* 布局尺寸，供 w-sidebar / h-topbar 使用 */
+  /* 布局尺寸，供 w-sidebar / h-page-header / h-mobile-bar 使用 */
   --spacing-sidebar: var(--sidebar-width);
-  --spacing-topbar: var(--topbar-height);
+  --spacing-page-header: var(--page-header-height);
+  --spacing-mobile-bar: var(--mobile-bar-height);
+  --spacing-thumb-w: var(--entity-thumb-width);
+  --spacing-thumb-h: var(--entity-thumb-height);
+  --spacing-measure: var(--editor-measure);
 
-  /* 阴影只有两档，都属浮层。面板用描边，不用阴影 */
-  --shadow-overlay: var(--elevation-overlay);
+  /* 阴影三档：卡片托底 / 下拉浮层 / 弹窗 */
+  --shadow-card: var(--elevation-card);
   --shadow-popover: var(--elevation-popover);
+  --shadow-overlay: var(--elevation-overlay);
 }
 
 /*
@@ -96,25 +111,27 @@
  * 覆盖 Tailwind 默认值有两个理由，都是中文界面特有的：
  *   1. 默认的 text-sm（14px）在中文里偏小，且默认行高 1.25 只适合拉丁 —— 中文笔画密，
  *      同一字号下需要更大的实际字面与更松的行距才认得快。故整体上移半档、行高给到 1.6。
- *   2. 默认阶梯有十一档，后台用不到这么多。收敛成七档后，「这个标题该用哪档」不必现场判断。
+ *   2. 默认阶梯有十一档，后台用不到这么多。收敛成八档后，「这个标题该用哪档」不必现场判断。
  */
 @theme {
   --text-*: initial;
 
-  --text-xs: var(--font-size-xs); /* 12px — 仅用于大写量数据旁的标签 */
+  --text-xs: var(--font-size-xs); /* 12px — 元信息、标签 */
   --text-xs--line-height: 1.5;
-  --text-sm: var(--font-size-sm); /* 13px — 表格密集区 */
+  --text-sm: var(--font-size-sm); /* 13px — 次要说明、密集区 */
   --text-sm--line-height: 1.6;
   --text-base: var(--font-size-base); /* 14px — 界面默认 */
   --text-base--line-height: 1.6;
-  --text-md: var(--font-size-md); /* 15px — 表单输入 */
+  --text-md: var(--font-size-md); /* 15px — 表单输入、实体标题 */
   --text-md--line-height: 1.6;
-  --text-lg: var(--font-size-lg); /* 16px — 面板标题 */
+  --text-lg: var(--font-size-lg); /* 16px — 卡片标题 */
   --text-lg--line-height: 1.5;
   --text-xl: var(--font-size-xl); /* 18px — 页面标题 */
   --text-xl--line-height: 1.4;
-  --text-2xl: var(--font-size-2xl); /* 22px — 登录页、空状态 */
+  --text-2xl: var(--font-size-2xl); /* 22px — 登录页、统计数字 */
   --text-2xl--line-height: 1.3;
+  --text-3xl: var(--font-size-3xl); /* 28px — 仪表盘大数字 */
+  --text-3xl--line-height: 1.2;
 }
 
 /* ── 全局基础样式 ───────────────────────────────────────────────── */
@@ -125,7 +142,6 @@
   }
 
   html {
-    /* 中文界面在 14px 下笔画密，禁用合成加粗会让标题发糊 */
     -webkit-font-smoothing: antialiased;
     text-size-adjust: 100%;
   }
@@ -146,10 +162,8 @@
   }
 
   /* 数字一律等宽对齐 —— 后台到处是计数、日期、字数、ID，
-     比例数字会让表格列对不齐 */
-  table {
-    font-variant-numeric: tabular-nums;
-  }
+     比例数字会让列对不齐 */
+  table,
   .tabular {
     font-variant-numeric: tabular-nums;
   }
@@ -160,6 +174,11 @@
     color: inherit;
   }
 
+  /* 可点元素一律手型：这是检索里的 High 级条目 */
+  :where(button, [role="button"], a, label[for], select, summary):not(:disabled) {
+    cursor: pointer;
+  }
+
   /* 长 token 不得撑破布局：URL、slug、文件名、API 地址在后台随处可见 */
   :where(code, kbd, samp) {
     font-family: var(--typeface-mono);
@@ -168,7 +187,7 @@
   }
 
   ::selection {
-    background-color: var(--seal-soft);
+    background-color: var(--seal-soft-strong);
   }
 
   /* 滚动条与界面同调，不用系统默认的亮灰 */
@@ -203,15 +222,11 @@
    *
    * 这是 Console 里**唯一**一处「纸」：外壳走冷调中性色，只有正在写的这张区域
    * 用主题的纸色与 2px 圆角（agent.md §11.3）。故这里的排版规则也刻意贴近
-   * 前台「墨 Ink」的正文：行高 1.8（工作稿比成稿再松一点）、
-   * 中文优先的字体栈、段落间距大于行距。
-   *
-   * 用普通后代选择器而不是 Tailwind 的 prose 插件：需要的规则不到二十条，
-   * 引一个排版插件会带来一整套需要再覆盖的默认值。
+   * 前台「墨 Ink」的正文：行高 1.8、中文优先的字体栈、段落间距大于行距。
    */
   .prose-editor {
     color: var(--paper-ink);
-    font-size: var(--font-size-md);
+    font-size: 1rem;
     line-height: var(--line-height-prose);
     overflow-wrap: anywhere;
   }
@@ -230,13 +245,13 @@
   }
 
   .prose-editor h1 {
-    font-size: 1.5em;
+    font-size: 1.6em;
   }
   .prose-editor h2 {
-    font-size: 1.25em;
+    font-size: 1.3em;
   }
   .prose-editor h3 {
-    font-size: 1.1em;
+    font-size: 1.12em;
   }
   .prose-editor > :first-child {
     margin-top: 0;
@@ -255,7 +270,6 @@
   .prose-editor li + li {
     margin-top: 0.35em;
   }
-  /* 嵌套列表不要再拉一层间距，否则深层列表会散开 */
   .prose-editor li > ul,
   .prose-editor li > ol {
     margin-top: 0.35em;
@@ -275,7 +289,7 @@
   }
 
   .prose-editor pre {
-    background-color: var(--surface-raised);
+    background-color: var(--surface-inset);
     border: 1px solid var(--line);
     border-radius: var(--corner-control);
     padding: 0.85em 1em;
@@ -322,10 +336,7 @@
     font-weight: 600;
   }
 
-  /*
-   * TipTap 的空段落占位（Placeholder 扩展）。
-   * 只在第一个空段落上显示，否则文档中间的每个空行都会顶着一行提示文字。
-   */
+  /* TipTap 的空段落占位（Placeholder 扩展）。只在第一个空段落上显示 */
   .prose-editor p.is-editor-empty:first-child::before,
   .prose-editor .is-empty::before {
     content: attr(data-placeholder);
@@ -335,12 +346,8 @@
     color: var(--ink-subtle);
   }
 
-  /*
-   * 编辑器的选区与光标。用主题的墨色而不是浏览器默认的亮蓝 ——
-   * 在纸色底上一道亮蓝会显得像另一个应用。
-   */
   .prose-editor ::selection {
-    background-color: var(--seal-soft);
+    background-color: var(--seal-soft-strong);
   }
 
   .prose-editor .ProseMirror-selectednode {
@@ -348,7 +355,6 @@
     outline-offset: 1px;
   }
 
-  /* 表格列宽拖拽手柄（TipTap 的 table resizable） */
   .prose-editor .column-resize-handle {
     background-color: var(--seal);
     width: 2px;
@@ -367,7 +373,6 @@
    *
    * 不给每个组件写 `transition-colors duration-150`：那样时长会各处漂移，
    * 而「悬停反馈该多快」在 token 里已经定为 --duration-fast。
-   * transform 与 opacity 一并列出，是为浮层入场复用同一条曲线。
    */
   .transition-ui {
     transition-property: color, background-color, border-color, outline-color, fill, stroke,
@@ -376,7 +381,6 @@
     transition-timing-function: var(--ease-out);
   }
 
-  /* 浮层入场比控件反馈慢一档：位移距离更大，同速会显得急 */
   .transition-overlay {
     transition-property: opacity, transform;
     transition-duration: var(--duration-normal);
@@ -384,12 +388,9 @@
   }
 
   /*
-   * 浮层入场动画。
-   *
-   * 只做「淡入 + 极轻微放大」，不做位移 —— 弹窗从屏幕外飞进来会让人等它落定。
-   * 用独立的 `scale` 属性而不是 `transform`：面板的居中已经占用了 transform
-   * （-translate-x-1/2 -translate-y-1/2），两者写在同一个属性上会互相覆盖。
-   * `prefers-reduced-motion` 由文件末尾的全局规则统一压到 1ms。
+   * 浮层入场动画：淡入 + 极轻微放大（弹窗），或淡入 + 2px 位移（下拉）。
+   * 用独立的 `scale` / `translate` 属性而不是 `transform`：
+   * 弹窗的居中已经占用了 transform，两者写在同一个属性上会互相覆盖。
    */
   .overlay-in {
     animation: lumo-overlay-in var(--duration-normal) var(--ease-out);
@@ -397,6 +398,34 @@
 
   .panel-in {
     animation: lumo-panel-in var(--duration-normal) var(--ease-out);
+  }
+
+  .popover-in {
+    animation: lumo-popover-in var(--duration-fast) var(--ease-out);
+  }
+
+  .drawer-in {
+    animation: lumo-drawer-in var(--duration-slow) var(--ease-out);
+  }
+
+  /* 从底部升起的抽屉（窄屏的「更多」导航） */
+  .sheet-in {
+    animation: lumo-sheet-in var(--duration-slow) var(--ease-out);
+  }
+
+  /* 实体行的悬停动作：默认极淡，悬停或聚焦时浮出；触屏与窄屏常显 */
+  .entity-reveal {
+    opacity: 0.55;
+    transition: opacity var(--duration-fast) var(--ease-out);
+  }
+  .group\/entity:hover .entity-reveal,
+  .group\/entity:focus-within .entity-reveal {
+    opacity: 1;
+  }
+  @media (hover: none), (max-width: 767px) {
+    .entity-reveal {
+      opacity: 1;
+    }
   }
 }
 
@@ -412,7 +441,7 @@
 @keyframes lumo-panel-in {
   from {
     opacity: 0;
-    scale: 0.98;
+    scale: 0.985;
   }
   to {
     opacity: 1;
@@ -420,8 +449,37 @@
   }
 }
 
+@keyframes lumo-popover-in {
+  from {
+    opacity: 0;
+    translate: 0 -2px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes lumo-drawer-in {
+  from {
+    translate: -100% 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+@keyframes lumo-sheet-in {
+  from {
+    translate: 0 100%;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
 /* 全局遵守 prefers-reduced-motion（agent.md §11.1 硬底线）。
-   注意：这里只是把动效压到 1ms，而不是 none —— 某些库的过渡回调依赖 transitionend，
+   把动效压到 1ms 而不是 none —— 某些库的过渡回调依赖 transitionend，
    设为 none 会让它们永远不触发。 */
 @media (prefers-reduced-motion: reduce) {
   *,

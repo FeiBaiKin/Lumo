@@ -1,9 +1,22 @@
 import { api, problemMessage } from "@/api/client";
 import { runMutation } from "@/api/mutation";
 import type { components } from "@/api/schema";
-import { ListEmpty, ListPanel } from "@/components/data/list-panel";
+import {
+  Entity,
+  EntityActions,
+  EntityEnd,
+  EntityField,
+  EntityList,
+  EntityMeta,
+  EntityStart,
+  ListEmpty,
+} from "@/components/data/entity";
+import { PageBody, PageHeader } from "@/components/layout/page-header";
+import { Alert } from "@/components/ui/alert";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, Inset } from "@/components/ui/card";
 import {
   ConfirmDialog,
   Dialog,
@@ -15,34 +28,31 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldLabel,
-} from "@/components/ui/field";
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/panel";
-import { ErrorState, Skeleton } from "@/components/ui/states";
+import { EntitySkeleton, ErrorState } from "@/components/ui/states";
+import { Checkbox, CheckboxRow } from "@/components/ui/toggle";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Lock, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { Eye, Lock, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 
 /**
- * 角色管理。
+ * 角色管理（形态对齐 Halo 的角色列表）。
  *
  * 角色编辑器由**服务端的权限清单**驱动（`/permissions`），不是前端写死的勾选框。
  * 这一点是刻意的：权限串由各模块声明并随版本演进，前端写死一份就会
  * 在新增权限时静默漏掉它 —— 而「角色编辑器里看不到某条权限」
  * 会让站长以为那条权限不存在。
  *
- * 清单按**资源**分组。检索的 UX 准则里有一条：一屏几十个勾选框会让人
- * 无从下手；按资源分组后，每一组都是「这个角色能不能碰这一类东西」，
- * 是可以逐组决策的。
+ * 清单按**资源**分组。一屏几十个勾选框会让人无从下手；按资源分组后，
+ * 每一组都是「这个角色能不能碰这一类东西」，是可以逐组决策的。
  *
- * 内置角色不可改删（每次启动以代码为准播种），故它们的勾选框是只读的，
- * 并明确标出原因 —— 一个点了没反应的复选框比一个禁用的复选框更让人困惑。
+ * 内置角色不可改删（每次启动以代码为准播种），故它们只能「查看权限」，
+ * 并在标签上标出「内置」—— 一个点了没反应的编辑按钮比没有这个按钮更让人困惑。
  */
 
 type Role = components["schemas"]["Role"];
@@ -63,9 +73,32 @@ const RESOURCE_LABELS: Record<string, string> = {
   site: "站点",
 };
 
+type PermissionGroup = { resource: string; items: PermissionView[] };
+
+/** 按资源分组；`held` 给出时只保留持有的项。 */
+function groupByResource(
+  permissions: PermissionView[],
+  held?: string[],
+): PermissionGroup[] {
+  const set = held ? new Set(held) : null;
+  const map = new Map<string, PermissionView[]>();
+  for (const permission of permissions) {
+    if (set && !set.has(permission.key)) {
+      continue;
+    }
+    const list = map.get(permission.resource) ?? [];
+    list.push(permission);
+    map.set(permission.resource, list);
+  }
+  return [...map.entries()]
+    .map(([resource, items]) => ({ resource, items }))
+    .sort((a, b) => a.resource.localeCompare(b.resource));
+}
+
 export function RolesPage() {
   useDocumentTitle("角色");
 
+  const [viewing, setViewing] = useState<Role | null>(null);
   const [editing, setEditing] = useState<Role | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Role | null>(null);
@@ -96,22 +129,12 @@ export function RolesPage() {
 
   const roles = rolesQuery.data ?? [];
   const permissions = permsQuery.data ?? [];
-
-  if (rolesQuery.error) {
-    return (
-      <>
-        <PageHeader title="角色" />
-        <ErrorState
-          message={rolesQuery.error.message}
-          onRetry={() => void rolesQuery.refetch()}
-        />
-      </>
-    );
-  }
+  const loading = rolesQuery.isLoading || permsQuery.isLoading;
 
   return (
     <>
       <PageHeader
+        icon={ShieldCheck}
         title="角色"
         description="角色即一组权限串。内置角色随代码播种，不可修改；自定义角色可以自由组合"
         actions={
@@ -126,32 +149,48 @@ export function RolesPage() {
         }
       />
 
-      {rolesQuery.isLoading || permsQuery.isLoading ? (
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-28 w-full" />
-          <Skeleton className="h-28 w-full" />
-        </div>
-      ) : roles.length === 0 ? (
-        <ListPanel>
-          <ListEmpty
-            icon={ShieldCheck}
-            title="没有角色"
-            description="这不太正常 —— 内置角色应当随启动播种。请检查服务端日志。"
-          />
-        </ListPanel>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {roles.map((role) => (
-            <RoleCard
-              key={role.id}
-              role={role}
-              permissions={permissions}
-              onEdit={() => setEditing(role)}
-              onDelete={() => setDeleting(role)}
+      <PageBody>
+        <Card className="overflow-hidden">
+          {loading ? (
+            <div className="divide-y divide-line" aria-busy="true">
+              <span className="sr-only">正在载入</span>
+              <EntitySkeleton />
+              <EntitySkeleton />
+              <EntitySkeleton />
+              <EntitySkeleton />
+            </div>
+          ) : rolesQuery.error ? (
+            <ErrorState
+              message={rolesQuery.error.message}
+              onRetry={() => void rolesQuery.refetch()}
             />
-          ))}
-        </div>
-      )}
+          ) : roles.length === 0 ? (
+            <ListEmpty
+              icon={ShieldCheck}
+              title="没有角色"
+              description="这不太正常，内置角色应当随启动播种。请检查服务端日志。"
+            />
+          ) : (
+            <EntityList>
+              {roles.map((role) => (
+                <RoleRow
+                  key={role.id}
+                  role={role}
+                  onView={() => setViewing(role)}
+                  onEdit={() => setEditing(role)}
+                  onDelete={() => setDeleting(role)}
+                />
+              ))}
+            </EntityList>
+          )}
+        </Card>
+      </PageBody>
+
+      <PermissionsDialog
+        role={viewing}
+        permissions={permissions}
+        onClose={() => setViewing(null)}
+      />
 
       <RoleDialog
         open={creating || editing !== null}
@@ -172,7 +211,7 @@ export function RolesPage() {
           <p>
             <strong className="font-medium text-ink">这一步无法撤销。</strong>
             持有这个角色的用户会失去它带来的权限。
-            若仍有用户持有它，删除会被拒绝 —— 那样应该先把用户改到别的角色。
+            若仍有用户持有它，删除会被拒绝，那样应该先把用户改到别的角色。
           </p>
         }
         confirmLabel="删除"
@@ -194,108 +233,136 @@ export function RolesPage() {
   );
 }
 
-/** 一个角色：元信息 + 按资源分组的权限点。 */
-function RoleCard({
+/** 一行角色：方形头像取首字，标题旁标出内置或自定义。 */
+function RoleRow({
   role,
-  permissions,
+  onView,
   onEdit,
   onDelete,
 }: {
   role: Role;
-  permissions: PermissionView[];
+  onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const grouped = useMemo(
-    () => groupByResource(permissions, role.permissions ?? []),
-    [permissions, role.permissions],
-  );
+  const label = role.label || role.name;
+  const total = (role.permissions ?? []).length;
 
   return (
-    <ListPanel
-      title={role.label || role.name}
-      description={role.description || `标识 ${role.name}`}
-      badge={
-        role.builtin ? (
-          <Badge tone="outline">
-            <Lock aria-hidden="true" />
-            内置
-          </Badge>
-        ) : (
-          <Badge tone="seal">自定义</Badge>
-        )
-      }
-      actions={
-        role.builtin ? (
-          // 内置角色：说清为什么不能改，而不是给一个灰按钮
-          <span className="text-xs text-ink-muted">
-            内置角色不可修改，每次启动以代码为准播种
-          </span>
-        ) : (
-          <>
-            <Button variant="ghost" size="sm" onClick={onEdit}>
-              <Pencil aria-hidden="true" />
-              编辑
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onDelete}
-              aria-label={`删除角色 ${role.label || role.name}`}
-              className="hover:text-danger"
-            >
-              <Trash2 aria-hidden="true" />
-            </Button>
-          </>
-        )
-      }
-    >
-      <div className="flex flex-col gap-3 p-4">
-        {grouped.length === 0 ? (
-          <p className="text-sm text-ink-muted">这个角色还没有任何权限。</p>
-        ) : (
-          grouped.map((group) => (
-            <div
-              key={group.resource}
-              className="flex flex-wrap items-center gap-1.5"
-            >
-              <span className="w-24 shrink-0 text-sm text-ink-muted">
-                {RESOURCE_LABELS[group.resource] ?? group.resource}
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {group.items.map((item) => (
-                  <Badge key={item.key} tone="neutral" title={item.description}>
-                    {item.label}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-    </ListPanel>
+    <Entity>
+      <EntityStart>
+        <Avatar square name={label} size="sm" />
+        <EntityField
+          width="max-w-lg"
+          title={label}
+          extra={
+            role.builtin ? (
+              <Badge tone="outline">
+                <Lock aria-hidden="true" />
+                内置
+              </Badge>
+            ) : (
+              <Badge tone="seal">自定义</Badge>
+            )
+          }
+          description={
+            <>
+              <code className="token">{role.name}</code>
+              {role.description ? <span>{role.description}</span> : null}
+            </>
+          }
+        />
+      </EntityStart>
+
+      <EntityEnd>
+        <EntityMeta>{total === 0 ? "没有权限" : `${total} 项权限`}</EntityMeta>
+        <EntityActions label={`角色 ${label} 的操作`}>
+          <DropdownMenuItem onSelect={onView}>
+            <Eye aria-hidden="true" />
+            查看权限
+          </DropdownMenuItem>
+          {role.builtin ? null : (
+            <>
+              <DropdownMenuItem onSelect={onEdit}>
+                <Pencil aria-hidden="true" />
+                编辑
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem danger onSelect={onDelete}>
+                <Trash2 aria-hidden="true" />
+                删除
+              </DropdownMenuItem>
+            </>
+          )}
+        </EntityActions>
+      </EntityEnd>
+    </Entity>
   );
 }
 
-type PermissionGroup = { resource: string; items: PermissionView[] };
+/** 只读地看某个角色持有哪些权限，按资源分组。 */
+function PermissionsDialog({
+  role,
+  permissions,
+  onClose,
+}: {
+  role: Role | null;
+  permissions: PermissionView[];
+  onClose: () => void;
+}) {
+  const grouped = useMemo(
+    () => groupByResource(permissions, role?.permissions ?? []),
+    [permissions, role],
+  );
 
-function groupByResource(
-  permissions: PermissionView[],
-  held: string[],
-): PermissionGroup[] {
-  const set = new Set(held);
-  const map = new Map<string, PermissionView[]>();
-  for (const permission of permissions) {
-    if (!set.has(permission.key)) {
-      continue;
-    }
-    const list = map.get(permission.resource) ?? [];
-    list.push(permission);
-    map.set(permission.resource, list);
-  }
-  return [...map.entries()]
-    .map(([resource, items]) => ({ resource, items }))
-    .sort((a, b) => a.resource.localeCompare(b.resource));
+  return (
+    <Dialog open={role !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{role?.label || role?.name}</DialogTitle>
+          <DialogDescription>
+            {role?.builtin
+              ? "内置角色不可修改，每次启动以代码为准播种。"
+              : "自定义角色，可在菜单里编辑。"}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody className="flex flex-col gap-3">
+          {grouped.length === 0 ? (
+            <p className="py-6 text-center text-sm text-ink-muted">
+              这个角色还没有任何权限。
+            </p>
+          ) : (
+            grouped.map((group) => (
+              <div
+                key={group.resource}
+                className="flex flex-wrap items-start gap-2"
+              >
+                <span className="w-24 shrink-0 pt-0.5 text-sm text-ink-muted">
+                  {RESOURCE_LABELS[group.resource] ?? group.resource}
+                </span>
+                <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+                  {group.items.map((item) => (
+                    <Badge
+                      key={item.key}
+                      tone="neutral"
+                      title={item.description}
+                    >
+                      {item.label}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={onClose}>
+            关闭
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /** 新建 / 编辑角色。权限按资源分组勾选。 */
@@ -333,17 +400,7 @@ function RoleDialog({
     setInitialised(null);
   }
 
-  const groups = useMemo(() => {
-    const map = new Map<string, PermissionView[]>();
-    for (const permission of permissions) {
-      const list = map.get(permission.resource) ?? [];
-      list.push(permission);
-      map.set(permission.resource, list);
-    }
-    return [...map.entries()]
-      .map(([resource, items]) => ({ resource, items }))
-      .sort((a, b) => a.resource.localeCompare(b.resource));
-  }, [permissions]);
+  const groups = useMemo(() => groupByResource(permissions), [permissions]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -398,7 +455,7 @@ function RoleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent size="lg">
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -421,12 +478,9 @@ function RoleDialog({
 
           <DialogBody className="flex flex-col gap-5">
             {error ? (
-              <div
-                role="alert"
-                className="rounded-control border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
-              >
+              <Alert tone="danger" title="没有保存">
                 {error}
-              </div>
+              </Alert>
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -469,7 +523,7 @@ function RoleDialog({
             </Field>
 
             <fieldset className="flex flex-col gap-3">
-              <legend className="flex w-full items-center justify-between gap-2 text-sm font-medium text-ink">
+              <legend className="flex w-full items-center justify-between gap-2 pb-2 text-sm font-medium text-ink">
                 <span>权限</span>
                 <span className="tabular text-xs text-ink-muted">
                   已选 {selected.length} / {permissions.length}
@@ -480,63 +534,46 @@ function RoleDialog({
                 const keys = group.items.map((item) => item.key);
                 const allChecked = keys.every((key) => selected.includes(key));
                 const someChecked = keys.some((key) => selected.includes(key));
+                const groupId = `group-${group.resource}`;
                 return (
-                  <div
-                    key={group.resource}
-                    className="rounded-panel border border-line bg-surface-raised p-3"
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        id={`group-${group.resource}`}
-                        checked={allChecked}
-                        ref={(el) => {
-                          // 部分选中用 indeterminate：它只能经 JS 设置，
-                          // 而「这组里选了一半」必须能看出来
-                          if (el) {
-                            el.indeterminate = someChecked && !allChecked;
-                          }
-                        }}
-                        onChange={(e) =>
-                          toggleGroup(group.items, e.target.checked)
+                  <Inset key={group.resource} className="flex flex-col gap-1">
+                    {/* 组头：全选与半选。「这组里选了一半」必须能看出来 */}
+                    <label
+                      htmlFor={groupId}
+                      className="flex cursor-pointer items-center gap-2.5 px-2 py-1 text-sm font-medium text-ink select-none"
+                    >
+                      <Checkbox
+                        id={groupId}
+                        checked={
+                          allChecked
+                            ? true
+                            : someChecked
+                              ? "indeterminate"
+                              : false
                         }
-                        className="size-4 cursor-pointer rounded-[3px] border-line-strong accent-seal"
+                        onCheckedChange={(value) =>
+                          toggleGroup(group.items, value === true)
+                        }
                       />
-                      <label
-                        htmlFor={`group-${group.resource}`}
-                        className="cursor-pointer text-sm font-medium text-ink select-none"
-                      >
-                        {RESOURCE_LABELS[group.resource] ?? group.resource}
-                      </label>
-                    </div>
-
-                    <div className="grid gap-1 pl-6 sm:grid-cols-2">
+                      {RESOURCE_LABELS[group.resource] ?? group.resource}
+                    </label>
+                    <div className="grid gap-0.5 sm:grid-cols-2">
                       {group.items.map((item) => (
-                        <label
+                        <CheckboxRow
                           key={item.key}
-                          className={cn(
-                            "flex cursor-pointer items-start gap-2 rounded-control px-1.5 py-1",
-                            "hover:bg-surface-hover",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selected.includes(item.key)}
-                            onChange={(e) => toggle(item.key, e.target.checked)}
-                            className="mt-0.5 size-4 cursor-pointer rounded-[3px] border-line-strong accent-seal"
-                          />
-                          <span className="flex min-w-0 flex-col">
-                            <span className="text-sm text-ink">
-                              {item.label}
-                            </span>
-                            <span className="token text-xs text-ink-subtle">
-                              {item.key}
-                            </span>
-                          </span>
-                        </label>
+                          id={`perm-${item.key}`}
+                          checked={selected.includes(item.key)}
+                          onCheckedChange={(checked) =>
+                            toggle(item.key, checked)
+                          }
+                          label={item.label}
+                          description={
+                            <code className="token">{item.key}</code>
+                          }
+                        />
                       ))}
                     </div>
-                  </div>
+                  </Inset>
                 );
               })}
 
@@ -544,16 +581,14 @@ function RoleDialog({
                 <p className="text-sm text-ink-muted">暂时没有可分配的权限。</p>
               ) : null}
             </fieldset>
-
-            <FieldError>{error}</FieldError>
           </DialogBody>
 
           <DialogFooter>
             <Button variant="secondary" onClick={onClose}>
               取消
             </Button>
-            <Button type="submit" variant="primary" disabled={save.isPending}>
-              {save.isPending ? "正在保存" : "保存"}
+            <Button type="submit" variant="primary" loading={save.isPending}>
+              保存
             </Button>
           </DialogFooter>
         </form>

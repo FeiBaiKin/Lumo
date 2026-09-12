@@ -3,13 +3,21 @@ import { runMutation } from "@/api/mutation";
 import type { components } from "@/api/schema";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
-  type Column,
+  Entity,
+  EntityActions,
+  EntityEnd,
+  EntityField,
+  EntityMeta,
+  EntityStart,
   ListBody,
   ListEmpty,
-  ListPanel,
-} from "@/components/data/list-panel";
+} from "@/components/data/entity";
+import { PageBody, PageHeader } from "@/components/layout/page-header";
+import { Alert } from "@/components/ui/alert";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   ConfirmDialog,
   Dialog,
@@ -19,9 +27,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input, Textarea } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/panel";
 import {
   Select,
   SelectContent,
@@ -29,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { relativeTime } from "@/lib/format";
+import { absoluteDate, relativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -39,8 +47,9 @@ import { useMemo, useState } from "react";
 /**
  * 分类管理。
  *
- * 用树而不是平铺表格：分类是树形结构，"技术 > 前端 > React" 的归属关系
- * 在平铺列表里只能靠一列「父分类」的名字去脑补。
+ * 用树而不是平铺列表：分类是树形结构，"技术 > 前端 > React" 的归属关系
+ * 在平铺列表里只能靠一列「父分类」的名字去脑补。树在实体行上靠缩进表达，
+ * 有子分类的行前有一枚展开/收起按钮。
  *
  * 服务端同时提供平铺与树两个接口（/categories 与 /categories/tree），
  * 这里用树；树一次拿全，分类数量级（几十到几百）不需要分页。
@@ -51,7 +60,7 @@ type CategoryBody = components["schemas"]["CategoryBody"];
 
 const ROOT = "__root__";
 
-/** 把树摊平成带层级的数组，供表格渲染。 */
+/** 把树摊平成带层级的数组，供逐行渲染。 */
 function flatten(
   nodes: CategoryNode[],
   depth = 0,
@@ -153,15 +162,6 @@ export function CategoriesPage() {
     [query.data, editing],
   );
 
-  const columns: Column[] = [
-    { label: "名称" },
-    { label: "slug" },
-    { label: "描述" },
-    { label: "排序", numeric: true },
-    { label: "更新时间" },
-    { label: "" },
-  ];
-
   const save = useMutation({
     mutationFn: async (payload: {
       id: number | undefined;
@@ -191,10 +191,7 @@ export function CategoriesPage() {
           api.DELETE("/api/v1/console/categories/{id}", {
             params: { path: { id } },
           }),
-        {
-          success: "分类已删除",
-          invalidate: ["categories"],
-        },
+        { success: "分类已删除", invalidate: ["categories"] },
       ),
   });
 
@@ -217,6 +214,18 @@ export function CategoriesPage() {
     });
     setFormError("");
     setFormOpen(true);
+  }
+
+  function toggleCollapsed(id: number) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }
 
   async function onSubmit(event: React.FormEvent) {
@@ -249,8 +258,9 @@ export function CategoriesPage() {
   return (
     <>
       <PageHeader
+        icon={FolderTree}
         title="分类"
-        description="树形结构，同级按排序值排列；作者写文章时需要按它归类"
+        description="树形结构，同级按排序值排列；作者写文章时按它归类"
         actions={
           editable ? (
             <Button variant="primary" onClick={() => openCreate()}>
@@ -261,159 +271,54 @@ export function CategoriesPage() {
         }
       />
 
-      <ListPanel
-        toolbar={
-          editable ? undefined : (
-            <p className="text-xs text-ink-muted">
+      <PageBody>
+        <Card>
+          {editable ? null : (
+            <div className="border-line border-b bg-surface-raised px-4 py-2.5 text-sm text-ink-muted">
               你没有 taxonomies:manage 权限，只能查看分类。
-            </p>
-          )
-        }
-      >
-        <ListBody
-          columns={columns}
-          isLoading={query.isLoading}
-          error={query.error}
-          onRetry={() => void query.refetch()}
-          isEmpty={rows.length === 0}
-          empty={
-            <ListEmpty
-              title="还没有分类"
-              description="分类用来把文章组织成层级，例如「技术 > 前端」。文章也可以不归任何分类。"
-              action={
-                editable ? (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => openCreate()}
-                  >
-                    新建分类
-                  </Button>
-                ) : null
-              }
-            />
-          }
-        >
-          {rows.map(({ node, depth }) => {
-            const hasChildren = (node.children?.length ?? 0) > 0;
-            const isCollapsed = collapsed.has(node.id);
-            return (
-              <tr
+            </div>
+          )}
+
+          <ListBody
+            isLoading={query.isLoading}
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            isEmpty={rows.length === 0}
+            empty={
+              <ListEmpty
+                icon={FolderTree}
+                title="还没有分类"
+                description="分类用来把文章组织成层级，例如「技术 > 前端」。文章也可以不归任何分类。"
+                action={
+                  editable ? (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => openCreate()}
+                    >
+                      新建分类
+                    </Button>
+                  ) : null
+                }
+              />
+            }
+          >
+            {rows.map(({ node, depth }) => (
+              <CategoryRow
                 key={node.id}
-                className="transition-ui hover:bg-surface-hover"
-              >
-                {/* 名称列承担树形缩进 —— 缩进用 padding 而不是占位元素，
-                    这样选中整行时高亮是连续的 */}
-                <td className="px-4 py-2.5">
-                  <div
-                    className="flex items-center gap-1.5"
-                    style={{ paddingLeft: `${depth * 1.25}rem` }}
-                  >
-                    {hasChildren ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCollapsed((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(node.id)) {
-                              next.delete(node.id);
-                            } else {
-                              next.add(node.id);
-                            }
-                            return next;
-                          })
-                        }
-                        aria-expanded={!isCollapsed}
-                        aria-label={
-                          isCollapsed
-                            ? `展开 ${node.name}`
-                            : `收起 ${node.name}`
-                        }
-                        className="transition-ui flex size-5 shrink-0 items-center justify-center rounded-control text-ink-muted hover:bg-surface-active hover:text-ink"
-                      >
-                        <ChevronRight
-                          aria-hidden="true"
-                          className={cn(
-                            "size-3.5 transition-transform",
-                            !isCollapsed && "rotate-90",
-                          )}
-                        />
-                      </button>
-                    ) : (
-                      <span className="size-5 shrink-0" aria-hidden="true" />
-                    )}
-                    <FolderTree
-                      aria-hidden="true"
-                      className={cn(
-                        "size-4 shrink-0",
-                        depth === 0 ? "text-ink-subtle" : "text-ink-subtle/60",
-                      )}
-                    />
-                    <span className="truncate font-medium text-ink">
-                      {node.name}
-                    </span>
-                    {hasChildren ? (
-                      <Badge tone="outline">
-                        {node.children?.length} 个子分类
-                      </Badge>
-                    ) : null}
-                  </div>
-                </td>
-                <td className="px-4 py-2.5">
-                  <code className="token text-xs text-ink-muted">
-                    {node.slug}
-                  </code>
-                </td>
-                <td className="max-w-64 px-4 py-2.5">
-                  <span className="line-clamp-1 text-sm text-ink-muted">
-                    {node.description || "—"}
-                  </span>
-                </td>
-                <td className="tabular px-4 py-2.5 text-right text-sm text-ink-muted">
-                  {node.position}
-                </td>
-                <td className="px-4 py-2.5 text-sm whitespace-nowrap text-ink-muted">
-                  {relativeTime(node.updatedAt)}
-                </td>
-                <td className="w-px px-4 py-2.5 text-right whitespace-nowrap">
-                  {editable ? (
-                    <div className="flex items-center justify-end gap-0.5">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => openCreate(node.id)}
-                        aria-label={`在 ${node.name} 下新建子分类`}
-                        title="新建子分类"
-                      >
-                        <Plus aria-hidden="true" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => openEdit(node)}
-                        aria-label={`编辑 ${node.name}`}
-                        title="编辑"
-                      >
-                        <Pencil aria-hidden="true" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => setDeleting(node)}
-                        aria-label={`删除 ${node.name}`}
-                        title="删除"
-                        className="hover:text-danger"
-                      >
-                        <Trash2 aria-hidden="true" />
-                      </Button>
-                    </div>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
-        </ListBody>
-      </ListPanel>
+                node={node}
+                depth={depth}
+                collapsed={collapsed.has(node.id)}
+                editable={editable}
+                onToggle={() => toggleCollapsed(node.id)}
+                onCreateChild={() => openCreate(node.id)}
+                onEdit={() => openEdit(node)}
+                onDelete={() => setDeleting(node)}
+              />
+            ))}
+          </ListBody>
+        </Card>
+      </PageBody>
 
       {/* 新建 / 编辑 */}
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
@@ -425,14 +330,7 @@ export function CategoriesPage() {
               </DialogTitle>
             </DialogHeader>
             <DialogBody className="flex flex-col gap-4">
-              {formError ? (
-                <div
-                  role="alert"
-                  className="rounded-control border border-danger bg-danger-soft px-3 py-2 text-sm text-danger"
-                >
-                  {formError}
-                </div>
-              ) : null}
+              {formError ? <Alert tone="danger">{formError}</Alert> : null}
 
               <Field>
                 <FieldLabel htmlFor="cat-name">名称</FieldLabel>
@@ -534,8 +432,8 @@ export function CategoriesPage() {
               <Button variant="secondary" onClick={() => setFormOpen(false)}>
                 取消
               </Button>
-              <Button type="submit" variant="primary" disabled={save.isPending}>
-                {save.isPending ? "正在保存" : "保存"}
+              <Button type="submit" variant="primary" loading={save.isPending}>
+                保存
               </Button>
             </DialogFooter>
           </form>
@@ -578,5 +476,107 @@ export function CategoriesPage() {
         }}
       />
     </>
+  );
+}
+
+/**
+ * 一行分类。
+ *
+ * 缩进落在开始段的 paddingLeft 上而不是占位元素，这样整行悬停时高亮是连续的；
+ * 展开/收起按钮只在有子分类时出现，否则留一个等宽的空位让名字对齐。
+ */
+function CategoryRow({
+  node,
+  depth,
+  collapsed,
+  editable,
+  onToggle,
+  onCreateChild,
+  onEdit,
+  onDelete,
+}: {
+  node: CategoryNode;
+  depth: number;
+  collapsed: boolean;
+  editable: boolean;
+  onToggle: () => void;
+  onCreateChild: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const childCount = node.children?.length ?? 0;
+  const hasChildren = childCount > 0;
+
+  return (
+    <Entity>
+      <EntityStart style={{ paddingLeft: `${depth * 1.5}rem` }}>
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? `展开 ${node.name}` : `收起 ${node.name}`}
+            className="transition-ui flex size-6 shrink-0 items-center justify-center rounded-control text-ink-muted hover:bg-surface-active hover:text-ink"
+          >
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-4 transition-transform",
+                !collapsed && "rotate-90",
+              )}
+            />
+          </button>
+        ) : (
+          <span className="size-6 shrink-0" aria-hidden="true" />
+        )}
+
+        <Avatar square name={node.name} size="sm" />
+
+        <EntityField
+          width="max-w-md"
+          title={node.name}
+          extra={
+            hasChildren ? (
+              <Badge tone="outline">{childCount} 个子分类</Badge>
+            ) : null
+          }
+          description={
+            <>
+              <code className="token">{node.slug}</code>
+              {node.description ? (
+                <span className="max-w-64 truncate">{node.description}</span>
+              ) : null}
+            </>
+          }
+        />
+      </EntityStart>
+
+      <EntityEnd>
+        <EntityMeta hideOnMobile className="tabular">
+          排序 {node.position}
+        </EntityMeta>
+        <EntityMeta>
+          <time dateTime={node.updatedAt} title={absoluteDate(node.updatedAt)}>
+            {relativeTime(node.updatedAt)}
+          </time>
+        </EntityMeta>
+        {editable ? (
+          <EntityActions label={`分类 ${node.name} 的操作`}>
+            <DropdownMenuItem onSelect={onCreateChild}>
+              <Plus aria-hidden="true" />
+              新建子分类
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onEdit}>
+              <Pencil aria-hidden="true" />
+              编辑
+            </DropdownMenuItem>
+            <DropdownMenuItem danger onSelect={onDelete}>
+              <Trash2 aria-hidden="true" />
+              删除
+            </DropdownMenuItem>
+          </EntityActions>
+        ) : null}
+      </EntityEnd>
+    </Entity>
   );
 }

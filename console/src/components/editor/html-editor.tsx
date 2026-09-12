@@ -33,6 +33,7 @@ import {
   Undo2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * 块编辑器（TipTap v3 开源扩展集，不碰 Pro 付费项）。
@@ -46,16 +47,26 @@ import { useCallback, useEffect, useMemo } from "react";
  *
  * 服务端**不做 HTML 净化**（§3.4，与 Halo / Ghost 同策），信任已认证用户的输入。
  * 这也是保留 iframe 嵌入与自定义 HTML 块能力的前提。
+ *
+ * 工具条可以经 `toolbarContainer` 传送到页面的任意位置（编辑页把它放在
+ * 页头之下、正文之上的那条全宽白带里，Halo 的 editor-header 同位）；
+ * 不传时工具条就地渲染在正文上方。
  */
 
 export function HtmlEditor({
   initialContent,
   onChange,
   editable = true,
+  toolbarContainer,
 }: {
   initialContent: string;
   onChange: (html: string) => void;
   editable?: boolean;
+  /**
+   * 工具条的挂载点。undefined 表示就地渲染；null 表示挂载点尚未就绪（先不画）；
+   * 元素表示经 portal 渲染到该处。
+   */
+  toolbarContainer?: HTMLElement | null;
 }) {
   const [slashOpen, setSlashOpen] = useSlashMenuState();
 
@@ -71,6 +82,9 @@ export function HtmlEditor({
 
   const editor = useEditor({
     editable,
+    // 工具条的激活态（加粗、标题）要随光标位置变化，故每次事务都重渲染。
+    // v3 默认关闭这一项以省渲染，但这里的工具条正是靠它才跟得上光标。
+    shouldRerenderOnTransaction: true,
     extensions: [
       // StarterKit 已含 bold / italic / strike / code / heading / list /
       // blockquote / codeBlock / hr / history 等常用节点
@@ -99,11 +113,11 @@ export function HtmlEditor({
     },
     editorProps: {
       attributes: {
-        // 编辑区本身就是「纸」（agent.md §11.3）：外壳是冷调中性色，
-        // 只有正在写的这张纸用主题的纸色
+        // 编辑区本身就是「纸」（agent.md §11.3）：左右留白由页面的内容列负责，
+        // 这里只管上下呼吸与最小高度
         class: cn(
           "prose-editor max-w-none focus:outline-none",
-          "min-h-[28rem] px-10 py-8",
+          "min-h-[60vh] py-6",
         ),
         // 拼写检查对中文没有意义，反而在每个词下画红线
         spellcheck: "false",
@@ -112,9 +126,11 @@ export function HtmlEditor({
   });
 
   // 外部把内容整体换掉时（如切换格式后回填）同步进编辑器。
-  // 正常的载入走 key 重建（见 PostEditor），这条只为「同一实例内换内容」兜底。
+  // 正常的载入走 key 重建（见 ContentEditor），这条只为「同一实例内换内容」兜底。
   useEffect(() => {
-    if (!editor) {
+    // StrictMode 会把首次挂载的实例销毁再重建：销毁后的实例 schema 为空，
+    // 对它调 getHTML 会在 fromSchema 里读 null.cached 而崩掉整页。
+    if (!editor || editor.isDestroyed) {
       return;
     }
     if (editor.getHTML() !== initialContent) {
@@ -128,7 +144,7 @@ export function HtmlEditor({
     }
     const previous = editor.getAttributes("link").href as string | undefined;
     // 用 prompt 而不是自建浮层：链接输入是一次性的单字段输入，
-    // 为它写一个弹窗组件不值得（阶段 7 后续接入附件库时再考虑替换）。
+    // 为它写一个弹窗组件不值得（接入附件库时再考虑替换）。
     const url = window.prompt(
       "链接地址（留空则移除链接）",
       previous ?? "https://",
@@ -150,15 +166,21 @@ export function HtmlEditor({
 
   if (!editor) {
     return (
-      <div className="flex min-h-[28rem] items-center justify-center text-sm text-ink-muted">
-        正在准备编辑器…
+      <div className="flex min-h-[60vh] items-center justify-center text-sm text-ink-muted">
+        正在准备编辑器
       </div>
     );
   }
 
+  const toolbar = <Toolbar editor={editor} onSetLink={setLink} />;
+
   return (
     <div className="flex flex-col">
-      <Toolbar editor={editor} onSetLink={setLink} />
+      {toolbarContainer === undefined ? (
+        <div className="border-line border-b bg-surface">{toolbar}</div>
+      ) : toolbarContainer ? (
+        createPortal(toolbar, toolbarContainer)
+      ) : null}
 
       <div className="relative">
         <EditorContent editor={editor} />
@@ -185,7 +207,7 @@ export function HtmlEditor({
   );
 }
 
-/** 工具条。按用途分段，段间用竖线分隔。 */
+/** 工具条：48px 高、居中，按用途分段，段间用竖线分隔（Halo 的 editor-header 同形）。 */
 function Toolbar({
   editor,
   onSetLink,
@@ -327,8 +349,7 @@ function Toolbar({
     <div
       role="toolbar"
       aria-label="格式工具"
-      aria-controls="editor-surface"
-      className="flex flex-wrap items-center gap-0.5 border-line border-b bg-chrome px-2 py-1.5"
+      className="mx-auto flex min-h-12 max-w-measure flex-wrap items-center justify-center gap-0.5 px-2 py-1"
     >
       {actions.map((action) => {
         const divider = action.group !== lastGroup && lastGroup !== -1;

@@ -2,6 +2,7 @@ import { queryClient } from "@/api/query-client";
 import { App } from "@/app";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -28,14 +29,16 @@ createRoot(container).render(
     */}
     <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <BrowserRouter basename="/console">
-          <AuthProvider>
-            <App />
-            {/* 操作结果统一走 toast 播报。成功与失败的区分由图标与文案承担，
-                不靠背景色 —— 与 badge 的规则一致 */}
-            <Toaster position="bottom-right" closeButton />
-          </AuthProvider>
-        </BrowserRouter>
+        <TooltipProvider delayDuration={400}>
+          <BrowserRouter basename="/console">
+            <AuthProvider>
+              <App />
+              {/* 操作结果统一走 toast 播报，顶部居中（Halo 同位）。
+                  成功与失败的区分由图标与文案承担，不靠背景色 */}
+              <Toaster position="top-center" closeButton />
+            </AuthProvider>
+          </BrowserRouter>
+        </TooltipProvider>
       </QueryClientProvider>
     </ThemeProvider>
   </StrictMode>,

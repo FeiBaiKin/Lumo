@@ -1,3 +1,4 @@
+import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { type Editor, Extension, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionOptions } from "@tiptap/suggestion";
@@ -369,8 +370,20 @@ export function SlashMenu({
         ))
       )}
 
-      <p className="border-line border-t px-2 py-1.5 text-xs text-ink-subtle">
-        ↑↓ 选择 · 回车插入 · Esc 关闭
+      <p className="flex items-center gap-3 border-line border-t px-2 py-1.5 text-xs text-ink-subtle">
+        <span className="flex items-center gap-1">
+          <Kbd>↑</Kbd>
+          <Kbd>↓</Kbd>
+          选择
+        </span>
+        <span className="flex items-center gap-1">
+          <Kbd>↵</Kbd>
+          插入
+        </span>
+        <span className="flex items-center gap-1">
+          <Kbd>Esc</Kbd>
+          关闭
+        </span>
       </p>
     </fieldset>
   );

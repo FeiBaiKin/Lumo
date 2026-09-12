@@ -1,10 +1,10 @@
 import { useAuth } from "@/components/auth/auth-provider";
 import { AppShell } from "@/components/layout/app-shell";
+import { LogoMark } from "@/components/layout/logo";
 import { DashboardPage } from "@/pages/dashboard";
 import { LoginPage } from "@/pages/login";
 import { NotFoundPage } from "@/pages/not-found";
 import { APP_ROUTES } from "@/pages/routes";
-import { Loader2 } from "lucide-react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 /**
@@ -21,11 +21,11 @@ import { Navigate, Route, Routes, useLocation } from "react-router";
 function FullPageLoading({ label }: { label: string }) {
   return (
     <div
-      className="flex min-h-dvh items-center justify-center gap-2 bg-chrome text-ink-muted"
+      className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-surface text-ink-muted"
       aria-busy="true"
     >
-      <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-      {label}
+      <LogoMark className="size-10 animate-pulse" />
+      <span className="text-sm">{label}</span>
     </div>
   );
 }

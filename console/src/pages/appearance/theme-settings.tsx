@@ -7,20 +7,11 @@ import {
   errorsFromServer,
 } from "@/components/form/schema";
 import { SchemaForm } from "@/components/form/schema-form";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ErrorState, Skeleton } from "@/components/ui/states";
-import { cn } from "@/lib/utils";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 /**
  * 主题设置。
@@ -31,29 +22,22 @@ import { useState } from "react";
  * 与存储位置（theme_settings vs settings 两张表），
  * 而这两件事都发生在服务端，前端一行都不用区分。
  *
- * 主题随时可换，故这里的分组用标签栏切换而不是一个长表单：
- * 一个主题声明十几个字段时，分组是唯一能让页面可读的结构。
+ * 形态对齐 Halo：设置不再是弹窗，而是主题详情卡片里的一个标签页，
+ * 每个分组一个标签（标签栏由主题页渲染，本文件只负责某一个分组的表单）。
  */
 
 type ThemeView = components["schemas"]["View"];
-
 type GroupView = components["schemas"]["SettingsGroupView"];
 
-export function ThemeSettings({
-  theme,
-  onClose,
-}: {
-  theme: ThemeView;
-  onClose: () => void;
-}) {
-  const [activeGroup, setActiveGroup] = useState<string | null>(null);
-
-  const query = useQuery({
-    queryKey: ["theme-settings", theme.name],
+/** 某个主题的全部设置分组。主题页用它取分组的显示名，面板用它取 Schema 与当前值。 */
+export function useThemeSettings(name: string, enabled = true) {
+  return useQuery({
+    queryKey: ["theme-settings", name],
+    enabled: enabled && name !== "",
     queryFn: async () => {
       const { data, response } = await api.GET(
         "/api/v1/console/themes/{name}/settings",
-        { params: { path: { name: theme.name } } },
+        { params: { path: { name } } },
       );
       if (!response.ok) {
         throw new Error(`载入主题设置失败（HTTP ${response.status}）`);
@@ -61,84 +45,61 @@ export function ThemeSettings({
       return data?.items ?? [];
     },
   });
+}
 
-  const groups: GroupView[] = query.data ?? [];
-  const current = groups.find((g) => g.name === activeGroup) ?? groups[0];
+/** 某个主题的某个设置分组：内联渲染在主题页的标签下。 */
+export function ThemeSettingsPanel({
+  theme,
+  group,
+}: {
+  theme: ThemeView;
+  group: string;
+}) {
+  const query = useThemeSettings(theme.name);
+
+  if (query.isLoading) {
+    return (
+      <div className="flex flex-col gap-3 p-4" aria-busy="true">
+        <Skeleton className="h-8 w-64" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (query.error) {
+    return (
+      <ErrorState
+        message={query.error.message}
+        onRetry={() => void query.refetch()}
+      />
+    );
+  }
+
+  const current: GroupView | undefined = (query.data ?? []).find(
+    (item) => item.name === group,
+  );
+
+  if (!current) {
+    return (
+      <EmptyState
+        icon={SlidersHorizontal}
+        title="没有这个设置分组"
+        description="它可能已随主题更新被移除。切到别的标签看看。"
+      />
+    );
+  }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{theme.label || theme.name} · 设置</DialogTitle>
-          <DialogDescription>
-            这些字段由主题的 settings.yaml 声明，表单由本站的通用引擎按 Schema
-            生成。
-          </DialogDescription>
-        </DialogHeader>
-
-        <DialogBody>
-          {query.isLoading ? (
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-8 w-64" />
-              <Skeleton className="h-64 w-full" />
-            </div>
-          ) : query.error ? (
-            <ErrorState
-              message={query.error.message}
-              onRetry={() => void query.refetch()}
-            />
-          ) : groups.length === 0 ? (
-            <p className="py-8 text-center text-sm text-ink-muted">
-              这个主题没有声明任何设置项。
-            </p>
-          ) : (
-            <>
-              {/* 只有一个分组时不显示标签栏 —— 一个标签的标签栏只是噪音 */}
-              {groups.length > 1 ? (
-                <nav
-                  aria-label="主题设置分组"
-                  className="mb-4 flex flex-wrap items-center gap-1 border-line border-b"
-                >
-                  {groups.map((group) => {
-                    const isActive = group.name === current?.name;
-                    return (
-                      <button
-                        key={group.name}
-                        type="button"
-                        onClick={() => setActiveGroup(group.name)}
-                        aria-current={isActive ? "true" : undefined}
-                        className={cn(
-                          "transition-ui -mb-px rounded-t-control border-b-2 px-3 py-2 text-base",
-                          isActive
-                            ? "border-seal font-medium text-seal"
-                            : "border-transparent text-ink-muted hover:bg-surface-hover hover:text-ink",
-                        )}
-                      >
-                        {group.label || group.name}
-                      </button>
-                    );
-                  })}
-                </nav>
-              ) : null}
-
-              {current ? (
-                <ThemeGroupForm
-                  key={`${theme.name}:${current.name}`}
-                  themeName={theme.name}
-                  group={current}
-                />
-              ) : null}
-            </>
-          )}
-        </DialogBody>
-
-        <DialogFooter>
-          <Button variant="secondary" onClick={onClose}>
-            关闭
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <div className="flex max-w-3xl flex-col gap-4 p-4">
+      {current.description ? (
+        <p className="text-sm text-ink-muted">{current.description}</p>
+      ) : null}
+      <ThemeGroupForm
+        key={`${theme.name}:${current.name}`}
+        themeName={theme.name}
+        group={current}
+      />
+    </div>
   );
 }
 
@@ -150,6 +111,7 @@ function ThemeGroupForm({
   themeName: string;
   group: GroupView;
 }) {
+  const queryClient = useQueryClient();
   const [errors, setErrors] = useState<FieldErrors>({});
   const [messages, setMessages] = useState<string[]>([]);
 
@@ -169,6 +131,11 @@ function ThemeGroupForm({
     onSuccess: () => {
       setErrors({});
       setMessages([]);
+      toast.success("主题设置已保存");
+      // 重取后表单的基线变成刚保存的值，「有未保存的修改」才会消失
+      void queryClient.invalidateQueries({
+        queryKey: ["theme-settings", themeName],
+      });
     },
   });
 
@@ -185,6 +152,7 @@ function ThemeGroupForm({
           await save.mutateAsync(values);
         } catch (err) {
           if (err instanceof ThemeSettingsError) {
+            // 服务端才是权威校验方：把它的 422 明细落回对应字段
             const mapped = errorsFromServer(err.details);
             setErrors(mapped.fields);
             setMessages(mapped.others);
