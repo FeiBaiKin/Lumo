@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+#
+# goreleaser 发布镜像时用的 Dockerfile。
+#
+# 与 deploy/Dockerfile 的区别：这里**不编译**。goreleaser 已经按 .goreleaser.yaml
+# 交叉编译出各架构二进制，Dockerfile 只负责装箱。
+# 手工构建请用 deploy/Dockerfile，别用这一份（它找不到 linux/amd64/lumo 这个路径）。
+#
+# 运行阶段与 deploy/Dockerfile 保持一致，改其中一份时记得同步另一份。
+
+# distroless 没有 shell，建不了目录，故借 busybox 造好 /data 再拷过去。
+# 固定在构建机架构上跑：这一层只产出目录元数据，与目标架构无关，
+# 不加 --platform 的话交叉发布 arm64 时要靠 QEMU 才能执行 mkdir。
+FROM --platform=$BUILDPLATFORM busybox:1.37-musl AS prep
+RUN mkdir -p /data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+
+# dockers_v2 把各平台的产物摊在同一个临时上下文里，按平台分子目录
+# （linux/amd64/lumo、linux/arm64/lumo）。buildx 为每个目标平台填入 TARGETPLATFORM，
+# 于是这一行在两次构建里分别取到对应架构的那份二进制。
+# 写成 COPY lumo /lumo 会直接找不到文件 —— 这是 dockers_v2 与旧 dockers 的关键差异。
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/lumo /lumo
+# 用户名而非写死 uid，理由同 deploy/Dockerfile。
+COPY --from=prep --chown=nonroot:nonroot /data /data
+
+WORKDIR /
+ENV LUMO_DATA_DIR=/data
+
+EXPOSE 8080
+USER nonroot:nonroot
+
+ENTRYPOINT ["/lumo"]
+CMD ["serve"]

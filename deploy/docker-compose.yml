@@ -1,0 +1,85 @@
+# Lumo 生产部署：应用 + PostgreSQL 17。
+#
+#   cd deploy
+#   cp .env.example .env      # 然后把 POSTGRES_PASSWORD 填上
+#   docker compose up -d
+#
+#   docker compose exec -it lumo /lumo admin create-user \
+#     -username admin -email you@example.com -role super-admin
+#
+# 最后这步必须带 -it：口令从终端读取且不回显，没有 TTY 时命令会直接失败
+# （这条 TTY 防线是刻意的，不提供 -password 参数，避免口令进入进程列表）。
+#
+# TLS 不在这里终结（agent.md §9），前面应有一层反向代理。
+
+name: lumo
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lumo}
+      POSTGRES_USER: ${POSTGRES_USER:-lumo}
+      # 刻意不给默认值：没填就让 compose 当场报错退出，
+      # 而不是用一个人人都知道的弱口令把数据库跑起来。
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请先在 deploy/.env 中设置 POSTGRES_PASSWORD}
+      # 只在首次初始化数据目录时生效，之后改它不会动已有的库。
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # lumo 靠 depends_on 等这条变绿。首次启动 PG 要建库建角色，
+      # 没有它应用会在库还没准备好时连接失败并退出。
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lumo} -d ${POSTGRES_DB:-lumo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # 刻意不映射端口：数据库只在 compose 内部网络里被应用访问。
+    # 要用 psql 连它：docker compose exec postgres psql -U lumo -d lumo
+
+  lumo:
+    image: ghcr.io/feibaikin/lumo:latest
+    # 想从源码构建（改了代码、或想验证本地改动）：docker compose up -d --build
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # DSN 只走环境变量，口令一律不进配置文件（agent.md §9）。
+      # 注意口令会被拼进 URL，特殊字符需要百分号编码，见 .env.example 的说明。
+      LUMO_DATABASE_DSN: postgres://${POSTGRES_USER:-lumo}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lumo}?sslmode=disable
+      # 站点对外地址，用于 canonical / sitemap / 订阅源的绝对链接。
+      # 留空时 sitemap 与订阅源明确返回 503，而不是产出相对地址。
+      LUMO_EXTERNAL_URL: ${LUMO_EXTERNAL_URL:-}
+      # 反代终结 HTTPS 后**必须**改成 true，否则会话 Cookie 不带 Secure 与 __Host- 前缀。
+      # 但在纯 HTTP 下开它会让登录「成功后立刻失效」（浏览器不保存该 Cookie）。
+      LUMO_SECURE_COOKIES: ${LUMO_SECURE_COOKIES:-false}
+      # 可信反代网段，留空 = 不采信任何 X-Forwarded-For，一律用直连地址。
+      # 反代也在本 compose 网络里时，填该网络的网段（默认 172.16.0.0/12 覆盖得到）。
+      LUMO_TRUSTED_PROXIES: ${LUMO_TRUSTED_PROXIES:-}
+      LUMO_LOG_LEVEL: ${LUMO_LOG_LEVEL:-info}
+      # 容器日志默认走 json，便于 docker logs 之后的采集。
+      LUMO_LOG_FORMAT: ${LUMO_LOG_FORMAT:-json}
+      # SMTP 口令与 S3 密钥同样只走环境变量，用到时在 .env 里填：
+      LUMO_SMTP_PASSWORD: ${LUMO_SMTP_PASSWORD:-}
+      LUMO_S3_ACCESS_KEY: ${LUMO_S3_ACCESS_KEY:-}
+      LUMO_S3_SECRET_KEY: ${LUMO_S3_SECRET_KEY:-}
+    ports:
+      # 默认只绑回环：TLS 交给前面的反向代理。
+      # 要直接对公网暴露，把 .env 里的 LUMO_BIND 改成 0.0.0.0:8080 —— 那是明文 HTTP，
+      # 此时务必让 LUMO_SECURE_COOKIES 保持 false，否则登录不上。
+      - "${LUMO_BIND:-127.0.0.1:8080}:8080"
+    volumes:
+      # 主题、上传、缓存、日志、备份都在这里。删容器不丢数据，靠的就是这卷。
+      - lumodata:/data
+    # 没有 healthcheck：运行镜像是 distroless，容器内既没有 shell 也没有 curl/wget。
+    # 需要探活时从外部请求 /healthz（进程存活）或 /readyz（额外探测数据库，可用于摘流）。
+
+volumes:
+  pgdata:
+  lumodata:

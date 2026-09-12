@@ -1,0 +1,33 @@
+# Docker 构建上下文排除表。
+# 构建上下文是仓库根（compose 里 context: ..），不排的话本机的 53 MB lumo.exe、
+# node_modules 与 data/ 都会被打包发给 daemon。
+
+.git
+.github
+.gitignore
+.gitattributes
+.dockerignore
+
+# 本机构建产物：镜像里的二进制由 Dockerfile 自己编，不复用宿主机的。
+/lumo
+/lumo.exe
+/coverage.out
+*.test
+
+# 前端依赖与产物：镜像里 npm ci 重装、vite 重新构建。
+# dist 排除后由 console 构建阶段 COPY 进来，go:embed all:dist 照样有东西可嵌。
+/console/node_modules/
+/internal/console/dist/
+
+# 运行时工作目录，不进镜像。
+/data/
+
+# 本地工作副本（.gitignore 已列，但它们在工作树里真实存在）。
+/agent.md
+/STATUS.md
+/dev.cmd
+.dsh-sess/
+.dsh_*
+
+# 部署产物自身不必进构建上下文。
+/deploy/.env

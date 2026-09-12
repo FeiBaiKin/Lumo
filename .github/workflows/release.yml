@@ -1,0 +1,85 @@
+# 发布流水线。
+#
+# 两种触发方式：
+#   1. 推 v* 标签 —— 正式发布：二进制归档 + GHCR 多架构镜像 + 草稿 Release
+#   2. 手动运行（workflow_dispatch）—— 默认 snapshot 模式，**只构建不发布**，
+#      用来在真有 Docker 的机器上验证镜像能否构建。本项目的日常开发机没装 Docker，
+#      这是验证 deploy/Dockerfile.goreleaser 的主要途径。
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: "只试跑不发布（验证构建链与镜像，不推 GHCR、不建 Release）"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # 创建 Release 与上传归档
+  packages: write # 推送 GHCR 镜像
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # goreleaser 的 changelog 要跑 git log，浅克隆拿不到历史。
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # .goreleaser.yaml 的 before.hooks 里要跑 npm ci 与 npm run build，
+      # 前端产物必须在 Go 构建前就位，否则 go:embed 嵌进去的是空目录。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+
+      # 多架构镜像走 buildx。GoReleaser 官方要求一个支持多平台的 builder，
+      # 并在 setup 步骤里一并装 binfmt（即 QEMU）。本项目两份 Dockerfile 里凡有 RUN 的
+      # 阶段都钉了 --platform=$BUILDPLATFORM，跨架构那层只有 COPY，按理不必模拟执行；
+      # 但 SBOM 生成等步骤仍可能要在目标架构上跑，装上它只多几秒，省掉一整类失败。
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        if: ${{ github.event_name == 'push' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # 仓库内置令牌，不必额外配 Secret。
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: goreleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          # dockers_v2 需要 v2.16+（它在那一版脱离实验阶段）。
+          version: "~> v2"
+          # 手动触发时默认走 snapshot：不打 Release、不推镜像，只验证能否构建。
+          # 注意必须是 release --snapshot 而不是 build —— dockers_v2 的镜像在
+          # publish 阶段构建，goreleaser build 压根不会碰 Dockerfile。
+          args: >-
+            release --clean
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.snapshot) && '--snapshot' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 留存构建产物（仅 snapshot 试跑）
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.snapshot }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-dist
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          retention-days: 7

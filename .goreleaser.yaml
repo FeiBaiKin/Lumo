@@ -73,8 +73,44 @@ changelog:
       regexp: '^refactor(\(.+\))?!?:'
       order: 3
 
-# Docker 镜像发布留到阶段 9（部署与发布）与 deploy/Dockerfile 一并接入，
-# 此处不预先声明，避免引用尚不存在的文件导致发布流程失败。
+# Docker 镜像。用 dockers_v2 而不是已被宣告淘汰的 dockers + docker_manifests：
+# 后者会在 GoReleaser v3 移除，且每次 goreleaser check 都会就此告警。
+# dockers_v2 自 v2.16 起不再是实验特性，一个块就同时管好多架构构建与清单推送。
+#
+# 它把各平台产物摊在**同一个**临时上下文里，按 linux/amd64、linux/arm64 分子目录，
+# 所以 deploy/Dockerfile.goreleaser 里必须写 COPY $TARGETPLATFORM/lumo —— 这点与旧写法不同。
+# 该上下文里没有源码，Dockerfile 需要的其他文件得经 extra_files 带进去（本项目不需要）。
+#
+# 另一处与旧版的行为差异：镜像改在 publish 阶段构建，因此 goreleaser build 或
+# release --skip=publish 都不会构建镜像；本地验证要用 release --snapshot
+# （那时不建清单，改出带平台后缀的分架构本地镜像）。
+#
+# 推送需要先登录：echo $GITHUB_TOKEN | docker login ghcr.io -u <用户名> --password-stdin
+# GitHub Actions 里用内置的 GITHUB_TOKEN 即可，无需额外 Secret。
+dockers_v2:
+  - id: lumo
+    dockerfile: deploy/Dockerfile.goreleaser
+    images:
+      - ghcr.io/feibaikin/lumo
+    tags:
+      - "{{ .Version }}"
+      # 空 tag 会被忽略，故这一条在预发布时渲染成 unstable、正式版时渲染成 latest。
+      # 不这么分的话，一个 rc 就把稳定标签顶掉了。
+      - "{{ if .Prerelease }}unstable{{ else }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    # snapshot 走 buildx --load，而 docker 这个 exporter 不接受 attestation。
+    # 正式发布是 --push，带得动 SBOM。
+    sbom: "{{ not .IsSnapshot }}"
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "用 Go 编写的现代化开源 CMS"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.source: "https://github.com/FeiBaiKin/lumo"
+      org.opencontainers.image.licenses: "GPL-3.0"
 
 release:
   draft: true

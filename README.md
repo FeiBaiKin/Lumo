@@ -3,10 +3,10 @@
 用 Go 编写的现代化开源 CMS，单一静态二进制：后台是 `go:embed` 进二进制的 React SPA，
 访客前台由服务端模板渲染主题。产品形态对标 [Halo](https://www.halo.run/)，目标是形成主题与插件生态。
 
-> **开发中** — 阶段 0 至 8 已完成（脚手架、后端核心基座、认证与权限、内容模型与业务功能、
-> 主题系统、API 层与代码生成、全文搜索、后台 Console、默认主题），
-> 后端、访客前台与后台界面均已可用；
-> **尚未提供 Docker 部署与正式发布产物（阶段 9），暂不建议用于生产**。
+> **开发中** — 九个阶段全部完成（脚手架、后端核心基座、认证与权限、内容模型与业务功能、
+> 主题系统、API 层与代码生成、全文搜索、后台 Console、默认主题、部署与发布），
+> 后端、访客前台、后台界面与部署产物均已就位；
+> **尚未正式发版，也未经生产环境检验**，用于正式站点请自行充分验证。
 > 进度明细见「[开发进度](#开发进度)」。
 
 ## 特性规划
@@ -45,11 +45,11 @@
   设计 token 为三层架构并清空了 Tailwind 内置主题键，组件里写不出裸色值
 - **模块化**：11 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
 
-### 尚未开始（阶段 9）
+### 推到 v1.1
 
-- **Docker 部署**：Dockerfile 与 `docker-compose.yml`（含 PostgreSQL 17）
-- **发布流水线**：goreleaser 接上前端构建、多平台产物与 Docker 镜像发布
-- **官网**：用本 CMS 自建，v1.1 交付
+- **官网**：用本 CMS 自建
+- **2FA 与 OAuth 登录**：Module 边界已留
+- **插件加载器**：v1 只有编译期模块，Extension 平面与设置 Schema 已为它预留接口
 
 ## 开发进度
 
@@ -64,7 +64,7 @@
 | 6 | 全文搜索 | 已完成 |
 | 7 | Console 前端 | 已完成 |
 | 8 | 默认主题 | 已完成 |
-| 9 | 部署与发布 | 未开始 |
+| 9 | 部署与发布 | 已完成 |
 
 阶段 5 的「三平面路由」「OpenAPI 3.1 由代码生成」「统一分页」三项随阶段 3 提前落地，
 其余两项（Extension CRUD、Console TS 客户端生成）于阶段 5 补齐。
@@ -73,6 +73,10 @@
 
 **已知缺口**：「系统 → 日志」页仍是占位 —— 服务端尚无日志读取接口，
 在想清楚日志落文件还是落库之前，不给它做一个假的页面。
+
+阶段 9 的部署产物（`deploy/`）与发布流水线已交付，构建链本身经交叉编译实测；
+**镜像能否构建起来需要在装有 Docker 的环境验证** —— 手动触发 Release 工作流、
+保持 snapshot 选项打开即可试跑，它只构建不发布。
 
 ## 环境要求
 
@@ -107,6 +111,44 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 
 其余配置项可复制 `config.example.yaml` 为 `config.yaml` 后修改，
 或用 `LUMO_*` 环境变量覆盖；优先级为 默认值 < 配置文件 < 环境变量 < 命令行参数。
+
+## Docker 部署
+
+`deploy/` 下是整套部署文件：多阶段构建的 `Dockerfile`、含 PostgreSQL 17 的
+`docker-compose.yml`，以及环境变量样板 `.env.example`。
+
+```bash
+cd deploy
+cp .env.example .env          # 至少要填 POSTGRES_PASSWORD
+docker compose up -d
+
+# 创建初始管理员。必须带 -it：口令从终端读取且不回显，没有 TTY 时命令会直接失败
+docker compose exec -it lumo /lumo admin create-user   -username admin -email you@example.com -role super-admin
+```
+
+随后访问 http://127.0.0.1:8080 ，后台在 `/console/`。
+
+镜像为 `ghcr.io/feibaikin/lumo`（linux/amd64 与 linux/arm64 多架构清单）。
+想改了代码从源码构建，加 `--build` 即可，compose 会走 `deploy/Dockerfile` 重编前端与后端。
+
+几个**刻意如此**的默认值：
+
+| 默认 | 为什么 |
+|---|---|
+| 端口只绑 `127.0.0.1:8080` | TLS 交给前面的反向代理；要直接对外，改 `.env` 里的 `LUMO_BIND` |
+| PostgreSQL 不映射端口 | 它只需被同一 compose 网络内的应用访问 |
+| `POSTGRES_PASSWORD` 无默认值 | 没填就让 compose 当场报错，而不是用一个人人都知道的弱口令把库跑起来 |
+| `LUMO_SECURE_COOKIES=false` | 纯 HTTP 下开它会让登录「成功后立刻失效」；**上了 HTTPS 必须改成 true** |
+| `LUMO_TRUSTED_PROXIES` 为空 | 不采信任何 `X-Forwarded-For`。不填的话日志与评论限流看到的都是反代的 IP |
+
+**数据都在 `/data` 卷里**——主题、上传、缓存、日志、备份。删容器不丢，删卷才丢。
+
+**数据库口令别用特殊字符**：它会被拼进 DSN 的 URL，含 `@ : / ? # %` 时必须先做百分号编码，
+否则表现为「口令明明是对的却连不上」。`.env.example` 里附了一条生成 URL 安全口令的命令。
+
+运行镜像是 distroless，**没有 shell 也没有包管理器**。因此排障靠 `docker compose logs`
+而不是 exec 进去翻文件；也无法在容器内做 HEALTHCHECK，探活请从外部请求
+`/healthz`（进程存活）或 `/readyz`（额外探测数据库，可用于负载均衡摘流）。
 
 ## 后台 Console
 
@@ -333,7 +375,9 @@ task console:api    # 重新导出 OpenAPI 规范并生成 TS 类型（需 LUMO_
 `time.LoadLocation` 会全数失败。
 
 发布产物为六个平台的单一静态二进制（linux / windows / darwin × amd64 / arm64，
-`CGO_ENABLED=0`），配置见 `.goreleaser.yaml`；Docker 镜像发布留到阶段 9。
+`CGO_ENABLED=0`），配置见 `.goreleaser.yaml`。推 `v*` 标签即触发 Release 工作流：
+归档、校验和、草稿 Release，以及推往 GHCR 的 linux/amd64 + linux/arm64 多架构镜像。
+手动触发该工作流并保持 snapshot 选项，则只构建不发布，可用来验证镜像构建。
 
 ## 命令
 
@@ -382,7 +426,8 @@ console/           Vite + React + TypeScript 后台前端
   src/pages/       七组导航对应的页面
   src/styles/      三层设计 token（primitive → semantic → component）
 data/themes/       运行时装第三方主题的位置（不进库，由 workdir 创建）
-deploy/            Dockerfile、docker-compose.yml（阶段 9 起）
+deploy/            Dockerfile（源码构建）、Dockerfile.goreleaser（发布装箱）
+                   docker-compose.yml、.env.example
 ```
 
 ## 许可证
