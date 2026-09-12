@@ -3,14 +3,15 @@
 用 Go 编写的现代化开源 CMS，单一静态二进制：后台是 `go:embed` 进二进制的 React SPA，
 访客前台由服务端模板渲染主题。产品形态对标 [Halo](https://www.halo.run/)，目标是形成主题与插件生态。
 
-> **开发中** — 阶段 0 至 6 已完成（脚手架、后端核心基座、认证与权限、内容模型与业务功能、
-> 主题系统、API 层与代码生成、全文搜索），后端与访客前台均已可用；
-> **Console 界面尚未开发，当前版本不可用于生产**。
+> **开发中** — 阶段 0 至 8 已完成（脚手架、后端核心基座、认证与权限、内容模型与业务功能、
+> 主题系统、API 层与代码生成、全文搜索、后台 Console、默认主题），
+> 后端、访客前台与后台界面均已可用；
+> **尚未提供 Docker 部署与正式发布产物（阶段 9），暂不建议用于生产**。
 > 进度明细见「[开发进度](#开发进度)」。
 
 ## 特性规划
 
-### 已完成（阶段 0–6）
+### 已完成（阶段 0–8）
 
 - **内容管理**：文章与独立页面（同表以 `type` 区分）、树形分类、标签、评论、附件、菜单。
   文章含状态机（草稿 / 已发布 / 定时发布 / 回收站）、置顶、封面、摘要、可见性与修订历史
@@ -19,7 +20,9 @@
   Hugo 风格的 layout / partial 约定 + 函数库补足模板体验；九种路由各注入固定上下文，
   Finder 函数供侧栏页脚取数；**必需模板只有四个**，其余缺失时整页回退到内置主题
 - **内置主题「墨 Ink」**：随二进制分发，开箱即用，同时是所有主题的回退目标。
-  为中文长文阅读设计（纸 / 墨 / 印三色、36 字栏宽、宽屏元信息栏），无 Web 字体 CDN 依赖
+  为中文长文阅读设计（纸 / 墨 / 印三色、36 字栏宽、宽屏元信息栏）。
+  自托管思源宋体（按 `unicode-range` 分包，每页只下载用到的几片）、GSAP + Lenis 动效
+  与 SVG 方印插图系统，**全部自托管，无任何 CDN 依赖**；字体与动效都可在主题设置里关掉
 - **认证与权限**：服务端会话 Cookie（HttpOnly + SameSite + CSRF）、Personal Access Token、argon2id 口令、
   自定义角色与权限串、所有权（`_any`）规则
 - **用户与角色管理**：用户分页 / 创建 / 启停 / 设角色 / 重置口令 / 删除，自定义角色 CRUD，权限清单；
@@ -37,12 +40,16 @@
 - **类型不手写两遍**：`lumo openapi` 导出规范，Console 的 TS 类型与客户端由它生成
 - **全文搜索**：Go 侧二元组分词 + PostgreSQL `tsvector`，**不依赖任何数据库扩展**；
   中文按相邻两字切词并以短语算子还原相邻关系，标题 / 摘要 / 正文三段加权排序
+- **后台 Console**：React SPA，构建产物 `go:embed` 进二进制。七组导航、块编辑器（TipTap v3）
+  与 Markdown 编辑器（Milkdown 7）、通用表单引擎、命令面板（Ctrl/⌘ K）、明暗双主题（默认跟随系统）。
+  设计 token 为三层架构并清空了 Tailwind 内置主题键，组件里写不出裸色值
 - **模块化**：11 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
 
-### 尚未开始（阶段 7–9）
+### 尚未开始（阶段 9）
 
-- **后台 Console 界面**：块编辑器（TipTap）与 Markdown 编辑器（Milkdown）、通用表单引擎、七组导航页面、明暗双主题
-- **默认主题的进阶形态**：自托管 CJK 显示字体、GSAP + Lenis 动效；**Docker 部署**与**发布流水线**
+- **Docker 部署**：Dockerfile 与 `docker-compose.yml`（含 PostgreSQL 17）
+- **发布流水线**：goreleaser 接上前端构建、多平台产物与 Docker 镜像发布
+- **官网**：用本 CMS 自建，v1.1 交付
 
 ## 开发进度
 
@@ -55,13 +62,17 @@
 | 4 | 主题系统 | 已完成 |
 | 5 | API 层与代码生成 | 已完成 |
 | 6 | 全文搜索 | 已完成 |
-| 7 | Console 前端 | 未开始 |
-| 8 | 默认主题 | 未开始 |
+| 7 | Console 前端 | 已完成 |
+| 8 | 默认主题 | 已完成 |
 | 9 | 部署与发布 | 未开始 |
 
 阶段 5 的「三平面路由」「OpenAPI 3.1 由代码生成」「统一分页」三项随阶段 3 提前落地，
 其余两项（Extension CRUD、Console TS 客户端生成）于阶段 5 补齐。
-阶段 8 的范围随阶段 4 收窄：内置主题在阶段 4 已把 token、版式与九个模板做完整。
+阶段 8 的范围随阶段 4 收窄：内置主题在阶段 4 已把 token、版式与九个模板做完整，
+阶段 8 只需补上自托管字体、动效与插图。
+
+**已知缺口**：「系统 → 日志」页仍是占位 —— 服务端尚无日志读取接口，
+在想清楚日志落文件还是落库之前，不给它做一个假的页面。
 
 ## 环境要求
 
@@ -97,6 +108,39 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 其余配置项可复制 `config.example.yaml` 为 `config.yaml` 后修改，
 或用 `LUMO_*` 环境变量覆盖；优先级为 默认值 < 配置文件 < 环境变量 < 命令行参数。
 
+## 后台 Console
+
+后台是 React SPA，构建产物经 `go:embed` 进二进制，访问 `/console/`。
+侧栏七组导航：
+
+| 组 | 页面 |
+|---|---|
+| 仪表盘 | 概览（统计部件、快捷访问、新评论、最近文章、站点概况） |
+| 内容 | 文章、页面、分类、标签、评论 |
+| 媒体 | 附件（网格与列表双视图） |
+| 外观 | 主题（含主题设置）、菜单 |
+| 用户 | 用户、角色 |
+| 设置 | 站点、SEO、邮件、存储 |
+| 系统 | 关于、日志（占位，见「[开发进度](#开发进度)」） |
+
+另有不进侧栏的**个人中心**：改资料、改密码、签发与吊销访问令牌。
+
+**两个编辑器**。块编辑器为 TipTap v3（斜杠菜单支持拼音检索、块拖拽手柄、格式工具条），
+Markdown 编辑器为 Milkdown 7（语法集与服务端的 goldmark + GFM 对齐，避免「编辑器里能写、
+发表后不生效」）。两者产出同一对字段，`raw` 存规范 HTML 或 Markdown 原文而非编辑器私有结构；
+格式切换会如实告知不可逆并逐条列出会丢什么。编辑页为沉浸式：文章设置走弹窗，右侧是大纲栏，
+并接上了阶段 3 就有的修订历史接口。
+
+**通用表单引擎**。站点设置与主题设置共用同一套引擎，渲染 JSON Schema 子集 + `x-widget`（11 种控件）。
+引擎不认识任何具体字段名——服务端新增设置分组不必改前端；服务端返回的 422 校验明细按 location
+落回对应字段，并同时给出可聚焦的错误摘要。
+
+**其他**：命令面板（Ctrl/⌘ K，跳转 / 动作 / 按标题找文章与页面）、明暗三态切换（默认跟随系统）、
+列表状态同步到地址栏（后退能回到刚才那一屏）、批量动作逐条串行并如实报出「N 成功 M 失败」、
+全局遵守 `prefers-reduced-motion`。权限只决定入口显示与否，真正的拦截始终在服务端。
+
+前端未构建时后端仍可启动，`/console/` 返回构建提示，不影响 API 开发。
+
 ## 主题
 
 访客前台由主题渲染。主题是一个 zip 包，在后台「外观 → 主题」上传即切换，结构如下：
@@ -127,6 +171,12 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 
 主题模板改动后，在后台点「重新加载」即可生效；开发时设 `LUMO_THEME_DEV=true`
 可让模板改动自动重载、静态资源不缓存。
+
+内置主题「墨 Ink」把字体与动效都做成了可关的设置项：标题用随主题附带的思源宋体
+（按 `unicode-range` 分包，每页只下载用到的那几片，`font-display: swap`），
+动效为入场编排、插图滚动显现与文章页阅读进度线（GSAP + ScrollTrigger + Lenis，均自托管）。
+访客系统开启「减少动态效果」时动效直接不执行。空状态、搜索无果与 404 由一枚 SVG 方印承担，
+没有 JavaScript 也能显示。
 
 ## REST API
 
@@ -241,9 +291,18 @@ task check             # 提交前自检：格式化 + vet + lint + 测试
 task test:integration  # 集成测试（需本机 PostgreSQL，库名须含 test）
 ```
 
-前端未构建时后端仍可启动，`/console/` 会返回构建提示，不影响 API 开发。
-Console 目前只有脚手架（Vite 6 + React 19 + TS strict + Tailwind v4 + shadcn/ui 约定 + Biome + Vitest），
-业务页面属阶段 7。
+Console 技术栈为 Vite 6 + React 19 + TS strict + Tailwind v4 + Radix UI + react-router +
+TanStack Query，检查工具为 Biome 与 Vitest：
+
+```bash
+task console:lint   # Biome + tsc --noEmit
+task console:test   # Vitest
+task console:api    # 重新导出 OpenAPI 规范并生成 TS 类型（需 LUMO_DATABASE_DSN）
+```
+
+`internal/console/dist` **构建前建议先 `task clean`**：`vite.config.ts` 为保住 `.gitkeep`
+设了 `emptyOutDir: false`（否则全新克隆时 `go:embed all:dist` 会编译失败），
+代价是每次构建都留下上一次的 bundle，而 `go:embed all:dist` 会把它们全部嵌进二进制。
 
 集成测试直连本机 PostgreSQL 的独立测试库，DSN 走 `LUMO_TEST_DSN`；未设置时自动跳过。
 库名必须含 `test`，护栏在代码层面拦截误连 —— 测试会删除并重建 schema。
@@ -319,6 +378,9 @@ migrations/        核心 goose SQL 迁移
 console/           Vite + React + TypeScript 后台前端
   openapi/         导出的 OpenAPI 规范（生成物，进库）
   src/api/         从规范生成的类型与 openapi-fetch 客户端
+  src/components/  UI 原语、实体列表系统、表单引擎、两个编辑器、应用外壳
+  src/pages/       七组导航对应的页面
+  src/styles/      三层设计 token（primitive → semantic → component）
 data/themes/       运行时装第三方主题的位置（不进库，由 workdir 创建）
 deploy/            Dockerfile、docker-compose.yml（阶段 9 起）
 ```
