@@ -616,6 +616,18 @@
         ],
         "type": "object"
       },
+      "EnabledInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -1897,6 +1909,146 @@
           "resource",
           "action",
           "isAny"
+        ],
+        "type": "object"
+      },
+      "PluginListBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PluginView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "PluginSettingsListBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PluginSettingsView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "PluginSettingsView": {
+        "additionalProperties": false,
+        "properties": {
+          "defaults": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "description": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "order": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "schema": {
+            "additionalProperties": {},
+            "description": "JSON Schema 2020-12 子集 + x-widget",
+            "type": "object"
+          },
+          "values": {
+            "additionalProperties": {},
+            "description": "当前有效值：缺省值被已保存值覆盖",
+            "type": "object"
+          }
+        },
+        "required": [
+          "name",
+          "label",
+          "description",
+          "order",
+          "schema",
+          "defaults",
+          "values"
+        ],
+        "type": "object"
+      },
+      "PluginView": {
+        "additionalProperties": false,
+        "properties": {
+          "author": {
+            "type": "string"
+          },
+          "broken": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "homepage": {
+            "type": "string"
+          },
+          "license": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "requires": {
+            "description": "所需的 Lumo 版本范围；空串表示不限制",
+            "type": "string"
+          },
+          "settingGroups": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "displayName",
+          "version",
+          "description",
+          "author",
+          "homepage",
+          "repo",
+          "license",
+          "requires",
+          "enabled",
+          "settingGroups"
         ],
         "type": "object"
       },
@@ -6712,6 +6864,452 @@
         "summary": "列出全部权限串",
         "tags": [
           "roles"
+        ]
+      }
+    },
+    "/api/v1/console/plugins": {
+      "get": {
+        "description": "包含加载失败或目录被手工删除的插件，其 broken 字段说明原因。",
+        "operationId": "plugin-list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "列出已安装的插件",
+        "tags": [
+          "plugins"
+        ]
+      },
+      "post": {
+        "description": "multipart/form-data 上传 zip 包。同名插件已存在时按升级处理，并保持它原来的启用状态。",
+        "operationId": "plugin-install",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "encoding": {
+                "file": {
+                  "contentType": "application/octet-stream"
+                }
+              },
+              "schema": {
+                "properties": {
+                  "file": {
+                    "contentEncoding": "binary",
+                    "contentMediaType": "application/octet-stream",
+                    "description": "插件 zip 包",
+                    "format": "binary",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginView"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "安装或升级插件",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/v1/console/plugins/{name}": {
+      "delete": {
+        "description": "删除插件目录及其状态与设置值。不可撤销。",
+        "operationId": "plugin-uninstall",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "卸载插件",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/v1/console/plugins/{name}/enabled": {
+      "put": {
+        "description": "启用后插件的设置分组立即可用，不需要重启。",
+        "operationId": "plugin-set-enabled",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnabledInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "启用或停用插件",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/v1/console/plugins/{name}/settings": {
+      "get": {
+        "operationId": "plugin-list-settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSettingsListBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "列出插件的设置分组",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/v1/console/plugins/{name}/settings/{group}": {
+      "put": {
+        "description": "请求体为该分组的值对象，与缺省值按顶层键合并后整体校验并保存。",
+        "operationId": "plugin-update-settings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "group",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": {},
+                "description": "分组的值对象",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginSettingsView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新插件的设置分组",
+        "tags": [
+          "plugins"
         ]
       }
     },

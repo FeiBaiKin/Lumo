@@ -1,6 +1,6 @@
 // Package workdir 负责运行时工作目录的初始化。
 //
-// 目录结构固定为 ./data/{themes,uploads,cache,logs,backups}（agent.md §9）。
+// 目录结构固定为 ./data/{themes,plugins,uploads,cache,logs,backups}（agent.md §9）。
 package workdir
 
 import (
@@ -14,6 +14,7 @@ import (
 // 避免「themes」这种名字散落在多处、改一处漏一处。
 const (
 	ThemesDirName  = "themes"
+	PluginsDirName = "plugins"
 	UploadsDirName = "uploads"
 	CacheDirName   = "cache"
 	LogsDirName    = "logs"
@@ -21,7 +22,7 @@ const (
 )
 
 // Subdirs 是工作目录下必须存在的子目录。
-var Subdirs = []string{ThemesDirName, UploadsDirName, CacheDirName, LogsDirName, BackupsDirName}
+var Subdirs = []string{ThemesDirName, PluginsDirName, UploadsDirName, CacheDirName, LogsDirName, BackupsDirName}
 
 // dirPerm 是新建目录的权限。0o750 而非 0o777：
 // 工作目录含上传文件与备份，不应对同机其他用户开放。

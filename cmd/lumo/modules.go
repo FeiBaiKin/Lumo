@@ -9,6 +9,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/menu"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
+	"github.com/FeiBaiKin/lumo/internal/plugin"
 	"github.com/FeiBaiKin/lumo/internal/search"
 	"github.com/FeiBaiKin/lumo/internal/seo"
 	"github.com/FeiBaiKin/lumo/internal/settings"
@@ -42,6 +43,9 @@ func modules() []app.Module {
 		menu.New(),
 		seo.New(),
 		extension.New(),
+		// plugin 只碰自己的 plugins 表与文件系统，不依赖任何模块；
+		// 排在 extension 之后是为将来：声明式页面要往 Extension 平面放自定义模型。
+		plugin.New(),
 		search.New(),
 		theme.New(),
 	}
