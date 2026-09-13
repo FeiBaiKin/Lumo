@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/content"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
@@ -51,7 +52,11 @@ func newSearchFrontendStack(t *testing.T) *testsupport.Stack {
 		},
 		AfterStart: func(root chi.Router, application *app.App) {
 			if mod := theme.From(application); mod != nil {
-				mod.MountFrontend(root)
+				core, ok := application.Lookup(auth.CoreKey)
+				if !ok {
+					t.Fatal("认证栈未登记为共享服务")
+				}
+				mod.MountFrontend(root, core.(*auth.Core).Authenticator.Optional)
 			}
 		},
 	})

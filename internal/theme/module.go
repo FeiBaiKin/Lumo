@@ -13,6 +13,7 @@ import (
 	"embed"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -187,17 +188,45 @@ func (m *Module) Start(ctx context.Context) error {
 //
 // 直接接受 chi.Router 而非自定义接口：前台要用 chi.URLParam 读路径参数，
 // 本就与 chi 的路由树绑定，抽象一层只会掩盖这个事实。
-func (m *Module) MountFrontend(r chi.Router) {
+//
+// optional 是「解析会话但不强制认证」的中间件（auth.Authenticator.Optional）。
+// 页面的登录态要靠它才进得来——unlike 三平面，根路由上没有鉴权中间件，
+// 没有它时 routes.go 的 viewerID 恒为 0，作者点自己文章的链接会看到 404。
+// 传 nil 表示不解析会话（测试里的纯渲染场景）。
+func (m *Module) MountFrontend(r chi.Router, optional func(http.Handler) http.Handler) {
 	if m.store == nil {
 		return
 	}
+	// 静态资源不套会话解析：每一个 CSS / 字体切片都要付一次会话查询是纯浪费，
+	// 而静态资源本身与登录态无关。
 	r.Mount(AssetsPath, m.registry.AssetsHandler())
-	m.frontend.Mount(r)
-	r.NotFound(m.frontend.NotFoundHandler())
+
+	r.Group(func(g chi.Router) {
+		if optional != nil {
+			g.Use(optional)
+		}
+		m.frontend.Mount(g)
+	})
+
+	// 404 页同样要显示登录态，故也要过一遍会话解析。
+	// 它是根路由的兜底处理器，只能挂在 r 上——chi 的 Group 与父路由共用路由树，
+	// 在组内调 NotFound 不会生效。
+	notFound := http.Handler(m.frontend.NotFoundHandler())
+	if optional != nil {
+		notFound = optional(notFound)
+	}
+	r.NotFound(notFound.ServeHTTP)
 }
 
 // Registry 返回主题注册表，供其他模块与测试取用。
 func (m *Module) Registry() *Registry { return m.registry }
+
+// Renderer 返回页面渲染器。
+//
+// 导出给 account 模块：前台账户页与全站页面必须用同一套模板引擎、同一套回退规则与
+// 同一份主题设置，否则账户页会在换主题时独自错位。它是本模块唯一对外开放的
+// 渲染入口，模块之间仍然不引用彼此的内部实现（agent.md §3.2）。
+func (m *Module) Renderer() *Renderer { return m.renderer }
 
 // Frontend 返回前台处理器。
 func (m *Module) Frontend() *Frontend { return m.frontend }

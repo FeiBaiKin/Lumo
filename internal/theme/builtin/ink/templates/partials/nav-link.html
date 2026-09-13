@@ -1,0 +1,12 @@
+{{- /*
+单个导航链接。抽出来只为把 rel 的合成逻辑写一遍：
+
+原来的写法是 target 与 rel 各写一个属性，两个都非空时会出现重复的 rel 属性
+（后一个被浏览器忽略，noopener 也就没了），而 target="_blank" 缺了 noopener
+等于把 window.opener 交给打开的页面——反向标签劫持。
+
+参数：菜单条目本身（有 URL / Target / Rel / Label 四个字段）。
+*/ -}}
+{{- $rel := .Rel -}}
+{{- if .Target }}{{ if $rel }}{{ $rel = printf "noopener %s" $rel }}{{ else }}{{ $rel = "noopener" }}{{ end }}{{ end -}}
+<a href="{{ .URL }}"{{ with .Target }} target="{{ . }}"{{ end }}{{ with $rel }} rel="{{ . }}"{{ end }}>{{ .Label }}</a>

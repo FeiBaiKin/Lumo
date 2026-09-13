@@ -1,4 +1,4 @@
-{{- /* 站点页眉：站名与主导航。菜单由后台维护，主题只按 slug 取。 */ -}}
+{{- /* 站点页眉：站名、主导航与账户入口。菜单由后台维护，主题只按 slug 取。 */ -}}
 <header class="site-header">
   <div class="wrap">
     <div class="site-id">
@@ -18,23 +18,69 @@
       {{ if $items }}
       <nav class="site-nav" aria-label="主导航">
         <ul>
-          {{ range $items }}
-          <li>
-            <a href="{{ .URL }}"
-               {{ with .Target }}target="{{ . }}" rel="noopener{{ with $.Params }}{{ end }}"{{ end }}
-               {{ with .Rel }}rel="{{ . }}"{{ end }}>{{ .Label }}</a>
-            {{ if .Children }}
-            <ul class="site-nav-sub">
-              {{ range .Children }}
-              <li><a href="{{ .URL }}"{{ with .Target }} target="{{ . }}" rel="noopener"{{ end }}>{{ .Label }}</a></li>
-              {{ end }}
+          {{- range $i, $item := $items }}
+          <li{{ if $item.Children }} class="has-sub"{{ end }}>
+            {{- if $item.Children }}
+            {{- /*
+            一级项有子项时是**按钮**而不是链接：用户明确要求点击即展开、不跳转。
+            父页面靠子菜单里重复的那一项仍然点得到，不会变成死入口。
+
+            这里刻意**不写 hidden**：子菜单默认是摊开的列表，由 nav.js 在初始化时收起。
+            没有 JS 时二级菜单就是一列可点的链接（即加入本功能之前的样子），仍然完整可用。
+            这与 comments.js 把表单从 hidden 里放出来是同一个渐进增强思路的反向做法。
+
+            键盘：button 天生响应 Enter 与 Space，不自己再绑；Tab 顺序自然进入子项即可。
+            不实现 roving tabindex —— 一个两级站点导航不值得上 menubar 那套 ARIA。
+            */ -}}
+            <button type="button"
+                    class="site-nav-toggle"
+                    aria-expanded="false"
+                    aria-controls="site-submenu-{{ $i }}">
+              {{ $item.Label }}
+              {{- /* 供 affordance 指示符。全站只用 Lucide 一套图标，为一个箭头另画图形是无谓的自创。 */ -}}
+              <svg class="site-nav-chevron" viewBox="0 0 24 24" width="12" height="12"
+                   fill="none" stroke="currentColor" stroke-width="1.5"
+                   stroke-linecap="round" stroke-linejoin="round"
+                   aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <ul class="site-nav-sub" id="site-submenu-{{ $i }}">
+              {{- /* 首项重复父链接，父项是自定义链接且 URL 为空时不加这一项。 */ -}}
+              {{ with $item.URL }}<li>{{ template "partials/nav-link.html" $item }}</li>{{ end }}
+              {{- /*
+              只渲染两级。后端（menu.BuildTree）允许任意深度，但页眉两级已经足够，
+              第三级在这里**刻意忽略** —— 这是有意的，不是漏写。
+              */ -}}
+              {{- range $item.Children }}
+              <li>{{ template "partials/nav-link.html" . }}</li>
+              {{- end }}
             </ul>
-            {{ end }}
+            {{- else }}
+            {{- template "partials/nav-link.html" $item }}
+            {{- end }}
           </li>
-          {{ end }}
+          {{- end }}
         </ul>
       </nav>
       {{ end }}
+    {{ end }}
+
+    {{- /*
+    账户入口。匿名是「登录」（开放注册时再加「注册」），已登录是显示名文字。
+    用文字而不是头像圆圈：本主题没有圆形元素，一个凭空出现的圆形头像
+    会成为整页唯一一个圆角到极致的东西。
+
+    不做下拉菜单：页眉已经有一处点击展开（二级菜单），第二处会让两个下拉互相抢焦点。
+    关掉它只是不显示入口，/account 仍然可以直接用地址访问。
+    */ -}}
+    {{ if .Theme.Settings.layout.showAccountEntry }}
+    <div class="site-account">
+      {{ with .CurrentUser }}
+      <a class="site-account-name" href="/account">{{ .DisplayName }}</a>
+      {{ else }}
+      <a href="/login">登录</a>
+      {{ if .Setting "account" "allowRegistration" }}<a href="/register">注册</a>{{ end }}
+      {{ end }}
+    </div>
     {{ end }}
   </div>
 </header>

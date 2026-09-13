@@ -14,6 +14,11 @@
   --paper: #f7f8f7;
   --ink: #1a1d1a;
   --seal: #1b3a6b;
+  /*
+   * 朱砂 #9b2c24：校勘用的朱笔批注，与「印」同属矿物颜料体系，
+   * 是纸墨印三色之外唯一新认的颜色，只用于错误态。纸底对比度 6.6:1，过 AA。
+   */
+  --vermilion: #9b2c24;
 
   /* 纸与墨之间的梯度，全部由这两色插值得到，保证色相一致 */
   --paper-sunk: #eeefed;
@@ -51,6 +56,7 @@
   --fg-faint: var(--ink-faint);
   --border: var(--rule);
   --link: var(--seal);
+  --error: var(--vermilion);
 
   /*
    * 中文字体分层（agent.md §11.1）：
@@ -76,6 +82,8 @@
     --fg-faint: #757b73;
     --border: #2e322d;
     --link: #7fa6e8;
+    /* 暗底上的朱砂要提亮，否则 #9b2c24 落在近黑上几乎看不见 */
+    --error: #de7a70;
   }
 }
 :root[data-scheme="dark"] {
@@ -86,6 +94,7 @@
   --fg-faint: #757b73;
   --border: #2e322d;
   --link: #7fa6e8;
+  --error: #de7a70;
 }
 
 /* ---------- 基础 ---------- */
@@ -200,9 +209,16 @@ button {
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--s4) var(--s8);
+  /* 列间距取 --s6：页眉里相邻的两组是「导航 ↔ 账户入口」，
+     规范要求的间距就是它。站名与导航之间靠 margin-inline-start:auto 撑开，不靠 gap。 */
+  gap: var(--s4) var(--s6);
   /* 页眉比正文宽一档：导航挤在 36em 里会换行 */
   max-width: calc(var(--measure) + var(--aside-w) + var(--aside-gap));
+}
+
+/* 站名贴左、导航与账户入口一起靠右 */
+.site-nav {
+  margin-inline-start: auto;
 }
 
 .site-title {
@@ -226,29 +242,174 @@ button {
   font-size: 0.8125rem;
 }
 
-.site-nav ul {
+/*
+ * 导航。两级：一级是链接或「点击展开」的按钮，二级是它控制的列表。
+ *
+ * 二级菜单**默认不隐藏**（模板里不写 hidden），由 nav.js 在初始化时收起。
+ * 没有 JS 时它就是下面这一列内嵌展开的链接，页面依然完整可用。
+ */
+.site-nav > ul,
+.site-nav-sub {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s6);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.site-nav a {
+.site-nav > ul {
+  gap: var(--s6);
+}
+
+.site-nav a,
+.site-nav-toggle {
   color: var(--fg-muted);
   font-size: 0.9375rem;
   text-decoration: none;
 }
 
-.site-nav a:hover {
+.site-nav a:hover,
+.site-nav-toggle:hover {
   color: var(--fg);
 }
 
+/*
+ * 触发按钮要完全看不出是按钮：背景、边框、内边距与字体全部重置，
+ * 与旁边的 <a> 视觉一致。用户不该需要分辨「这一个能点、那一个是链接」——
+ * 它们都是主导航里的一项。
+ */
+.site-nav-toggle {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25em;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.site-nav-chevron {
+  align-self: center;
+  color: var(--fg-faint);
+  transition: transform 120ms ease-out;
+}
+
+.site-nav-toggle[aria-expanded="true"] .site-nav-chevron {
+  transform: rotate(180deg);
+}
+
+/*
+ * 二级菜单。这里的默认形态是**内嵌展开**，也是没有 JS 时的形态：
+ * 子项左内缩并带一条 1px 竖线，与正文里引用块的标记方式同源。
+ *
+ * 绝对定位的下拉只在 nav.js 盖过 data-nav="js" 之后才启用（见下面的媒体查询）。
+ * 少了那个开关，没有 JS 时桌面上的下拉照样生效，子菜单会浮在正文之上把文章盖掉——
+ * 那不是降级，那是一个看起来坏掉的页面。
+ *
+ * 展开用 animation 而不是 transition：元素是从 display:none 变回来的，
+ * transition 没有可过渡的起始帧；而 animation 在 display 变化时会重新播放。
+ * 收起由 .is-closing 的 transition 承担（90ms），到点再由 nav.js 真正隐藏。
+ */
 .site-nav-sub {
   gap: var(--s3);
-  margin-top: var(--s2) !important;
+  margin-top: var(--s2);
   font-size: 0.875rem;
+  animation: nav-sub-in 120ms ease-out;
+  transition: opacity 90ms ease-out, transform 90ms ease-out;
+}
+
+.site-nav-sub[hidden] {
+  display: none;
+}
+
+.site-nav-sub li {
+  padding-left: var(--s4);
+  border-left: var(--rule-w) solid var(--border);
+}
+
+.site-nav-sub.is-closing {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+
+@keyframes nav-sub-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * 桌面（>640px）且 JS 已就位：绝对定位的下拉。
+ * 只画左 / 右 / 下三边，顶边由页眉那条既有分隔线充当——这个「借用顶边」是刻意的：
+ * 它让下拉看起来是从页眉这张纸上翻开的一角，而不是浮在上面的一张新纸。
+ * 故这里也绝不会有阴影。
+ */
+@media (min-width: 641px) {
+  .site-nav[data-nav="js"] > ul > li {
+    position: relative;
+  }
+
+  .site-nav[data-nav="js"] .site-nav-sub {
+    position: absolute;
+    /*
+     * 顶边要正好落在页眉那条既有分隔线上，而不是贴在导航行下面：
+     * 100% 是 li 的底边（= 页眉内容区的底边），再加上页眉的下内边距与它那 1px 底线，
+     * 就正好是那条线所在的位置。下拉的顶边没有自己的边框，就靠这条线收口。
+     */
+    top: calc(100% + var(--s6) + var(--rule-w));
+    left: 0;
+    margin-top: 0;
+    z-index: 5;
+    display: block;
+    min-width: 10em;
+    padding-block: var(--s2);
+    background: var(--bg);
+    border: var(--rule-w) solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+
+  .site-nav[data-nav="js"] .site-nav-sub li {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .site-nav[data-nav="js"] .site-nav-sub a {
+    display: block;
+    padding: var(--s2) var(--s4);
+  }
+}
+
+/* 账户入口。与导航之间保持 --s6，窄屏随 flex 换行到导航下方。 */
+.site-account {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s6);
+  align-items: baseline;
+}
+
+.site-account a {
+  color: var(--fg-muted);
+  font-size: 0.9375rem;
+  text-decoration: none;
+}
+
+.site-account a:hover {
+  color: var(--fg);
+}
+
+/* 已登录时显示名是当前身份，比导航项更实一档 */
+.site-account .site-account-name {
+  color: var(--fg);
 }
 
 /* ---------- 首页与列表 ---------- */
@@ -1362,6 +1523,172 @@ button {
 .footer-links {
   display: flex;
   gap: var(--s4);
+}
+
+/* ---------- 账户页与表单页（agent.md §11.5） ---------- */
+/*
+ * 登录 / 注册 / 忘记密码 / 重置密码共用一套版面。设计立意：「墨」的隐喻是纸、墨、印，
+ * 所以「登录」在这套语言里对应的动作是**在纸上落款**，不是在一张浮起的卡片里填表。
+ * 因此没有卡片、没有阴影、没有渐变，也没有圆角容器。
+ *
+ * 表单块 20em 并在既有栏宽内**左对齐，不居中**：全站正文左对齐，
+ * 只有登录页居中的话，它会成为整站唯一一个居中的页面。
+ */
+.auth-title {
+  margin: 0 0 var(--s6);
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+.auth-panel {
+  max-width: 20em;
+  /* 左侧装订线：从标题下缘延伸到表单末尾，像一页合起来的纸的订口 */
+  padding-left: var(--s6);
+  border-left: var(--rule-w) solid color-mix(in srgb, var(--seal) 35%, transparent);
+}
+
+.auth-intro {
+  max-width: 20em;
+  margin: 0 0 var(--s6);
+  color: var(--fg-muted);
+  font-size: 0.9375rem;
+}
+
+/* 页面级提示条：--bg-sunk 底 + 左侧 2px 竖线，与既有 blockquote 同一种语言 */
+.notice {
+  margin: 0 0 var(--s6);
+  padding: var(--s3) var(--s4);
+  background: var(--bg-sunk);
+  border-left: 2px solid var(--seal);
+  color: var(--fg-muted);
+  font-size: 0.875rem;
+}
+
+.notice[data-kind="error"] {
+  border-left-color: var(--error);
+}
+
+.auth-field {
+  margin: 0;
+}
+
+.auth-field + .auth-field {
+  margin-top: var(--s6);
+}
+
+.auth-field label {
+  display: block;
+  margin-bottom: var(--s2);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--fg-muted);
+}
+
+/*
+ * 输入框只有底部一条 1px 实线：这是「墨水落在纸上」，也是本次唯一的大胆之处，
+ * 其余一切保持安静（agent.md §11.2 的「把胆量花在一处」）。
+ * 故不加框、不加底色、不加圆角。聚焦时底线换成印色并加粗到 2px——
+ * 这条底线本身就是焦点指示，故这里不叠加全站那圈 outline：
+ * 一圈矩形描边会把「没有框的输入框」重新框起来，正好抵消掉这个设计。
+ */
+.auth-form input {
+  display: block;
+  width: 100%;
+  padding: var(--s2) 0;
+  background: transparent;
+  border: 0;
+  border-bottom: var(--rule-w) solid var(--border);
+  border-radius: 0;
+  font-size: 1rem;
+  transition: border-color 120ms ease-out, border-bottom-width 120ms ease-out;
+}
+
+.auth-form input:focus-visible {
+  outline: none;
+  border-bottom-width: 2px;
+  border-bottom-color: var(--seal);
+}
+
+.auth-form input[aria-invalid="true"] {
+  border-bottom-color: var(--error);
+}
+
+.auth-form input[aria-invalid="true"]:focus-visible {
+  border-bottom-color: var(--error);
+}
+
+.auth-hint {
+  display: block;
+  margin-top: var(--s1);
+  color: var(--fg-faint);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+/* 字段错误：朱砂色文字 + 该输入框的朱砂底线，两处同时表达，不加图标 */
+.auth-error {
+  display: block;
+  margin-top: var(--s1);
+  color: var(--error);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.auth-actions {
+  margin-top: var(--s8);
+}
+
+/* 次要链接一行，以 1px 分隔线与按钮隔开 */
+.auth-alt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin: var(--s6) 0 0;
+  padding-top: var(--s6);
+  border-top: var(--rule-w) solid var(--border);
+  font-size: 0.875rem;
+}
+
+/* ---------- 账户页 ---------- */
+.account-meta {
+  max-width: 20em;
+  margin-bottom: var(--s8);
+  color: var(--fg-faint);
+  font-size: 0.8125rem;
+}
+
+.account-section-title {
+  margin: 0 0 var(--s6);
+  font-family: var(--font-display);
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.account-logout {
+  max-width: 20em;
+  margin-top: var(--s8);
+  padding-top: var(--s6);
+  border-top: var(--rule-w) solid var(--border);
+}
+
+/*
+ * 窄屏：表单块降为 100% 宽。
+ * 20em 在 390px 上只比可用宽度小一点点，再窄一点（320px 的老设备）就会横向溢出，
+ * 而横向滚动是这几个页面最不可接受的缺陷——表单一旦要左右拖动就没法填。
+ */
+@media (max-width: 26rem) {
+  .auth-panel,
+  .auth-intro,
+  .account-meta,
+  .account-logout {
+    max-width: 100%;
+  }
+
+  .auth-panel {
+    padding-left: var(--s4);
+  }
 }
 
 /* ---------- 宽屏：元信息栏挂到正文左外侧 ---------- */

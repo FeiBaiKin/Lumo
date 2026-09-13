@@ -66,6 +66,13 @@
   <script defer src="{{ .Theme.AssetsBase }}/code.js"></script>
 
   {{- /*
+  二级菜单交互。与 code.js 一样**不受** appearance.motion 管辖：
+  站长关掉动效总闸之后，菜单仍然必须能展开——导航是功能不是装饰。
+  没有这段脚本时二级菜单就是一列摊开的可点链接，页面依然完整可用。
+  */ -}}
+  <script defer src="{{ .Theme.AssetsBase }}/nav.js"></script>
+
+  {{- /*
   动效（阶段 8）：GSAP + ScrollTrigger + Lenis 全部自托管，defer 加载、不阻塞渲染。
   脚本自己检查 prefers-reduced-motion；这里的开关是站长的总闸。
   */}}

@@ -1,6 +1,6 @@
 name: ink
 label: 墨
-version: 1.1.0
+version: 1.2.0
 description: Lumo 内置默认主题。为中文长文阅读设计：纸、墨、印三色，正文 36 字栏宽，元信息挂在正文左外侧；自托管思源宋体标题，克制的入场与阅读进度动效。
 author: Lumo
 homepage: https://github.com/FeiBaiKin/lumo

@@ -157,7 +157,7 @@ func runServe(args []string) error {
 	// 就会把它们全部遮蔽。
 	//
 	if themes := theme.From(application); themes != nil {
-		themes.MountFrontend(root)
+		themes.MountFrontend(root, core.Authenticator.Optional)
 		logger.Info("访客前台已挂载", slog.String("theme", themes.Registry().ActiveName()))
 	}
 	// 停机顺序：srv.Run 收到信号后先停止接收新请求并排空 HTTP（最多

@@ -1,0 +1,14 @@
+{{- /*
+页面级提示条。形态与主题既有的 blockquote 同一种语言：--bg-sunk 底 + 左侧 2px 竖线，
+成功用印色、失败用朱砂。不用色块横幅——那会在只有线与字的版面里砸进一块色。
+
+role="status" + aria-live="polite"：提示是页面加载时就已存在的内容，
+读屏软件不会主动去念它，得靠 live region 报出来。polite 而非 assertive：
+它不打断用户当前正在听的东西。
+
+数据来源是 Form.Notice，账户模块把成功与失败都写在这一个字段上，
+主题只需要一套样式。
+*/ -}}
+{{ with .Form }}{{ if .Notice }}
+<p class="notice" data-kind="{{ .NoticeKind }}" role="status" aria-live="polite">{{ .Notice }}</p>
+{{ end }}{{ end }}

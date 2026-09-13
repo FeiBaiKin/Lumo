@@ -1,0 +1,75 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+{{- /*
+账户页。标题是用户的显示名，不是「我的账户」——这一页说的是「你是谁」，
+而不是「这是第几号功能页」。
+
+元信息复用文章页的 aside-row / aside-key 语言（--fg-faint、0.8125rem），
+一行一条、各自换行，不用中点连接：中点那类写法是本主题明确拒绝的。
+
+整页包在 with .CurrentUser 里：匿名时（理论上到不了这里，但模板不该假设）
+渲染成空白，而不是在 nil 指针上取字段把页面打崩。
+*/ -}}
+<div class="wrap">
+  <section class="auth">
+    {{ with .CurrentUser }}
+    <h1 class="auth-title">{{ .DisplayName }}</h1>
+    {{ end }}
+
+    <div class="account-meta">
+      {{ with .Params.email }}
+      <div class="aside-row"><span class="aside-key">邮箱</span><span>{{ . }}</span></div>
+      {{ end }}
+      {{ with .Params.joinedAt }}
+      <div class="aside-row"><span class="aside-key">注册</span><span>{{ . }}</span></div>
+      {{ end }}
+      {{ with .Params.roles }}
+      <div class="aside-row"><span class="aside-key">角色</span><span>{{ . }}</span></div>
+      {{ end }}
+      {{- /*
+      后台入口只对至少持有一条权限的账号显示。
+      member 用户不该看到一个点进去就被拦的链接——那是把「你没权限」这件事
+      做成了两处，而正确的一处是 Console 打开时自己说明。
+      */ -}}
+      {{ with .CurrentUser }}{{ if .ConsoleAccess }}
+      <div class="aside-row"><span class="aside-key">后台</span><a href="/console/">进入后台</a></div>
+      {{ end }}{{ end }}
+    </div>
+
+    {{ with .Form }}
+    <div class="auth-panel">
+      {{ template "partials/notice.html" $ }}
+      <h2 class="account-section-title">修改密码</h2>
+      <form class="auth-form" method="post" action="/account/password">
+        <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "oldPassword" "label" "原密码" "type" "password"
+             "autocomplete" "current-password") }}
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "newPassword" "label" "新密码" "type" "password"
+             "autocomplete" "new-password" "hint" "至少 8 位") }}
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "newPasswordConfirm" "label" "确认新密码" "type" "password"
+             "autocomplete" "new-password") }}
+
+        <p class="auth-hint">保存后其他设备上的登录会全部失效，需要重新登录。</p>
+        <p class="auth-actions comment-form-actions">
+          <button type="submit">保存</button>
+        </p>
+      </form>
+    </div>
+
+    {{- /*
+    退出登录是表单而不是链接：它是状态变更，GET 会被浏览器的预取器与
+    邮件客户端的安全扫描器当普通链接抓一遍，用户会莫名其妙地被登出。
+    */ -}}
+    <form class="account-logout" method="post" action="/logout">
+      <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+      <p class="comment-form-actions"><button type="submit">退出登录</button></p>
+    </form>
+    {{ end }}
+  </section>
+</div>
+{{ end }}

@@ -1,0 +1,47 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+{{- /*
+登录页。版面见 agent.md §11.5：左侧一条 1px 装订线，表单块 20em 左对齐不居中。
+
+「墨」的隐喻是纸、墨、印，所以「登录」在这套语言里对应的动作是在纸上落款——
+不是在一张浮起的卡片里填表。故没有卡片、没有阴影、没有圆角容器。
+
+表单是原生 POST：登录是基础功能，不该依赖 JavaScript（agent.md §0.2 的定稿决策）。
+*/ -}}
+<div class="wrap">
+  <section class="auth">
+    <h1 class="auth-title">登录</h1>
+
+    {{- /*
+    整块表单包在 with .Form 里：Form 为 nil 时（如第三方主题单独预览某个页面）
+    渲染成一块空白，而不是在 nil 指针上取字段把整页打崩。
+    */ -}}
+    {{ with .Form }}
+    <div class="auth-panel">
+      {{ template "partials/notice.html" $ }}
+      <form class="auth-form" method="post" action="/login">
+        <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+        {{- /* next 随表单带回，POST 成功后跳到用户原本想去的页面。 */ -}}
+        <input type="hidden" name="next" value="{{ with .Values.next }}{{ . }}{{ end }}">
+
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "login" "label" "用户名或邮箱" "autocomplete" "username") }}
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "password" "label" "密码" "type" "password" "autocomplete" "current-password") }}
+
+        <p class="auth-actions comment-form-actions">
+          <button type="submit">登录</button>
+        </p>
+      </form>
+
+      <p class="auth-alt">
+        <a href="/forgot-password">忘记密码</a>
+        {{- /* 注册入口同理受开关控制：没开放时给一个点了返回 404 的链接更糟。 */ -}}
+        {{ if $.Setting "account" "allowRegistration" }}<a href="/register">还没有账户？注册</a>{{ end }}
+      </p>
+    </div>
+    {{ end }}
+  </section>
+</div>
+{{ end }}

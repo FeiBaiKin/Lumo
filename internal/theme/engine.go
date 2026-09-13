@@ -30,7 +30,13 @@ var (
 var requiredTemplates = []string{"index.html", "post.html", "page.html", "404.html"}
 
 // 可选模板：缺省时回退到内置默认主题的同名模板。
-var optionalTemplates = []string{"category.html", "tag.html", "archive.html", "search.html", "author.html"}
+//
+// 顺序按访客实际会走的流程排（登录 → 注册 → 找回 → 重置 → 账户），
+// 后台展示模板提供情况时也就按这个顺序列出来。
+var optionalTemplates = []string{
+	"category.html", "tag.html", "archive.html", "search.html", "author.html",
+	"login.html", "register.html", "forgot-password.html", "reset-password.html", "account.html",
+}
 
 // RequiredTemplates 返回必需模板名，供接口与文档引用。
 func RequiredTemplates() []string { return append([]string(nil), requiredTemplates...) }

@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/comment"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/content"
@@ -52,7 +53,13 @@ func newThemeStack(t *testing.T) (*testsupport.Stack, *theme.Module) {
 		},
 		AfterStart: func(root chi.Router, application *app.App) {
 			mod = theme.From(application)
-			mod.MountFrontend(root)
+			// 与 serve 一致：前台挂宽松鉴权中间件，页眉才拿得到登录态。
+			// 传 nil 的话 CurrentUser 恒为 nil，登录用户看到的仍是「登录」两个字的入口。
+			core, ok := application.Lookup(auth.CoreKey)
+			if !ok {
+				t.Fatal("认证栈未登记为共享服务")
+			}
+			mod.MountFrontend(root, core.(*auth.Core).Authenticator.Optional)
 		},
 	})
 	if mod == nil {
@@ -69,7 +76,7 @@ func get(t *testing.T, s *testsupport.Stack, path string) (status int, body stri
 }
 
 // seedPost 创建一篇已发布的文章，返回其 ID。
-func seedPost(t *testing.T, s *testsupport.Stack, auth, title, slug, body string) int64 {
+func seedPost(t *testing.T, s *testsupport.Stack, bearer, title, slug, body string) int64 {
 	t.Helper()
 
 	payload := map[string]any{
@@ -77,7 +84,7 @@ func seedPost(t *testing.T, s *testsupport.Stack, auth, title, slug, body string
 	}
 	raw, _ := json.Marshal(payload)
 	rec := s.Do(t, &testsupport.Request{
-		Method: http.MethodPost, Path: "/api/v1/console/posts", Body: string(raw), Auth: auth,
+		Method: http.MethodPost, Path: "/api/v1/console/posts", Body: string(raw), Auth: bearer,
 	})
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("创建文章失败 %d: %s", rec.Code, rec.Body.String())
@@ -92,7 +99,7 @@ func seedPost(t *testing.T, s *testsupport.Stack, auth, title, slug, body string
 	rec = s.Do(t, &testsupport.Request{
 		Method: http.MethodPost,
 		Path:   "/api/v1/console/posts/" + itoa64(created.ID) + "/publish",
-		Body:   `{}`, Auth: auth,
+		Body:   `{}`, Auth: bearer,
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("发布文章失败 %d: %s", rec.Code, rec.Body.String())
@@ -873,5 +880,50 @@ func TestThemeSwitchPersists(t *testing.T) {
 	// 切到不存在的主题应被拒。
 	if err := mod.Registry().Activate("nope"); err == nil {
 		t.Error("切换到不存在的主题应报错")
+	}
+}
+
+// TestFrontendShowsCurrentUser 验证前台能拿到登录态。
+//
+// 这条同时是「routes.go 的 viewerID 从前恒为 0」这个旧缺陷的回归测试：
+// 前台路由挂在根路由上，而根路由没有鉴权中间件，靠的是 MountFrontend 传进来的
+// auth.Authenticator.Optional。少挂这一步，页眉永远显示「登录」，
+// 作者点自己未发布内容的链接也永远 404 —— 两者是同一条链路上的两个症状。
+func TestFrontendShowsCurrentUser(t *testing.T) {
+	stack, _ := newThemeStack(t)
+	ctx := context.Background()
+
+	user, err := stack.Users.CreateUser(ctx, &auth.CreateUserParams{
+		Username: "visitor", Email: "visitor@example.com",
+		Password: testsupport.Password, DisplayName: "路过的读者",
+		Roles: []string{"member"}, EmailVerified: true,
+	})
+	if err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+
+	// 匿名：页眉给的是登录入口。
+	status, body := get(t, stack, "/")
+	if status != http.StatusOK {
+		t.Fatalf("匿名访问首页状态码 = %d", status)
+	}
+	if strings.Contains(body, "路过的读者") {
+		t.Error("匿名访问不该看到别人的显示名")
+	}
+	if !strings.Contains(body, `href="/login"`) {
+		t.Error("匿名访问的页眉应有登录入口")
+	}
+
+	// 已登录：页眉换成显示名。
+	cookies, _ := stack.Session(t, user.Username)
+	rec := stack.Do(t, &testsupport.Request{Method: http.MethodGet, Path: "/", Cookies: cookies})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("登录后访问首页状态码 = %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "路过的读者") {
+		t.Errorf("登录后页眉应显示显示名: %.400s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `href="/login"`) {
+		t.Error("已登录时页眉不该还有登录入口")
 	}
 }

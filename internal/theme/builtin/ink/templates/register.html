@@ -1,0 +1,65 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+{{- /*
+注册页。版面与登录页同一套（agent.md §11.5），密码字段多一个确认框。
+
+用户名规则写在表单上而不是等提交后再报错：它既是数据库的 CHECK，
+也是作者页地址的片段——用户有权在填之前就知道。
+*/ -}}
+<div class="wrap">
+  <section class="auth">
+    <h1 class="auth-title">创建账户</h1>
+
+    {{- /*
+    站长写的注册说明（公开设置项 account.registrationNotice）。
+    它是页面的一部分而不是一次失败，故不套提示条，只是一段安静的说明文字。
+    */ -}}
+    {{ with .Setting "account" "registrationNotice" }}<p class="auth-intro">{{ . }}</p>{{ end }}
+
+    {{ with .Form }}
+    <div class="auth-panel">
+      {{ template "partials/notice.html" $ }}
+
+      {{- /*
+      注册未开放时只给说明与出口，不渲染表单：
+      一张填得进去、提交后必然 404 的表单，比一句「暂未开放」更让人费解。
+      registrationOpen 由账户模块经 Params 传进来——「开关开着」还不够，
+      邮件与站点对外地址也得配好，那三样只有服务端知道。
+      */ -}}
+      {{ if $.Params.registrationOpen }}
+      <form class="auth-form" method="post" action="/register">
+        <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
+
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "username" "label" "用户名"
+             "hint" "2–64 位小写字母、数字与连字符，首尾须为字母或数字"
+             "autocomplete" "username") }}
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "email" "label" "邮箱" "type" "email" "autocomplete" "email"
+             "hint" "用于验证账号与找回密码，不会公开") }}
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "password" "label" "密码" "type" "password" "autocomplete" "new-password"
+             "hint" "至少 8 位") }}
+        {{ template "partials/auth-form.html" (dict
+             "form" . "name" "passwordConfirm" "label" "确认密码" "type" "password" "autocomplete" "new-password") }}
+
+        {{- /* 蜜罐：字段名与评论表单一致，正常访客看不见它，填了必是机器人。 */ -}}
+        <p class="comment-hp" aria-hidden="true">
+          <label for="auth-website2">请留空</label>
+          <input id="auth-website2" name="website2" type="text" tabindex="-1" autocomplete="off">
+        </p>
+
+        <p class="auth-actions comment-form-actions">
+          <button type="submit">创建账户</button>
+        </p>
+      </form>
+
+      {{ end }}
+
+      <p class="auth-alt"><a href="/login">已有账户？登录</a></p>
+    </div>
+    {{ end }}
+  </section>
+</div>
+{{ end }}

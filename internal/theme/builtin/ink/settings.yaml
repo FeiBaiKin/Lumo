@@ -76,6 +76,10 @@ groups:
           title: 主导航菜单
           maxLength: 64
           description: 填菜单的标识（slug）。留空则不显示导航
+        showAccountEntry:
+          type: boolean
+          title: 页眉显示账户入口
+          description: 匿名时显示「登录」（站点开放注册时另加「注册」），已登录时显示你的显示名。关掉后 /account 仍可直接用地址访问
         footerText:
           type: string
           title: 页脚文字
@@ -86,6 +90,7 @@ groups:
       indexMode: excerpt
       showCover: false
       primaryMenu: primary
+      showAccountEntry: true
       footerText: ""
 
   - name: content

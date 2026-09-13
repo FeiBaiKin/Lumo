@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/version"
 )
@@ -160,14 +161,55 @@ func (r *Renderer) NewContext(ctx context.Context, req *http.Request, kind strin
 	}
 
 	return &Context{
-		Kind:      kind,
-		Site:      site,
-		Theme:     themeCtx,
-		Path:      req.URL.Path,
-		Canonical: absoluteURL(site.URL, req.URL.Path),
-		Find:      newFinder(ctx, r.store, site.URL),
-		Params:    map[string]string{},
+		Kind:        kind,
+		Site:        site,
+		Theme:       themeCtx,
+		Path:        req.URL.Path,
+		Canonical:   absoluteURL(site.URL, req.URL.Path),
+		Find:        newFinder(ctx, r.store, site.URL),
+		Params:      map[string]string{},
+		Public:      r.publicSettings(ctx),
+		CurrentUser: currentUser(req.Context()),
 	}, nil
+}
+
+// publicSettings 读取各分组声明为公开的字段值。
+//
+// 读不到就返回空表：一次设置读取失败不该让整站不可访问，
+// 而主题对缺失的键本来就该按「不显示」处理（见 Context.Setting）。
+func (r *Renderer) publicSettings(ctx context.Context) map[string]map[string]any {
+	if r.settings == nil {
+		return nil
+	}
+	values, err := r.settings.Public(ctx)
+	if err != nil {
+		if r.logger != nil {
+			r.logger.Warn("读取公开设置失败", slog.Any("error", err))
+		}
+		return nil
+	}
+	return values
+}
+
+// currentUser 从请求上下文里的调用者构造前台视图；匿名时为 nil。
+//
+// 这是 routes.go 的 viewerID 能拿到真实用户的前提：前台路由必须挂在
+// auth.Authenticator.Optional 下，否则 context 里永远没有 principal。
+func currentUser(ctx context.Context) *CurrentUserView {
+	principal, ok := auth.FromContext(ctx)
+	if !ok || principal.User == nil {
+		return nil
+	}
+	user := principal.User
+	return &CurrentUserView{
+		ID:          user.ID,
+		Username:    user.Username,
+		DisplayName: user.Name(),
+		AvatarURL:   user.AvatarURL,
+		// 用**本次调用**的有效权限而不是角色名：令牌调用时权限可能被 scope 收窄，
+		// 而「有没有后台可进」问的正是有效权限。
+		ConsoleAccess: len(principal.Permissions().List()) > 0,
+	}
 }
 
 // siteContext 读取站点设置并组装 SiteContext。

@@ -38,11 +38,11 @@ func TestBuiltinThemeLoads(t *testing.T) {
 	}
 }
 
-// TestBuiltinThemeHasAllNineTemplates 验证内置主题提供全部九个模板。
+// TestBuiltinThemeProvidesEveryTemplate 验证内置主题提供全部模板（必需 4 + 可选 10）。
 //
 // 可选模板对第三方主题是可选的，对内置主题不是——它是回退目标，
 // 缺哪个，装了不提供该模板的第三方主题时那个页面就没得渲染。
-func TestBuiltinThemeHasAllNineTemplates(t *testing.T) {
+func TestBuiltinThemeProvidesEveryTemplate(t *testing.T) {
 	t.Parallel()
 
 	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
@@ -60,7 +60,7 @@ func TestBuiltinThemeHasAllNineTemplates(t *testing.T) {
 	}
 }
 
-// TestBuiltinThemeRendersEveryPage 验证九个页面在最小上下文下都能渲染出内容。
+// TestBuiltinThemeRendersEveryPage 验证全部页面在最小上下文下都能渲染出内容。
 //
 // 用最小上下文（大量零值）而非精心构造的数据：模板最常见的崩法是
 // 对 nil 指针取字段，而真实站点上「没有封面」「没有作者」「没有分类」都是常态。
@@ -139,6 +139,27 @@ func TestBuiltinThemeRendersEveryPage(t *testing.T) {
 			c.Author = &AuthorView{ID: 1, Username: "u", DisplayName: "作者", URL: "/authors/u"}
 			return c
 		}},
+		// 账户五个页面。它们带 Form 与 CurrentUser 才有内容，但即便这两者为零值
+		// 也必须能渲染出来——主题不该因为账户模块没装配就整页报错。
+		{"login.html", func() *Context { c := base(KindLogin); c.Form = NewFormState(); return c }},
+		{"register.html", func() *Context { c := base(KindRegister); c.Form = NewFormState(); return c }},
+		{"forgot-password.html", func() *Context {
+			c := base(KindForgotPassword)
+			c.Form = NewFormState()
+			return c
+		}},
+		{"reset-password.html", func() *Context {
+			c := base(KindResetPassword)
+			c.Form = NewFormState()
+			c.Form.Token = "token"
+			return c
+		}},
+		{"account.html", func() *Context {
+			c := base(KindAccount)
+			c.Form = NewFormState()
+			c.CurrentUser = &CurrentUserView{ID: 1, Username: "u", DisplayName: "会员"}
+			return c
+		}},
 	}
 
 	for _, tc := range cases {
@@ -160,6 +181,122 @@ func TestBuiltinThemeRendersEveryPage(t *testing.T) {
 				t.Errorf("%s 输出含 <no value>，说明有字段取不到: %.300s", tc.template, out)
 			}
 		})
+	}
+}
+
+// TestBuiltinThemeAccountPagesTolerateEmptyContext 验证账户页在 Form 与 CurrentUser 都是 nil 时也能渲染。
+//
+// 真实站点上到不了这里——account 一定会填这两个字段。但模板对 nil 的容忍度决定了
+// 第三方主题的单独预览、以及任何「只给一个 Context 就渲染」的场景会不会整页 500，
+// 而 nil 指针取字段在 html/template 里是**执行期**错误，编译期看不出来。
+func TestBuiltinThemeAccountPagesTolerateEmptyContext(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
+	if err != nil {
+		t.Fatalf("内置主题加载失败: %v", err)
+	}
+	eng := engine(loaded)
+
+	for _, name := range []string{
+		"login.html", "register.html", "forgot-password.html", "reset-password.html", "account.html",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ctx := &Context{
+				Kind:        KindLogin,
+				Site:        SiteContext{Title: "站点", Language: "zh-CN", Now: time.Now()},
+				Theme:       ThemeContext{Name: BuiltinName, AssetsBase: "/theme-assets/ink"},
+				Find:        newFinder(t.Context(), nil, ""),
+				Params:      map[string]string{},
+				CurrentUser: nil,
+				Form:        nil,
+			}
+			var sb strings.Builder
+			if err := eng.Render(&sb, name, ctx); err != nil {
+				t.Fatalf("渲染 %s 失败: %v", name, err)
+			}
+			if strings.Contains(sb.String(), "<no value>") {
+				t.Errorf("%s 输出含 <no value>: %.200s", name, sb.String())
+			}
+		})
+	}
+}
+
+// TestBuiltinThemeNavIsProgressive 验证二级菜单的结构契约。
+//
+// 三条：一级项有子项时是**按钮**而不是链接（用户要求点击展开、不跳转）；
+// 按钮带 aria-expanded 与 aria-controls（键盘与读屏软件靠它们）；
+// 子菜单首项重复父链接（否则父页面就成了死入口）。
+func TestBuiltinThemeNavIsProgressive(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
+	if err != nil {
+		t.Fatalf("内置主题加载失败: %v", err)
+	}
+
+	// 菜单由 Finder 从库里取，这里绕过查询直接预置一次结果：
+	// 本用例要验的是**模板怎么渲染一棵树**，不是菜单怎么从库里读出来
+	// （后者由 theme_integration_test.go 覆盖）。
+	items := []MenuItemView{
+		{Label: "关于", URL: "/about", Children: []MenuItemView{
+			{Label: "关于", URL: "/about"},
+			{Label: "联系", URL: "/contact"},
+		}},
+		{Label: "归档", URL: "/archives"},
+	}
+
+	settings := loaded.settings.effectiveSettings(nil)
+	ctx := &Context{
+		Kind:  KindIndex,
+		Site:  SiteContext{Title: "站点", Language: "zh-CN", Now: time.Now()},
+		Theme: ThemeContext{Name: BuiltinName, AssetsBase: "/theme-assets/ink", Settings: settings},
+		Find: &Finder{
+			ctx:   t.Context(),
+			store: &Store{},
+			cache: map[string]any{"menus:primary": items},
+		},
+		Posts:  []PostView{},
+		Params: map[string]string{},
+	}
+
+	var sb strings.Builder
+	if err := engine(loaded).Render(&sb, "index.html", ctx); err != nil {
+		t.Fatalf("渲染失败: %v", err)
+	}
+	out := sb.String()
+
+	for _, want := range []string{
+		`class="site-nav-toggle"`,
+		`aria-expanded="false"`,
+		`aria-controls="site-submenu-0"`,
+		`id="site-submenu-0"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("页眉缺少 %s", want)
+		}
+	}
+
+	navStart := strings.Index(out, `<nav class="site-nav"`)
+	subStart := strings.Index(out, `id="site-submenu-0"`)
+	if navStart < 0 || subStart < 0 {
+		t.Fatalf("页眉里没有导航或子菜单: %.600s", out)
+	}
+
+	// 有子项的一级项**不再**渲染成链接：点击只展开，不跳转。
+	if strings.Contains(out[navStart:subStart], `<a href="/about"`) {
+		t.Error("有子项的一级项不该再渲染成链接——用户要求点击即展开、不跳转")
+	}
+
+	// 子菜单首项必须指向父项的地址，否则父页面就成了死入口。
+	block := out[subStart:]
+	if end := strings.Index(block, "</ul>"); end >= 0 {
+		block = block[:end]
+	}
+	anchor := strings.Index(block, "<a ")
+	if anchor < 0 || !strings.HasPrefix(block[anchor:], `<a href="/about"`) {
+		t.Errorf("子菜单首项不是父项链接: %.400s", block)
 	}
 }
 

@@ -19,6 +19,13 @@ const (
 	KindSearch   = "search"
 	KindAuthor   = "author"
 	KindNotFound = "404"
+
+	// 以下五种由 account 模块注入（agent.md §11.5）。
+	KindLogin          = "login"
+	KindRegister       = "register"
+	KindForgotPassword = "forgot-password"
+	KindResetPassword  = "reset-password"
+	KindAccount        = "account"
 )
 
 // Context 是注入模板的根对象，模板里以 `.` 访问。
@@ -72,6 +79,81 @@ type Context struct {
 
 	// Params 是路由未消费的额外参数，供主题自行取用。
 	Params map[string]string
+
+	// Public 是各设置分组中标为公开的字段值，按分组名索引，
+	// 如 account.allowRegistration。模板里用 .Setting 取，不要直接索引。
+	//
+	// 为什么主题需要它：页眉要显示「注册」入口，就得知道注册是不是开着，
+	// 而页眉出现在**每一个**页面上——由账户模块渲染时逐页塞进 Params 是不行的。
+	// 取值走 settings 分组的 Public 白名单（与 Public 平面接口同一份声明），
+	// 主题拿不到未公开的字段。
+	Public map[string]map[string]any
+
+	// CurrentUser 是当前登录用户，匿名时为 nil。
+	//
+	// 只放前台该知道的字段：邮箱与验证时间不在其中，页眉不该把用户的注册邮箱渲染出来。
+	// 由 Renderer.NewContext 从 auth 的 principal 填充——根路由上没有鉴权中间件，
+	// 没有 auth.Authenticator.Optional 挂在前台，这个字段就恒为 nil。
+	CurrentUser *CurrentUserView
+
+	// Form 是表单页的状态：回填值、逐字段错误、提示与令牌。
+	//
+	// 做成显式结构而不是塞进 Params：值与错误混在一个 map 里，
+	// 主题作者要靠键名前缀区分，那是约定而不是契约。
+	Form *FormState
+}
+
+// Setting 读取某个设置分组的公开字段值；分组未注册或字段未公开时返回 nil。
+//
+// 做成方法而不是让模板写 {{ index (index .Public "account") "allowRegistration" }}：
+// 嵌套索引在模板里读不出意图，而且少写一层就会撞上「nil map 没有这个键」的渲染错误。
+// 缺键返回 nil 而不是报错是有意的——第三方主题引用一个本项目不存在的分组时，
+// 该少显示一个链接，而不是让整站 500。
+func (c *Context) Setting(group, key string) any {
+	if c == nil || c.Public == nil {
+		return nil
+	}
+	return c.Public[group][key]
+}
+
+// CurrentUserView 是注入模板的当前登录用户视图。
+type CurrentUserView struct {
+	ID          int64
+	Username    string
+	DisplayName string
+	AvatarURL   string
+	// ConsoleAccess 为真表示该账号至少有一条权限，页眉可以显示「进入后台」。
+	//
+	// 判据是「有没有权限」而不是「角色名是不是管理员」：自定义角色同样可能持有权限，
+	// 而 member 这类零权限账号点进后台只会得到一屏 403。
+	ConsoleAccess bool
+}
+
+// FormState 是表单页的渲染状态。
+//
+// 密码字段**永远不进 Values**：回填密码意味着它会被写进 HTML，
+// 而 HTML 会进浏览器缓存、会被「查看源代码」看到、会被截图带出去。
+type FormState struct {
+	// Values 是回填值，绝不含任何密码字段。
+	Values map[string]string
+	// Errors 的键是字段名，值是给用户看的中文原因。
+	Errors map[string]string
+	// Notice 是页面级提示（成功或失败），空串表示不显示。
+	Notice string
+	// NoticeKind 取值 "ok" 或 "error"，模板据此选样式。
+	NoticeKind string
+	// CSRFToken 要渲染进表单的 hidden 字段。
+	CSRFToken string
+	// Token 是重置密码页要把邮件里的令牌带回 POST 的隐藏字段。
+	Token string
+}
+
+// NewFormState 构造一个空的表单状态，映射已初始化。
+//
+// 让 account 模块不必每处都手写 make：漏掉一个，模板里的 .Form.Values.xxx 就会
+// 报「nil map」而不是渲染成空值。
+func NewFormState() *FormState {
+	return &FormState{Values: map[string]string{}, Errors: map[string]string{}}
 }
 
 // SiteContext 是站点级信息，取自 site 设置分组。
