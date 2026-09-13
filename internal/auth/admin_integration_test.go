@@ -189,8 +189,11 @@ func TestUserAdminEndToEnd(t *testing.T) {
 	t.Run("角色：内置不可改删，自定义可增删改", func(t *testing.T) {
 		list := expect(t, doRaw(t, root, http.MethodGet, consolePrefix+"/roles", "", admin), http.StatusOK)
 		items, _ := list["items"].([]any)
-		if len(items) != 4 {
-			t.Fatalf("应有 4 个内置角色，实际 %d", len(items))
+		// 内置角色：super-admin / admin / editor / author / member。
+		// 用 len(perm.BuiltinRoleNames) 而不是字面量 4 —— 这里要守的是
+		// 「播种出来的与代码声明的一致」，写死数字会让加一个内置角色就莫名其妙地红。
+		if want := len(perm.BuiltinRoleNames); len(items) != want {
+			t.Fatalf("应有 %d 个内置角色，实际 %d", want, len(items))
 		}
 
 		created := expect(t, doRaw(t, root, http.MethodPost, consolePrefix+"/roles",

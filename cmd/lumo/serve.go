@@ -127,7 +127,7 @@ func runServe(args []string) error {
 	})
 
 	// 核心端点与全部功能模块，与 openapi 命令共用同一条注册路径（见 core.go）。
-	if regErr := core.registerAPI(planes, application, logger); regErr != nil {
+	if regErr := registerAPI(core, planes, application, logger); regErr != nil {
 		return regErr
 	}
 
@@ -155,6 +155,7 @@ func runServe(args []string) error {
 	// 访客前台必须最后挂载：它的兜底路由 /{slug}（独立页面）与 NotFound
 	// 会吞掉根路径下的一切单段路径，排在 /console/、/uploads/ 与 SEO 文档之前
 	// 就会把它们全部遮蔽。
+	//
 	if themes := theme.From(application); themes != nil {
 		themes.MountFrontend(root)
 		logger.Info("访客前台已挂载", slog.String("theme", themes.Registry().ActiveName()))

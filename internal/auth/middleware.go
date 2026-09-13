@@ -99,6 +99,39 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 	})
 }
 
+// Optional 解析会话但**不**强制认证，供访客前台的 HTML 页面使用。
+//
+// 与 Middleware 的区别只有一条，但很要紧：凭据无效时 Middleware 返回 401
+// （API 客户端必须明确知道该重新登录），而这里清掉失效 Cookie 后按匿名继续——
+// 访客带着一枚过期 Cookie 打开首页，该看到首页，而不是一段 JSON 错误。
+// 解析过程本身出错（数据库故障）同样按匿名继续并记一条 Warn：
+// 一次会话查询失败不该让整站不可访问。
+//
+// 只对「会话本身失效」清 Cookie，对无效的 PAT 不清：两者可能同时存在
+// （浏览器里既有会话 Cookie，某个扩展又带了 Authorization 头），
+// 为一枚坏令牌把好好的会话 Cookie 抹掉，会把用户从已登录状态踢出去。
+func (a *Authenticator) Optional(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, err := a.Resolve(r)
+		switch {
+		case err == nil:
+			if principal != nil {
+				r = r.WithContext(WithPrincipal(r.Context(), principal))
+			}
+		case errors.Is(err, ErrInvalidSession):
+			a.sessions.ClearCookies(w)
+		case errors.Is(err, ErrInvalidToken):
+			// 无效的 PAT 不影响会话身份，什么都不清。
+		default:
+			if a.logger != nil {
+				a.logger.Warn("前台会话解析失败，按匿名继续",
+					slog.String("path", r.URL.Path), slog.Any("error", err))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RequireAuth 要求请求已认证。
 func RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

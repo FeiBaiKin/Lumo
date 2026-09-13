@@ -355,6 +355,8 @@ func (h *AdminHandler) createUser(ctx context.Context, in *createUserInput) (*us
 		Password:    in.Body.Password,
 		DisplayName: in.Body.DisplayName,
 		Roles:       in.Body.Roles,
+		// 后台建号即已验证（agent.md §7.1）：管理员当面给的账号不该再依赖邮箱可达。
+		EmailVerified: true,
 	})
 	if err != nil {
 		return nil, mapAdminError(err)

@@ -69,6 +69,9 @@ func (e *env) createUser(t *testing.T, username, role string) *auth.User {
 		Email:    username + "@example.com",
 		Password: testPassword,
 		Roles:    []string{role},
+		// 测试用户走「后台建号」这条路：登录闸门要求邮箱已验证，
+		// 而信箱验证本身另有专门的用例覆盖（见 TestLoginRejectsUnverifiedEmail）。
+		EmailVerified: true,
 	})
 	if err != nil {
 		t.Fatalf("创建用户 %s 失败: %v", username, err)
@@ -1052,5 +1055,72 @@ func TestSeedRolesPreservesCustomRoles(t *testing.T) {
 
 	if _, err := e.users.FindRoleByName(ctx, "custom-keep"); err != nil {
 		t.Errorf("播种不应删除自定义角色: %v", err)
+	}
+}
+
+// TestLoginRejectsUnverifiedEmail 验证邮箱验证闸门（agent.md §7.1）。
+//
+// 闸门放在 Service.Login 里而不是某个前台处理器里，理由就是这条用例的形态：
+// Console 的 POST /console/auth/login 走的是另一条路径，而它调用的也是这个方法。
+// 只拦前台等于留一扇后门——会话 Cookie 一旦签出，前台认的是 Cookie 而不是「从哪登的」。
+func TestLoginRejectsUnverifiedEmail(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+
+	user, err := e.users.CreateUser(ctx, &auth.CreateUserParams{
+		Username: "unverified",
+		Email:    "unverified@example.com",
+		Password: testPassword,
+		Roles:    []string{perm.RoleMember},
+		// 自助注册走的就是这条：EmailVerified 保持零值。
+	})
+	if err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+	if user.EmailVerified() {
+		t.Fatal("新创建的用户不应被视为已验证")
+	}
+
+	_, _, err = e.service.Login(ctx, auth.LoginParams{
+		Login: "unverified", Password: testPassword, IP: "127.0.0.1",
+	})
+	if !errors.Is(err, auth.ErrEmailUnverified) {
+		t.Fatalf("未验证账号登录应被拒，实际 %v", err)
+	}
+}
+
+// TestLoginSucceedsAfterEmailVerified 验证同一账号在验证之后可以正常登录。
+//
+// 与上一条成对：只测「被拒」的话，把闸门写成无条件拒绝也能过。
+func TestLoginSucceedsAfterEmailVerified(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+
+	user, err := e.users.CreateUser(ctx, &auth.CreateUserParams{
+		Username: "verifies",
+		Email:    "verifies@example.com",
+		Password: testPassword,
+		Roles:    []string{perm.RoleMember},
+	})
+	if err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+
+	if _, execErr := e.db.ExecContext(ctx,
+		"UPDATE users SET email_verified_at = now() WHERE id = ?", user.ID); execErr != nil {
+		t.Fatalf("标记邮箱已验证失败: %v", execErr)
+	}
+
+	issued, logged, err := e.service.Login(ctx, auth.LoginParams{
+		Login: "verifies@example.com", Password: testPassword, IP: "127.0.0.1",
+	})
+	if err != nil {
+		t.Fatalf("已验证账号应能登录，实际 %v", err)
+	}
+	if issued == nil || issued.Token == "" {
+		t.Error("登录成功应签发会话")
+	}
+	if logged.ID != user.ID {
+		t.Errorf("登录返回的用户 ID = %d，期望 %d", logged.ID, user.ID)
 	}
 }

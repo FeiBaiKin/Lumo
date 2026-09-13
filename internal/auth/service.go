@@ -19,6 +19,9 @@ var ErrInvalidCredentials = errors.New("用户名或密码错误")
 // ErrAccountDisabled 表示账号已被停用。
 var ErrAccountDisabled = errors.New("账号已被停用")
 
+// ErrEmailUnverified 表示账号的邮箱尚未验证（agent.md §7.1）。
+var ErrEmailUnverified = errors.New("邮箱未验证")
+
 // Service 编排登录、登出与密码变更。
 type Service struct {
 	users    *Store
@@ -104,6 +107,17 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession
 	// 密码正确后才检查停用状态：先检查会让攻击者用错误密码探知账号是否存在。
 	if user.Disabled {
 		return nil, nil, ErrAccountDisabled
+	}
+
+	// 邮箱验证闸门放在**这里**（Service 内），不放在前台账户模块的处理器里。
+	//
+	// 理由是 Console 的 POST /api/v1/console/auth/login 走的是另一条路径：
+	// 只在 /login 那一侧拦截等于留一扇后门——攻击者（或只是换了个入口的用户）
+	// 从后台登录同样能拿到会话 Cookie，而前台认的是 Cookie 而不是「从哪登的」，
+	// 于是闸门形同虚设。会话签发的唯一入口就是这里，闸门也只能在这里。
+	if !user.EmailVerified() {
+		// 不计入失败限流：凭据是对的，计进去等于让用户自己把自己锁死。
+		return nil, nil, ErrEmailUnverified
 	}
 
 	// 成功登录清空账号维度的失败计数，避免用户改对密码后仍被自己之前的
@@ -224,6 +238,9 @@ func (s *Service) Bootstrap(ctx context.Context, params *CreateUserParams) (*Use
 		return nil, nil
 	}
 	params.Roles = []string{perm.RoleSuperAdmin}
+	// 初始管理员一律视为已验证：此刻站点通常连 SMTP 都还没配，
+	// 要求验证邮箱等于把唯一的管理员锁在门外。
+	params.EmailVerified = true
 	user, err := s.users.CreateUser(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("创建初始管理员: %w", err)

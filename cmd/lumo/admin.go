@@ -135,6 +135,8 @@ func runCreateUser(args []string) error {
 		Password:    plain,
 		DisplayName: *displayName,
 		Roles:       splitAndTrim(*roles),
+		// CLI 建号视为已验证：管理员在终端里亲手给的账号，再去收一封验证信没有意义。
+		EmailVerified: true,
 	})
 	if err != nil {
 		return err

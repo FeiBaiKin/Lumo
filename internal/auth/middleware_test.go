@@ -1,9 +1,11 @@
 package auth_test
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -239,4 +241,98 @@ func TestConstantTimeEqual(t *testing.T) {
 	if !auth.ConstantTimeEqual("", "") {
 		t.Error("两个空串应返回 true")
 	}
+}
+
+// TestOptionalDoesNotForceAuthentication 验证前台用的宽松鉴权中间件。
+//
+// 与 Middleware 的差别只有一条，但它决定了访客前台的可用性：
+// 凭据无效时这里必须按匿名继续（顺手清掉失效 Cookie），而不是返回 401 ——
+// 一个带着过期 Cookie 的访客打开首页，该看到首页，而不是一段 JSON 错误。
+//
+// 三条用例共用一个 Authenticator，但会话各不相同；不用 t.Parallel：
+// 同包的其他用例会重建整个 schema。
+func TestOptionalDoesNotForceAuthentication(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	user := e.createUser(t, "optuser", perm.RoleAuthor)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		principal, ok := auth.FromContext(r.Context())
+		if ok {
+			w.Header().Set("X-Test-User", strconv.FormatInt(principal.UserID(), 10))
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := e.authn.Optional(next)
+
+	do := func(t *testing.T, cookie *http.Cookie) *httptest.ResponseRecorder {
+		t.Helper()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", http.NoBody)
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	t.Run("有效会话注入调用者", func(t *testing.T) {
+		issued, err := e.sessions.Create(ctx, user.ID, "test-ua", "127.0.0.1")
+		if err != nil {
+			t.Fatalf("签发会话失败: %v", err)
+		}
+		rec := do(t, &http.Cookie{Name: e.sessions.SessionCookieName(), Value: issued.Token})
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d，期望 200", rec.Code)
+		}
+		if got := rec.Header().Get("X-Test-User"); got != strconv.FormatInt(user.ID, 10) {
+			t.Errorf("注入的用户 ID = %q，期望 %d", got, user.ID)
+		}
+	})
+
+	t.Run("过期会话按匿名继续并清除 Cookie", func(t *testing.T) {
+		issued, err := e.sessions.Create(ctx, user.ID, "test-ua", "127.0.0.1")
+		if err != nil {
+			t.Fatalf("签发会话失败: %v", err)
+		}
+		// 直接把会话拨到过去。走 SQL 而不是等，是因为 SessionTTL 是 7 天。
+		if _, err := e.db.ExecContext(ctx,
+			"UPDATE sessions SET expires_at = now() - interval '1 hour' WHERE token_hash = ?",
+			auth.HashToken(issued.Token)); err != nil {
+			t.Fatalf("使会话过期失败: %v", err)
+		}
+
+		rec := do(t, &http.Cookie{Name: e.sessions.SessionCookieName(), Value: issued.Token})
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d，期望 200（前台不该因凭据失效而报错）", rec.Code)
+		}
+		if got := rec.Header().Get("X-Test-User"); got != "" {
+			t.Errorf("过期会话不该注入调用者，实际 %q", got)
+		}
+		cleared := false
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == e.sessions.SessionCookieName() && c.MaxAge < 0 {
+				cleared = true
+			}
+		}
+		if !cleared {
+			t.Error("失效会话的 Cookie 应被清除，否则浏览器会一直带着它重复请求")
+		}
+	})
+
+	t.Run("无 Cookie 时匿名放行", func(t *testing.T) {
+		rec := do(t, nil)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d，期望 200", rec.Code)
+		}
+		if got := rec.Header().Get("X-Test-User"); got != "" {
+			t.Errorf("匿名请求不该注入调用者，实际 %q", got)
+		}
+		if header := rec.Header().Get("Set-Cookie"); header != "" {
+			t.Errorf("匿名请求不该下发任何 Cookie，实际 %q", header)
+		}
+	})
 }

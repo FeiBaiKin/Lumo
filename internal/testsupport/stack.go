@@ -54,23 +54,25 @@ func NewStackWith(t *testing.T, db *database.DB, opts *StackOptions) *Stack {
 	t.Helper()
 	ctx := context.Background()
 
-	users := auth.NewStore(db.DB)
-	if err := users.SeedRoles(ctx); err != nil {
+	// 走与 serve 相同的构造路径（auth.NewCore），而不是在这里再拼一遍：
+	// 拼两遍的话，模块从 app 容器里取到的实例与测试自己用的那个是两批，
+	// 限流额度、会话开关这些「必须只有一份」的东西会在测试里悄悄分叉。
+	core := auth.NewCore(db.DB, false, nil)
+	if err := core.Users.SeedRoles(ctx); err != nil {
 		t.Fatalf("写入内置角色失败: %v", err)
 	}
-	sessions := auth.NewSessionStore(db.DB, false)
-	tokens := auth.NewTokenStore(db.DB)
-	service := auth.NewService(users, sessions, tokens, nil)
-	authn := auth.NewAuthenticator(users, sessions, tokens, nil)
 
 	root, planes := server.NewRouter(&server.Options{
-		Authenticator: authn,
+		Authenticator: core.Authenticator,
 		Version:       "test",
 		UploadsDir:    opts.UploadsDir,
 	})
-	auth.NewHandler(service, sessions, tokens, nil).Register(planes.ConsolePublic(), planes.Console())
+	auth.NewHandler(core.Service, core.Sessions, core.Tokens, nil).
+		Register(planes.ConsolePublic(), planes.Console())
 	application := app.New(&app.Options{Config: opts.Config, DB: db, Router: planes})
-	auth.NewAdminHandler(users, service, func() []auth.PermissionInfo {
+	// 与 serve.go 同一步：功能模块经此取用同一批认证实例（见 auth.Core）。
+	application.Provide(auth.CoreKey, core)
+	auth.NewAdminHandler(core.Users, core.Service, func() []auth.PermissionInfo {
 		declared := append(app.CorePermissions(), application.Permissions()...)
 		out := make([]auth.PermissionInfo, 0, len(declared))
 		for _, p := range declared {
@@ -97,7 +99,7 @@ func NewStackWith(t *testing.T, db *database.DB, opts *StackOptions) *Stack {
 		opts.AfterStart(root, application)
 	}
 
-	return &Stack{DB: db, Root: root, App: application, Users: users, Tokens: tokens}
+	return &Stack{DB: db, Root: root, App: application, Users: core.Users, Tokens: core.Tokens}
 }
 
 // Bearer 创建拥有指定角色的用户并签发访问令牌，返回可直接放入 Authorization 头的值。
@@ -112,6 +114,8 @@ func (s *Stack) Bearer(t *testing.T, username, role string) string {
 		Email:    username + "@example.com",
 		Password: Password,
 		Roles:    []string{role},
+		// 测试账号等同后台建号，直接可用；信箱验证流程另有专门的用例覆盖。
+		EmailVerified: true,
 	})
 	if err != nil {
 		t.Fatalf("创建用户 %s 失败: %v", username, err)

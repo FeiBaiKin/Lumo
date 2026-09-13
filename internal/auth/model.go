@@ -16,6 +16,13 @@ type User struct {
 	ID       int64  `bun:"id,pk,autoincrement" json:"id"`
 	Username string `bun:"username,notnull"    json:"username"`
 	Email    string `bun:"email,notnull"       json:"email"`
+	// EmailVerifiedAt 为 nil 表示邮箱未验证，该账号不能登录（见 Service.Login）。
+	// 后台创建的账号在创建时即置为已验证：管理员当面给的号，再让他去收信毫无意义。
+	//
+	// json:"-" 而不是导出这个时间值：管理接口直接序列化 User，
+	// 而「哪一秒验证的」除了拼出一条精确到秒的账号活动轨迹之外没有任何用处。
+	// Console 需要的是「这个号能不能登录」，那是 userView.EmailVerified 那个布尔值的事。
+	EmailVerifiedAt *time.Time `bun:"email_verified_at" json:"-"`
 	// PasswordHash 绝不出现在 JSON 中：json:"-" 是防止口令哈希经 API 泄漏的第一道防线。
 	PasswordHash string     `bun:"password_hash,notnull" json:"-"`
 	DisplayName  string     `bun:"display_name"          json:"displayName"`
@@ -37,6 +44,11 @@ func (u *User) Name() string {
 	}
 	return u.Username
 }
+
+// EmailVerified 报告账号的邮箱是否已验证。
+//
+// 判定写在这里而不是散落各处：登录闸门、Console 视图与账户页读的必须是同一个判据。
+func (u *User) EmailVerified() bool { return u != nil && u.EmailVerifiedAt != nil }
 
 // RoleNames 返回用户的角色名列表。
 func (u *User) RoleNames() []string {

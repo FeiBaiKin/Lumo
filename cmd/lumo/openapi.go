@@ -63,7 +63,7 @@ func runOpenAPI(args []string) error {
 		MaxUploadSize: cfg.Server.MaxUploadSize,
 	})
 	application := app.New(&app.Options{Config: cfg, DB: db, Logger: logger, Router: planes})
-	if regErr := core.registerAPI(planes, application, logger); regErr != nil {
+	if regErr := registerAPI(core, planes, application, logger); regErr != nil {
 		return regErr
 	}
 

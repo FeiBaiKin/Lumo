@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -441,4 +442,36 @@ func TestChangePasswordEndToEnd(t *testing.T) {
 		}
 		e.login(t, root, "carol", otherPass)
 	})
+}
+
+// TestConsoleLoginRejectsUnverifiedEmail 验证 Console 登录同样被邮箱验证闸门拦下。
+//
+// 这是闸门放在 Service.Login 而不是前台处理器里的**关键验收**：如果只拦前台，
+// 一个未验证的账号可以改从 /console/auth/login 登录，拿到会话 Cookie 之后
+// 前台照样认它——闸门就成了摆设。
+func TestConsoleLoginRejectsUnverifiedEmail(t *testing.T) {
+	e := newEnv(t)
+	ctx := context.Background()
+	root := newRouter(t, e)
+
+	if _, err := e.users.CreateUser(ctx, &auth.CreateUserParams{
+		Username: "pending",
+		Email:    "pending@example.com",
+		Password: testPassword,
+		Roles:    []string{perm.RoleMember},
+	}); err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+
+	rec := e.do(t, root, &call{
+		method: http.MethodPost,
+		path:   "/auth/login",
+		body:   `{"login":"pending","password":"` + testPassword + `"}`,
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("未验证账号登录 Console 状态码 = %d，期望 403：%s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Header().Get("Set-Cookie"), e.sessions.SessionCookieName()) {
+		t.Error("被拒的登录不该下发会话 Cookie")
+	}
 }

@@ -146,6 +146,8 @@ func (h *Handler) login(ctx context.Context, in *loginInput) (*loginOutput, erro
 			return nil, huma.Error401Unauthorized("用户名或密码错误")
 		case errors.Is(err, ErrAccountDisabled):
 			return nil, huma.Error403Forbidden("账号已被停用")
+		case errors.Is(err, ErrEmailUnverified):
+			return nil, huma.Error403Forbidden("邮箱未验证，请查收验证邮件")
 		case errors.Is(err, ErrTooManyAttempts):
 			return nil, huma.Error429TooManyRequests(
 				"登录尝试过于频繁，请稍后再试。若忘记密码，可用 lumo admin reset-password 重置。")
@@ -375,15 +377,19 @@ type userView struct {
 	DisplayName string   `json:"displayName"`
 	AvatarURL   string   `json:"avatarUrl"`
 	Roles       []string `json:"roles"`
+	// EmailVerified 只暴露布尔值，不暴露验证时间：后台需要知道「这个号能不能登录」，
+	// 但那个时间戳除了精确到秒的账号活动轨迹之外没有任何用处。
+	EmailVerified bool `json:"emailVerified"`
 }
 
 func newUserView(u *User) userView {
 	return userView{
-		ID:          u.ID,
-		Username:    u.Username,
-		Email:       u.Email,
-		DisplayName: u.Name(),
-		AvatarURL:   u.AvatarURL,
-		Roles:       u.RoleNames(),
+		ID:            u.ID,
+		Username:      u.Username,
+		Email:         u.Email,
+		DisplayName:   u.Name(),
+		AvatarURL:     u.AvatarURL,
+		Roles:         u.RoleNames(),
+		EmailVerified: u.EmailVerified(),
 	}
 }

@@ -44,6 +44,7 @@ func (s *Store) SeedRoles(ctx context.Context) error {
 		perm.RoleAdmin:      "管理员",
 		perm.RoleEditor:     "编辑",
 		perm.RoleAuthor:     "作者",
+		perm.RoleMember:     "会员",
 	}
 
 	for _, name := range perm.BuiltinRoleNames {
@@ -87,13 +88,19 @@ type CreateUserParams struct {
 	Password    string
 	DisplayName string
 	Roles       []string
+	// EmailVerified 为真时把 email_verified_at 一并写上。
+	//
+	// 后台建号（Console 用户管理、`lumo admin create-user`、Bootstrap）一律传 true：
+	// 管理员当面给的账号再要求对方去收信毫无意义，而且站点没配 SMTP 时那封信根本发不出去。
+	// 只有前台自助注册传 false —— 那条路径上的账号必须自己证明邮箱可达。
+	EmailVerified bool
 }
 
 // CreateUser 创建用户并授予角色。
 //
 // 密码在此处哈希，调用方不应接触哈希逻辑。
 func (s *Store) CreateUser(ctx context.Context, params *CreateUserParams) (*User, error) {
-	username := normalizeUsername(params.Username)
+	username := NormalizeUsername(params.Username)
 	email := strings.TrimSpace(strings.ToLower(params.Email))
 
 	if err := password.Validate(params.Password); err != nil {
@@ -104,13 +111,20 @@ func (s *Store) CreateUser(ctx context.Context, params *CreateUserParams) (*User
 		return nil, err
 	}
 
+	var verifiedAt *time.Time
+	if params.EmailVerified {
+		now := time.Now()
+		verifiedAt = &now
+	}
+
 	user := &User{
-		Username:     username,
-		Email:        email,
-		PasswordHash: hash,
-		DisplayName:  strings.TrimSpace(params.DisplayName),
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		Username:        username,
+		Email:           email,
+		PasswordHash:    hash,
+		DisplayName:     strings.TrimSpace(params.DisplayName),
+		EmailVerifiedAt: verifiedAt,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 
 	err = s.runInTx(ctx, func(tx bun.Tx) error {
@@ -340,8 +354,12 @@ func (s *Store) runInTx(ctx context.Context, fn func(tx bun.Tx) error) error {
 	})
 }
 
-// normalizeUsername 归一化用户名：去空白并转小写。
-func normalizeUsername(name string) string {
+// NormalizeUsername 归一化用户名：去空白并转小写。
+//
+// 导出是给 account 模块用的：注册表单要先归一化再校验格式，
+// 否则用户输入 "Alice" 会因为含大写而被自己的正则拒掉，
+// 而落到库里其实是合法的 "alice"。
+func NormalizeUsername(name string) string {
 	return strings.TrimSpace(strings.ToLower(name))
 }
 

@@ -2,6 +2,7 @@ package migrate_test
 
 import (
 	"context"
+	"database/sql"
 	"os"
 	"strings"
 	"testing"
@@ -92,13 +93,17 @@ func TestMigrateUpAndDown(t *testing.T) {
 		t.Errorf("重复 Up 后版本变化: %d -> %d", v, again)
 	}
 
-	// Down 只回滚**最后一个**迁移。这是 goose 的语义：早期只有单个迁移时
-	// 容易误以为它会清空整个 schema，加了第二个迁移就会暴露这个误解。
+	// Down 只回滚**最后一个**迁移（当前是 00003_account：给 users 加 email_verified_at）。
+	// 这是 goose 的语义：早期只有单个迁移时容易误以为它会清空整个 schema，
+	// 迁移一多就会暴露这个误解。
 	if downErr := migrator.Down(ctx, ""); downErr != nil {
 		t.Fatalf("Down 失败: %v", downErr)
 	}
-	if exists := relExists(t, db, "users"); exists {
-		t.Error("Down 后 users 表应被删除")
+	if exists := relExists(t, db, "users.email_verified_at"); exists {
+		t.Error("Down 后 email_verified_at 列应被删除")
+	}
+	if !relExists(t, db, "users") {
+		t.Error("Down 只应回滚最后一个迁移，users 表应保留")
 	}
 	if !relExists(t, db, "extensions") {
 		t.Error("Down 只应回滚最后一个迁移，extensions 表应保留")
@@ -429,5 +434,49 @@ func assertIndexExists(t *testing.T, db *database.DB, name string) {
 
 	if !relExists(t, db, name) {
 		t.Errorf("索引 %s 应当存在", name)
+	}
+}
+
+// TestAccountMigrationBackfillsExistingUsers 验证 00003 会把既有账号回填为已验证。
+//
+// 这是这次改动里**唯一**能造成生产事故的一步：不回填的话，登录闸门会拒绝
+// email_verified_at 为 NULL 的账号，于是一次升级把所有现有管理员锁在门外。
+//
+// 测法走真实的升级路径：先整体 Up 到最新，再 Down 掉最后一个迁移（等于回到升级前），
+// 插一个「旧账号」，然后再 Up —— 这正是站长升级时会发生的事。
+func TestAccountMigrationBackfillsExistingUsers(t *testing.T) {
+	db := openTestDB(t)
+
+	ctx := context.Background()
+	migrator := newMigrator(t, db, coreSources())
+	if err := migrator.Up(ctx); err != nil {
+		t.Fatalf("Up 失败: %v", err)
+	}
+	// 回滚到 00003 之前，模拟一台尚未升级的实例。
+	if err := migrator.Down(ctx, ""); err != nil {
+		t.Fatalf("回滚到升级前失败: %v", err)
+	}
+	if relExists(t, db, "users.email_verified_at") {
+		t.Fatal("回滚后不该还有 email_verified_at 列")
+	}
+
+	// 升级前就存在的账号：没有 email_verified_at 这个概念。
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO users (username, email, password_hash) VALUES ('legacy', 'legacy@example.com', 'x')`,
+	); err != nil {
+		t.Fatalf("插入旧账号失败: %v", err)
+	}
+
+	if err := migrator.Up(ctx); err != nil {
+		t.Fatalf("升级失败: %v", err)
+	}
+
+	var verified *sql.NullTime
+	if err := db.NewRaw("SELECT email_verified_at FROM users WHERE username = ?", "legacy").
+		Scan(ctx, &verified); err != nil {
+		t.Fatalf("查询旧账号失败: %v", err)
+	}
+	if !verified.Valid {
+		t.Fatal("升级后既有账号应被回填为已验证，否则它永远登录不了")
 	}
 }

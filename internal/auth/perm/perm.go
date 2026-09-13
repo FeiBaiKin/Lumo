@@ -131,6 +131,8 @@ const (
 	RoleAdmin      = "admin"
 	RoleEditor     = "editor"
 	RoleAuthor     = "author"
+	// RoleMember 是前台自助注册账号的角色，见 BuiltinRoles 中的说明。
+	RoleMember = "member"
 )
 
 // BuiltinRoles 是内置角色到其权限集合的映射。
@@ -178,10 +180,17 @@ var BuiltinRoles = map[string][]Permission{
 		MediaWrite,
 		CommentsManage,
 	},
+
+	// 前台自助注册的账号落在这里（2026-09-14）。
+	//
+	// 没有任何权限：它的意义是「能登录前台、能被内容与评论归属，但进不了后台」。
+	// 必须写成空切片而不是 nil —— nil 会被序列化成 JSON null，撞上
+	// roles_permissions_is_array 的 CHECK，表现是启动播种直接失败。
+	RoleMember: {},
 }
 
 // BuiltinRoleNames 是内置角色名，按权限从大到小排列。
-var BuiltinRoleNames = []string{RoleSuperAdmin, RoleAdmin, RoleEditor, RoleAuthor}
+var BuiltinRoleNames = []string{RoleSuperAdmin, RoleAdmin, RoleEditor, RoleAuthor, RoleMember}
 
 // IsBuiltin 报告角色名是否为内置角色。
 //

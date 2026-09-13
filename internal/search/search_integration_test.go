@@ -58,6 +58,8 @@ func newService(t *testing.T) (*Service, *database.DB, int64) {
 		Email:    "author@example.com",
 		Password: "test-password-123",
 		Roles:    []string{"admin"},
+		// 等同后台建号：登录闸门要求邮箱已验证，测试账号不该绕开它另开一条路。
+		EmailVerified: true,
 	})
 	if err != nil {
 		t.Fatalf("创建作者失败: %v", err)
