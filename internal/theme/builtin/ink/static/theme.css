@@ -479,9 +479,59 @@ button {
   font-size: 0.875em;
 }
 
+/* ---------- 代码块 ---------- */
+/*
+ * 结构由服务端给出（internal/content/highlight.go）：<figure.code-block> +
+ * <pre.code-lines>，每行是 <span.line><span.cl>…。行号**不是 DOM 文本**，
+ * 由 CSS 计数器生成——读者选中复制时不会把行号一并带走。
+ *
+ * 配色仍走进化自纸/墨/印的一套颜料，只是分得更细：
+ * 苔绿（注释，退到背景里）、印蓝（关键字与运算符）、朱砂（字符串）、
+ * 赭石（数字与类型）。函数名不动色相，靠 600 字重与上下文区分。
+ * 全部取色都在 #eeefed 上实测过对比度，最低 5.1:1。
+ */
+:root {
+  --code-gutter: 2.75em;
+  --code-gap: var(--s6);
+  --code-pad-block: var(--s4);
+  --code-pad-inline: var(--s6);
+  --code-gutter-fg: #676e67;
+  --code-comment: #4a6b52;
+  --code-keyword: #1b3a6b;
+  --code-string: #9c3122;
+  --code-number: #7a4a1e;
+  --code-row: color-mix(in srgb, var(--link) 7%, transparent);
+  --code-tool-bg: color-mix(in srgb, var(--bg-sunk) 82%, var(--fg) 4%);
+  /* 收起态的高度上限：约 22 行，超出即折起 */
+  --code-collapse-h: 24rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-scheme="auto"] {
+    --code-gutter-fg: #8a9a8d;
+    --code-comment: #8fa192;
+    --code-keyword: #8fb0f0;
+    --code-string: #e5938a;
+    --code-number: #d9ab7a;
+    --code-row: color-mix(in srgb, var(--link) 12%, transparent);
+    --code-tool-bg: color-mix(in srgb, var(--bg-sunk) 82%, var(--fg) 6%);
+  }
+}
+
+:root[data-scheme="dark"] {
+  --code-gutter-fg: #8a9a8d;
+  --code-comment: #8fa192;
+  --code-keyword: #8fb0f0;
+  --code-string: #e5938a;
+  --code-number: #d9ab7a;
+  --code-row: color-mix(in srgb, var(--link) 12%, transparent);
+  --code-tool-bg: color-mix(in srgb, var(--bg-sunk) 82%, var(--fg) 6%);
+}
+
+/* 兜底：没有走服务端包装的裸 <pre>（第三方主题或历史内容）仍要有像样的排版 */
 .prose pre {
   margin: var(--s8) 0;
-  padding: var(--s4) var(--s6);
+  padding: var(--code-pad-block) var(--code-pad-inline);
   overflow-x: auto;
   background: var(--bg-sunk);
   border-radius: var(--radius);
@@ -495,6 +545,286 @@ button {
   padding: 0;
   background: none;
   font-size: inherit;
+}
+
+.code-block {
+  position: relative;
+  margin: var(--s8) 0;
+  background: var(--bg-sunk);
+  border-radius: var(--radius);
+}
+
+.code-block .code-lines {
+  margin: 0;
+  padding: var(--code-pad-block) 0 var(--code-pad-block) var(--code-pad-inline);
+  overflow-x: auto;
+  background: none;
+  border-radius: inherit;
+}
+
+.code-lines code {
+  display: block;
+  width: max-content;
+  min-width: 100%;
+  padding: 0;
+  background: none;
+  font-size: inherit;
+  counter-reset: line;
+}
+
+/*
+ * 每行是一条两列网格：行号列 + 代码列。
+ * 用网格而不是绝对定位，是为了让自动换行后的续行自动对齐到代码列——
+ * 那样换行开关才真的能用，而不是把缩进搞成一团。
+ */
+.code-lines .line {
+  display: grid;
+  grid-template-columns: var(--code-gutter) minmax(0, 1fr);
+  column-gap: var(--code-gap);
+  padding-right: var(--code-pad-inline);
+}
+
+.code-lines .line::before {
+  content: counter(line);
+  counter-increment: line;
+  padding-right: var(--s3);
+  border-right: var(--rule-w) solid var(--border);
+  color: var(--code-gutter-fg);
+  text-align: right;
+  /* 行号是辅助信息，不该被选中、也不该被读屏逐行念出来 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.code-lines .line:hover {
+  background: var(--code-row);
+}
+
+/* 自动换行：网格列不变，续行自然落在代码列里 */
+.code-block.is-wrapped .code-lines code {
+  width: auto;
+}
+
+.code-block.is-wrapped .code-lines .line {
+  grid-template-columns: var(--code-gutter) minmax(0, 1fr);
+}
+
+.code-block.is-wrapped .code-lines {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * 展开/收起：长代码块默认折到 --code-collapse-h，底部用遮罩淡出。
+ * 不用「加宽到屏宽」那种做法：宽屏时正文列左侧还挂着元信息栏，
+ * 向两侧溢出必然压住它，而元信息栏是本主题唯一的破格处，不能被盖。
+ * 收起态由 .js-code 脚本测量高度后决定，短代码块不显示展开按钮。
+ */
+.code-block.is-collapsed .code-lines {
+  max-height: var(--code-collapse-h);
+  overflow-y: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 4rem), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 4rem), transparent);
+}
+
+/* ---------- 代码块工具条 ---------- */
+/*
+ * 三个按钮（换行 / 复制 / 展开）默认隐身，鼠标进入代码块才出现。
+ * 但「只在悬停时可见」对触屏与键盘是死路，故：
+ *   - :focus-within 时同样显示（键盘用户 Tab 得进来）；
+ *   - 指针没有悬停能力的设备（触屏）常显。
+ */
+.code-tools {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s2);
+  z-index: 2;
+  display: flex;
+  gap: var(--s1);
+  padding: var(--s1);
+  border-radius: var(--radius);
+  background: var(--code-tool-bg);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.code-block:hover .code-tools,
+.code-block:focus-within .code-tools {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .code-tools {
+    opacity: 1;
+  }
+}
+
+.code-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.875rem;
+  height: 1.875rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--fg-muted);
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+/* 触屏与窄屏给足 44px 的命中区 */
+@media (hover: none), (max-width: 40rem) {
+  .code-tool {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+}
+
+/*
+ * hidden 必须显式处理：.code-tool 的 display 是作者样式，
+ * 会盖过浏览器默认表里的 [hidden]{display:none}——不加这条，
+ * 「展开按钮对短代码块隐藏」会失效，每个代码块都顶着一个按不动的展开键。
+ */
+.code-tool[hidden] {
+  display: none;
+}
+
+.code-tool:hover {
+  color: var(--link);
+  background: color-mix(in srgb, var(--link) 10%, transparent);
+}
+
+.code-tool svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* 复制成功的对勾与常态图标互斥显示 */
+.code-tool .icon-done {
+  display: none;
+}
+
+.code-tool.is-done {
+  color: var(--link);
+}
+
+.code-tool.is-done .icon-idle {
+  display: none;
+}
+
+.code-tool.is-done .icon-done {
+  display: block;
+}
+
+/* 工具条按钮在展开态下跟随加宽后的代码块 */
+.code-tool-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- 语法着色 ---------- */
+.code-lines .c,
+.code-lines .ch,
+.code-lines .cm,
+.code-lines .c1,
+.code-lines .cs,
+.code-lines .cp,
+.code-lines .cpf,
+.code-lines .sd {
+  color: var(--code-comment);
+}
+
+.code-lines .k,
+.code-lines .kc,
+.code-lines .kd,
+.code-lines .kn,
+.code-lines .kp,
+.code-lines .kr {
+  color: var(--code-keyword);
+  font-weight: 600;
+}
+
+.code-lines .kt {
+  color: var(--code-number);
+}
+
+.code-lines .s,
+.code-lines .sa,
+.code-lines .sb,
+.code-lines .sc,
+.code-lines .dl,
+.code-lines .sd,
+.code-lines .s1,
+.code-lines .s2,
+.code-lines .se,
+.code-lines .sh,
+.code-lines .si,
+.code-lines .sx,
+.code-lines .sr,
+.code-lines .ss {
+  color: var(--code-string);
+}
+
+.code-lines .m,
+.code-lines .mb,
+.code-lines .mf,
+.code-lines .mh,
+.code-lines .mi,
+.code-lines .mo,
+.code-lines .il {
+  color: var(--code-number);
+}
+
+/*
+ * 运算符与标点刻意不另上色，保持墨色。
+ * 它们在代码里密度最高，一旦着色，一段普通的 PHP 会花成一张电路图——
+ * 与「强调色只用于交互态，不做装饰」是同一条纪律。
+ */
+.code-lines .na,
+.code-lines .nt {
+  color: var(--code-keyword);
+}
+
+/* 函数名与类名不动色相，靠字重区分 */
+.code-lines .nf,
+.code-lines .fm,
+.code-lines .nc,
+.code-lines .nn,
+.code-lines .nd,
+.code-lines .ne {
+  font-weight: 600;
+}
+
+/* diff 的增删行：只做极轻的底色，不做整行反白 */
+.code-lines .gi {
+  background: color-mix(in srgb, var(--code-comment) 14%, transparent);
+}
+
+.code-lines .gd {
+  background: color-mix(in srgb, var(--code-string) 14%, transparent);
+}
+
+.code-lines .gh,
+.code-lines .gu {
+  color: var(--code-keyword);
+  font-weight: 600;
+}
+
+/* chroma 的 err 默认是红底白字，太吵；这里退成一条下划波浪 */
+.code-lines .err {
+  color: var(--code-string);
+  text-decoration: underline wavy currentColor;
+  text-decoration-thickness: 1px;
 }
 
 .prose img,

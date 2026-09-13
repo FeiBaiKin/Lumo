@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/FeiBaiKin/lumo/internal/content"
 )
 
 // builtinThemeFS 返回内置主题的文件系统。
@@ -208,6 +210,105 @@ func TestBuiltinThemeEscapesContent(t *testing.T) {
 
 // engine 是取引擎的测试辅助，避免在断言里反复写 .Engine()。
 func engine(l *Loaded) *Engine { return l.Engine() }
+
+// TestBuiltinThemeRendersHighlightedCode 验证代码块的高亮结构真的落到了页面上。
+//
+// 这条守的是「服务端产出的结构」与「主题的 CSS/JS」之间的那道缝：
+// 两边各自都对，中间对不上（类名改了、外壳没了、脚本没引）时页面看不出报错，
+// 只是代码块退化成一段没有行号的灰底文本。
+func TestBuiltinThemeRendersHighlightedCode(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
+	if err != nil {
+		t.Fatalf("内置主题加载失败: %v", err)
+	}
+
+	// 走与前台一致的顺序：先渲染原稿，再过高亮。
+	rendered, err := content.Render(content.RawMarkdown,
+		"```go\nfunc main() {\n\tfmt.Println(\"hi\")\n}\n```\n")
+	if err != nil {
+		t.Fatalf("渲染 Markdown 失败: %v", err)
+	}
+	highlighted := content.Highlight(rendered)
+
+	ctx := &Context{
+		Kind: KindPost,
+		Site: SiteContext{Title: "站点", Language: "zh-CN", Now: time.Now()},
+		Theme: ThemeContext{
+			Name: BuiltinName, AssetsBase: "/theme-assets/ink",
+			Settings: loaded.settings.effectiveSettings(nil),
+		},
+		Find: newFinder(t.Context(), nil, ""),
+		Post: &PostView{
+			ID: 1, Type: "post", Title: "文章", Slug: "x", URL: "/posts/x",
+			Content: highlighted,
+		},
+		Params: map[string]string{},
+	}
+
+	var sb strings.Builder
+	if err := engine(loaded).Render(&sb, "post.html", ctx); err != nil {
+		t.Fatalf("渲染失败: %v", err)
+	}
+	out := sb.String()
+
+	for _, want := range []string{
+		`class="code-block"`,        // 高亮外壳
+		`class="code-lines"`,        // 行号容器
+		`<span class="line">`,       // 逐行结构（CSS 计数器挂在这里）
+		`/theme-assets/ink/code.js`, // 三个按钮的脚本
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("页面缺少 %s", want)
+		}
+	}
+	// 行号是 CSS 生成的，DOM 里不能出现 chroma 的行号元素——
+	// 否则读者复制代码会把行号一起带走。
+	if strings.Contains(out, `class="ln"`) {
+		t.Error("行号不该进 DOM")
+	}
+}
+
+// TestBuiltinThemeCodeScriptNotGatedByMotion 验证复制按钮不受「页面动效」开关管辖。
+//
+// 复制是功能不是装饰：站长关掉动效后按钮还得在。
+func TestBuiltinThemeCodeScriptNotGatedByMotion(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
+	if err != nil {
+		t.Fatalf("内置主题加载失败: %v", err)
+	}
+
+	settings := loaded.settings.effectiveSettings(map[string]map[string]any{
+		"appearance": {"motion": false, "webFont": false},
+	})
+	ctx := &Context{
+		Kind:  KindPost,
+		Site:  SiteContext{Title: "站点", Language: "zh-CN", Now: time.Now()},
+		Theme: ThemeContext{Name: BuiltinName, AssetsBase: "/theme-assets/ink", Settings: settings},
+		Find:  newFinder(t.Context(), nil, ""),
+		Post: &PostView{
+			ID: 1, Type: "post", Title: "文章", Slug: "x", URL: "/posts/x",
+			Content: `<p>x</p>`,
+		},
+		Params: map[string]string{},
+	}
+
+	var sb strings.Builder
+	if err := engine(loaded).Render(&sb, "post.html", ctx); err != nil {
+		t.Fatalf("渲染失败: %v", err)
+	}
+	out := sb.String()
+
+	if !strings.Contains(out, "/theme-assets/ink/code.js") {
+		t.Error("关掉动效后 code.js 仍应加载")
+	}
+	if strings.Contains(out, "gsap.min.js") {
+		t.Error("关掉动效后不该再加载 GSAP")
+	}
+}
 
 // TestBuiltinThemeSettingsCompile 验证内置主题的设置声明可编译且缺省值自洽。
 func TestBuiltinThemeSettingsCompile(t *testing.T) {

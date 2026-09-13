@@ -107,6 +107,10 @@ func (r *postRow) toView(author *AuthorView) PostView {
 		text := content.StripTags(r.Content)
 		view.WordCount = countWords(text)
 		view.ReadingTime = readingMinutes(text)
+		// 代码高亮在读取期做而不是写入期：库里存的始终是语义化的
+		// <pre><code class="language-go">，换主题、换配色都不必重存全库
+		// （理由见 internal/content/highlight.go 的开头）。着色结果有缓存。
+		view.Content = content.Highlight(r.Content)
 	}
 	return view
 }

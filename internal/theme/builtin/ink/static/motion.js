@@ -46,8 +46,11 @@
   }
 
   // 2. 正文里的插图与表格。once：滚过一次就固定，往回滚不再重放。
+  //    代码块的外壳就是 <figure class="code-block">，已被 .prose figure 选中；
+  //    这里用 .prose > pre 只兜住没有外壳的裸 <pre>，否则内外两层各动一次，
+  //    看起来是一段卡顿的双重淡入。
   gsap.utils
-    .toArray(".prose figure, .prose > img, .prose table, .prose pre")
+    .toArray(".prose figure, .prose > img, .prose table, .prose > pre")
     .forEach(function (el) {
       gsap.from(el, {
         opacity: 0,

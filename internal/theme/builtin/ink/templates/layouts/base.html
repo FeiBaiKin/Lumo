@@ -59,6 +59,13 @@
   {{ template "partials/footer.html" . }}
 
   {{- /*
+  代码块交互（换行 / 复制 / 展开）：与动效无关，故不受 appearance.motion 管辖——
+  复制按钮是功能不是装饰，站长关掉动效不该把它一起关掉。
+  没有这段脚本时代码块依然完整可读，丢的只是三个便利按钮。
+  */}}
+  <script defer src="{{ .Theme.AssetsBase }}/code.js"></script>
+
+  {{- /*
   动效（阶段 8）：GSAP + ScrollTrigger + Lenis 全部自托管，defer 加载、不阻塞渲染。
   脚本自己检查 prefers-reduced-motion；这里的开关是站长的总闸。
   */}}
