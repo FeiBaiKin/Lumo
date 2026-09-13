@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/FeiBaiKin/lumo/internal/account"
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/comment"
 	"github.com/FeiBaiKin/lumo/internal/content"
@@ -31,7 +32,8 @@ import (
 // extension 只碰核心的 extensions 表，不依赖任何模块；
 // search 给 content 的 posts 表加索引列，须排在 content 之后，也须在 theme 之前——
 // 前台搜索页要在装配期取到它；
-// theme 读取以上全部模块的表来渲染前台，排在最后。
+// theme 读取以上全部模块的表来渲染前台，排在最后；
+// account 用 theme 的 Renderer 渲染账户页，故排在它之后。
 func modules() []app.Module {
 	return []app.Module{
 		settings.New(),
@@ -48,6 +50,7 @@ func modules() []app.Module {
 		plugin.New(),
 		search.New(),
 		theme.New(),
+		account.New(),
 	}
 }
 

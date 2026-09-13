@@ -13,8 +13,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/FeiBaiKin/lumo/internal/account"
 	"github.com/FeiBaiKin/lumo/internal/api"
 	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/database"
@@ -125,6 +127,10 @@ func runServe(args []string) error {
 		Logger: logger,
 		Router: planes,
 	})
+	// account 模块经此取用**同一批**认证实例（见 auth.Core 的说明）。
+	// 这一行只在 serve 里：migrate 命令也走同一条注册链，但它不需要认证栈，
+	// 而 account 在取不到 core 时会自行退化为「只装配迁移与设置声明」。
+	application.Provide(auth.CoreKey, core)
 
 	// 核心端点与全部功能模块，与 openapi 命令共用同一条注册路径（见 core.go）。
 	if regErr := registerAPI(core, planes, application, logger); regErr != nil {
@@ -156,6 +162,12 @@ func runServe(args []string) error {
 	// 会吞掉根路径下的一切单段路径，排在 /console/、/uploads/ 与 SEO 文档之前
 	// 就会把它们全部遮蔽。
 	//
+	// 前台不经三平面，故登录态要靠 auth 的 Optional 中间件注入；
+	// account 必须先于 theme 挂载，否则它的固定路径（/login 等）会被
+	// theme 的 /{slug} 当成独立页面吞掉。
+	if accounts := account.From(application); accounts != nil {
+		accounts.MountFrontend(root, core.Authenticator.Optional)
+	}
 	if themes := theme.From(application); themes != nil {
 		themes.MountFrontend(root, core.Authenticator.Optional)
 		logger.Info("访客前台已挂载", slog.String("theme", themes.Registry().ActiveName()))
