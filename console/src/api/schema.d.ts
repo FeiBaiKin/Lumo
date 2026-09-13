@@ -2748,6 +2748,7 @@ export interface components {
             avatarUrl: string;
             displayName: string;
             email: string;
+            emailVerified: boolean;
             /** Format: int64 */
             id: number;
             roles: string[] | null;

@@ -1,6 +1,12 @@
 import type { components } from "@/api/schema";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -56,6 +62,9 @@ const me: components["schemas"]["MeView"] = {
     email: "admin@example.com",
     avatarUrl: "",
     roles: ["super-admin"],
+    // 接口里的账号一律是已验证的（后台建号即视为已验证），自助注册的 member
+    // 在验证之前根本登不进来 —— 所以这个字段在后台永远是 true。
+    emailVerified: true,
   },
 };
 
@@ -377,5 +386,61 @@ describe("App 路由守卫", () => {
 
     const nav = await sidebar();
     expect(within(nav).getByText("评论")).toBeInTheDocument();
+  });
+});
+
+/**
+ * 零权限账号（内置角色 member）。
+ *
+ * 这一页**不是安全边界**：零权限账号的 /auth/me 是合法 200，Console 又是一份
+ * 谁都能下载的静态 SPA，真正的防线是每个端点各自的权限校验。它只解决
+ * 「别让人对着一个处处 403 的空后台发呆」这一个问题。
+ */
+describe("零权限账号", () => {
+  afterEach(() => {
+    session = null;
+    vi.clearAllMocks();
+  });
+
+  it("渲染说明页，而不是空后台或登录页", async () => {
+    session = { ...me, permissions: [] };
+    renderApp();
+
+    expect(await screen.findByText("这个账号没有后台权限")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "返回站点" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+    // 不进后台外壳。
+    expect(
+      screen.queryByRole("navigation", { name: "主导航" }),
+    ).not.toBeInTheDocument();
+    // 也不该被当成未登录送去登录页 —— 他刚登过，再看到登录表单只会发懵。
+    expect(screen.queryByText(/登录以管理你的站点/)).not.toBeInTheDocument();
+  });
+
+  it("有权限时正常进后台，且不显示说明页", async () => {
+    session = me;
+    renderApp();
+
+    await sidebar();
+    expect(screen.queryByText("这个账号没有后台权限")).not.toBeInTheDocument();
+  });
+
+  it("说明页的退出登录会调用登出接口", async () => {
+    const { api } = await import("@/api/client");
+    session = { ...me, permissions: [] };
+    renderApp();
+
+    fireEvent.click(await screen.findByRole("button", { name: "退出登录" }));
+
+    // 用 waitFor 而不是直接断言：登出是一次异步动作，点完还要等它落地。
+    // 直接断言会在 React 提交状态更新之前跑，既可能失败，也会留下 act 警告。
+    await waitFor(() =>
+      expect(api.POST).toHaveBeenCalledWith(
+        "/api/v1/console/auth/logout",
+        expect.anything(),
+      ),
+    );
   });
 });

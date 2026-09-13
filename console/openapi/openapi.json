@@ -3097,6 +3097,9 @@
           "email": {
             "type": "string"
           },
+          "emailVerified": {
+            "type": "boolean"
+          },
           "id": {
             "format": "int64",
             "type": "integer"
@@ -3120,7 +3123,8 @@
           "email",
           "displayName",
           "avatarUrl",
-          "roles"
+          "roles",
+          "emailVerified"
         ],
         "type": "object"
       },

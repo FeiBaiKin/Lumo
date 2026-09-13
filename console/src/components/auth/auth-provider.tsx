@@ -29,6 +29,13 @@ type AuthContextValue = {
   isLoading: boolean;
   /** 是否已确认未登录（查询成功返回 401），用于路由守卫区分「还没查完」与「确实没登录」。 */
   isAnonymous: boolean;
+  /**
+   * 账号是否至少持有一条权限，即「后台有没有东西可看」。
+   *
+   * 与 `isAnonymous` 分开是有意的：未登录与「登录了但没有权限」是两件不同的事，
+   * 前者该跳登录页，后者跳登录页只会让人对着登录表单发懵（他刚登过）。
+   */
+  hasConsoleAccess: boolean;
   /** 权限判定。支持 `_any` 语义：持有 `posts:write_any` 时 `can("posts:write")` 为真。 */
   can: (permission: string) => boolean;
   login: (login: string, password: string) => Promise<void>;
@@ -60,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const permissions = useMemo(() => new Set(data?.permissions ?? []), [data]);
+  const hasConsoleAccess = permissions.size > 0;
 
   const can = useCallback(
     (permission: string) => {
@@ -111,11 +119,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isToken: data?.authMethod === "token",
       isLoading,
       isAnonymous: !isLoading && (isError || !data),
+      hasConsoleAccess,
       can,
       login,
       logout,
     }),
-    [data, permissions, isLoading, isError, can, login, logout],
+    [
+      data,
+      permissions,
+      hasConsoleAccess,
+      isLoading,
+      isError,
+      can,
+      login,
+      logout,
+    ],
   );
 
   return <AuthContext value={value}>{children}</AuthContext>;

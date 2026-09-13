@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { LogoMark } from "@/components/layout/logo";
 import { DashboardPage } from "@/pages/dashboard";
 import { LoginPage } from "@/pages/login";
+import { NoConsoleAccessPage } from "@/pages/no-access";
 import { NotFoundPage } from "@/pages/not-found";
 import { APP_ROUTES } from "@/pages/routes";
 import type { RouteObject } from "react-router";
@@ -40,9 +41,17 @@ function FullPageLoading({ label }: { label: string }) {
  * 关键是区分「会话还没查出来」与「确实没登录」：
  * 前者要显示加载态，直接跳登录页会让每次刷新都闪一下登录界面。
  * 跳转时把当前地址放进 state，登录后能回到原处。
+ *
+ * 第三种情形是「登录了但一条权限都没有」（内置角色 member 就是），
+ * 它既不跳登录页（人刚登过，再看到登录表单只会发懵），也不进后台外壳
+ * （那会是一个处处 403 的空后台），而是渲染一张说明页。
+ *
+ * 再强调一次：这一页不是安全边界。零权限账号的 /auth/me 是合法 200，
+ * Console 又是谁都能下载的静态资源，真正的防线是每个端点各自的权限校验。
+ * 不要因为「反正会显示这一页」而放宽端点校验。
  */
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { isLoading, isAnonymous } = useAuth();
+  const { isLoading, isAnonymous, hasConsoleAccess } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -50,6 +59,9 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   }
   if (isAnonymous) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+  if (!hasConsoleAccess) {
+    return <NoConsoleAccessPage />;
   }
   return children;
 }
