@@ -1,6 +1,5 @@
-import { api, problemMessage } from "@/api/client";
+import { api } from "@/api/client";
 import { runMutation } from "@/api/mutation";
-import type { components } from "@/api/schema";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   Entity,
@@ -39,6 +38,14 @@ import { Input, SearchInput } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { ErrorState, Skeleton } from "@/components/ui/states";
 import { absoluteDate, fileSize, relativeTime } from "@/lib/format";
+import {
+  MEDIA_KIND_OPTIONS,
+  type Media,
+  copyMediaUrl,
+  kindOf,
+  previewOf,
+  useMediaUpload,
+} from "@/lib/media";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useDebouncedSearch, useListParams } from "@/lib/use-list-params";
 import { cn } from "@/lib/utils";
@@ -48,9 +55,6 @@ import {
   ChevronRight,
   Copy,
   Eye,
-  FileAudio,
-  FileText,
-  FileVideo,
   Image as ImageIcon,
   LayoutGrid,
   List as ListIcon,
@@ -58,7 +62,6 @@ import {
   Upload,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { toast } from "sonner";
 
 /**
  * 附件库（形态对齐 Halo 的附件页）。
@@ -74,40 +77,9 @@ import { toast } from "sonner";
  * 而网格里的格子最大也就两百多像素。
  */
 
-type Media = components["schemas"]["Media"];
 type ViewMode = "grid" | "list";
 
 const VIEW_KEY = "lumo-console-media-view";
-
-const KIND_META: Record<string, { label: string; icon: typeof ImageIcon }> = {
-  image: { label: "图片", icon: ImageIcon },
-  video: { label: "视频", icon: FileVideo },
-  audio: { label: "音频", icon: FileAudio },
-  document: { label: "文档", icon: FileText },
-  other: { label: "其他", icon: FileText },
-};
-
-const FALLBACK_KIND = { label: "文件", icon: FileText };
-
-const KIND_OPTIONS = [
-  { value: "", label: "全部类型" },
-  ...Object.entries(KIND_META).map(([value, meta]) => ({
-    value,
-    label: meta.label,
-  })),
-];
-
-/** 服务端未来新增 kind 时退回「文件」而不是渲染空白。 */
-function kindOf(media: Media) {
-  return KIND_META[media.kind] ?? FALLBACK_KIND;
-}
-
-/** 取缩略图：优先 medium 档，退回原图。 */
-function previewOf(media: Media): string {
-  const thumbs = media.thumbnails ?? [];
-  const medium = thumbs.find((t) => t.name === "medium");
-  return medium?.url || thumbs[0]?.url || media.url;
-}
 
 function readView(): ViewMode {
   try {
@@ -123,18 +95,6 @@ function storeView(view: ViewMode) {
     localStorage.setItem(VIEW_KEY, view);
   } catch {
     // 存不下就只在本次会话内生效
-  }
-}
-
-/** 复制完整地址：站长多半要粘到文章正文或别处，相对路径在那里不可用。 */
-async function copyUrl(media: Media) {
-  const absolute = new URL(media.url, window.location.origin).href;
-  try {
-    await navigator.clipboard.writeText(absolute);
-    toast.success("已复制地址");
-  } catch {
-    // 非 HTTPS 或权限被拒时剪贴板不可用
-    toast.error("剪贴板不可用，请在详情里手动选中地址复制");
   }
 }
 
@@ -191,27 +151,13 @@ export function MediaPage() {
     },
   });
 
-  const upload = useMutation({
-    mutationFn: async (file: File) => {
-      const body = new FormData();
-      body.append("file", file);
-      const { data, error, response } = await api.POST(
-        "/api/v1/console/media",
-        {
-          /*
-           * openapi-fetch 在解析 multipart 请求体时按 schema 生成对象，
-           * 但真实上传必须传 FormData 才能带上文件流。
-           * `bodySerializer` 直接返回 FormData 即绕开序列化 ——
-           * 类型上需要两次断言，因为生成的类型是「字段名 → 值」的对象。
-           */
-          body: body as unknown as { file: string },
-          bodySerializer: () => body,
-        },
-      );
-      if (!response.ok) {
-        throw new Error(problemMessage(error));
+  const { uploading, uploadFiles } = useMediaUpload({
+    onUploaded: () => {
+      // 列表本身由 useMediaUpload 失效缓存后自动刷新；这里只收掉一次性的提示框
+      if (uploadHint) {
+        // 提示框只为「第一次上传」而存在，传过一次就撤掉
+        list.setFilter("upload", "");
       }
-      return data;
     },
   });
 
@@ -220,36 +166,6 @@ export function MediaPage() {
 
   const selectedIndex = items.findIndex((item) => item.id === selectedId);
   const selected = selectedIndex >= 0 ? (items[selectedIndex] ?? null) : null;
-
-  async function uploadFiles(files: FileList | File[]) {
-    const queue = Array.from(files);
-    if (queue.length === 0) {
-      return;
-    }
-    let succeeded = 0;
-    // 逐个上传：multipart 接口一次只收一个文件，而并发上传几个大图
-    // 会把上行带宽占满，反而都变慢。
-    for (const file of queue) {
-      try {
-        await upload.mutateAsync(file);
-        succeeded += 1;
-      } catch (err) {
-        toast.error(
-          `${file.name}：${err instanceof Error ? err.message : "上传失败"}`,
-        );
-      }
-    }
-    if (succeeded > 0) {
-      toast.success(
-        queue.length === 1 ? "已上传" : `已上传 ${succeeded} 个文件`,
-      );
-      void query.refetch();
-      if (uploadHint) {
-        // 提示框只为「第一次上传」而存在，传过一次就撤掉
-        list.setFilter("upload", "");
-      }
-    }
-  }
 
   function changeView(next: ViewMode) {
     setView(next);
@@ -307,7 +223,7 @@ export function MediaPage() {
               />
               <Button
                 variant="primary"
-                loading={upload.isPending}
+                loading={uploading}
                 onClick={() => fileInput.current?.click()}
               >
                 <Upload aria-hidden="true" />
@@ -376,7 +292,7 @@ export function MediaPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                loading={upload.isPending}
+                loading={uploading}
                 onClick={() => fileInput.current?.click()}
               >
                 选择文件
@@ -401,7 +317,7 @@ export function MediaPage() {
                   <FilterMenu
                     label="类型"
                     value={kind}
-                    options={KIND_OPTIONS}
+                    options={MEDIA_KIND_OPTIONS}
                     onChange={(value) => list.setFilter("kind", value)}
                   />
                   <ViewToggle value={view} onChange={changeView} />
@@ -724,7 +640,7 @@ function MediaRow({
             <Eye aria-hidden="true" />
             查看详情
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => void copyUrl(media)}>
+          <DropdownMenuItem onSelect={() => void copyMediaUrl(media)}>
             <Copy aria-hidden="true" />
             复制地址
           </DropdownMenuItem>
@@ -831,7 +747,7 @@ function MediaDetail({
                 size="xs"
                 onClick={() => {
                   if (media) {
-                    void copyUrl(media);
+                    void copyMediaUrl(media);
                   }
                 }}
               >

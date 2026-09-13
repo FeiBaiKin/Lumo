@@ -30,6 +30,9 @@ export default defineConfig({
       "/api": { target: "http://127.0.0.1:8080", changeOrigin: true },
       "/apis": { target: "http://127.0.0.1:8080", changeOrigin: true },
       "/healthz": { target: "http://127.0.0.1:8080", changeOrigin: true },
+      // 附件由后端以静态文件提供。不代理的话，HMR 模式下后台里的每张图
+      // （附件库、选择器、封面预览）都是破图，走查时会误以为是界面坏了。
+      "/uploads": { target: "http://127.0.0.1:8080", changeOrigin: true },
     },
   },
   test: {

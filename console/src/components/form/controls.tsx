@@ -9,6 +9,7 @@ import {
   optionsFor,
   widgetFor,
 } from "@/components/form/schema";
+import { MediaPickerDialog } from "@/components/media/media-picker";
 import { Button } from "@/components/ui/button";
 import { Inset } from "@/components/ui/card";
 import {
@@ -28,7 +29,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { CheckboxRow, Switch } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
-import { ImageOff, Plus, X } from "lucide-react";
+import { ImageOff, ImagePlus, Plus, X } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 
 /**
@@ -282,8 +283,7 @@ function ColorControl({
 /**
  * 图片地址。
  *
- * 目前是「填地址 + 即时预览」。阶段 7 后续接入附件库后，
- * 这里会多一个「从附件库选择」的入口 —— 但地址输入要保留：
+ * 两条路并存：从附件库选，或直接填地址。地址输入不能去掉 ——
  * 外链图片（CDN、图床）是常见需求，只给选择器等于砍掉一半用法。
  */
 function ImageControl({
@@ -297,6 +297,7 @@ function ImageControl({
 }: ControlProps) {
   const current = String(value ?? "");
   const [broken, setBroken] = useState(false);
+  const [picker, setPicker] = useState(false);
 
   // 地址变了就重置「加载失败」状态，否则换成一个能用的地址后预览仍是破的
   // biome-ignore lint/correctness/useExhaustiveDependencies: 仅在地址变化时重置
@@ -326,14 +327,26 @@ function ImageControl({
           )}
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <Input
-            {...textProps(path, schema, error)}
-            value={current}
-            disabled={disabled}
-            onChange={(e) => onChange(e.target.value)}
-            onBlur={onBlur}
-            placeholder="https://… 或 /uploads/…"
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              {...textProps(path, schema, error)}
+              value={current}
+              disabled={disabled}
+              onChange={(e) => onChange(e.target.value)}
+              onBlur={onBlur}
+              placeholder="https://… 或 /uploads/…"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={disabled}
+              onClick={() => setPicker(true)}
+              className="shrink-0"
+            >
+              <ImagePlus aria-hidden="true" />
+              从附件库选
+            </Button>
+          </div>
           {broken ? (
             <p className="text-xs text-warn">
               这个地址没能加载出图片，请检查是否可公开访问。
@@ -341,6 +354,22 @@ function ImageControl({
           ) : null}
         </div>
       </div>
+
+      <MediaPickerDialog
+        open={picker}
+        onOpenChange={setPicker}
+        onSelect={(picks) => {
+          const pick = picks[0];
+          if (pick) {
+            onChange(pick.url);
+            // 选完即视作一次输入完成，让「失焦即校验」照常发生
+            onBlur();
+          }
+        }}
+        kind="image"
+        title="选择图片"
+        confirmLabel="使用这张"
+      />
     </div>
   );
 }
@@ -889,6 +918,8 @@ function IconControl({
  *
  * 与 ListControl 的差别只在预览：图片地址是一串看不出所以然的 URL，
  * 不给预览的话，排错了顺序、填错了链接都看不出来。
+ *
+ * 从附件库选时是多选：要配一组图（画廊、轮播）的人不会一张一张开弹窗。
  */
 function ImagesControl({
   path,
@@ -900,6 +931,7 @@ function ImagesControl({
 }: ControlProps) {
   const items = Array.isArray(value) ? value.map((item) => String(item)) : [];
   const update = (next: string[]) => onChange(next);
+  const [picker, setPicker] = useState(false);
 
   return (
     <div className="flex flex-col gap-2">
@@ -930,17 +962,43 @@ function ImagesControl({
           </Button>
         </div>
       ))}
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={disabled}
-        onClick={() => update([...items, ""])}
-        className="self-start"
-      >
-        <Plus aria-hidden="true" />
-        添加一张
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={disabled}
+          onClick={() => setPicker(true)}
+        >
+          <ImagePlus aria-hidden="true" />
+          从附件库选
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={() => update([...items, ""])}
+        >
+          <Plus aria-hidden="true" />
+          填一个地址
+        </Button>
+      </div>
       <ErrorLine path={path} error={error} />
+
+      <MediaPickerDialog
+        open={picker}
+        onOpenChange={setPicker}
+        onSelect={(picks) => {
+          if (picks.length > 0) {
+            // 追加而不是替换：已经配好的几张不该因为再选一张就丢掉
+            update([...items, ...picks.map((pick) => pick.url)]);
+            onBlur();
+          }
+        }}
+        kind="image"
+        multiple
+        title="选择图片"
+        confirmLabel="添加"
+      />
     </div>
   );
 }

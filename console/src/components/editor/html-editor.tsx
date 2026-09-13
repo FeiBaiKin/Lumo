@@ -1,15 +1,22 @@
+import { LinkDialog, type LinkValue } from "@/components/editor/link-dialog";
 import {
   SlashMenu,
   createSlashCommand,
   useSlashMenuState,
 } from "@/components/editor/slash-menu";
+import {
+  type MediaPick,
+  MediaPickerDialog,
+} from "@/components/media/media-picker";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { Range } from "@tiptap/core";
 import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { TableKit } from "@tiptap/extension-table";
+import { NodeSelection } from "@tiptap/pm/state";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -32,7 +39,7 @@ import {
   Table as TableIcon,
   Undo2,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 /**
@@ -69,6 +76,30 @@ export function HtmlEditor({
   toolbarContainer?: HTMLElement | null;
 }) {
   const [slashOpen, setSlashOpen] = useSlashMenuState();
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [linkTarget, setLinkTarget] = useState<LinkTarget | null>(null);
+
+  /**
+   * 斜杠菜单留下的 `/图片` 那段范围。
+   *
+   * 放 ref 而不是 state：选择器确认时会**接着**触发关闭回调，
+   * 两者读到的必须是同一份「还没处理过」的标记。放 state 的话
+   * 关闭回调读到的是上一次渲染的值，于是会把已经删过的范围再删一次 ——
+   * 那时位置已经失效，删掉的是正文里的别的东西。
+   */
+  const pendingRange = useRef<Range | null>(null);
+
+  /** 取走待处理的范围，取一次就清掉：先到的一方负责删它。 */
+  const takeRange = useCallback(() => {
+    const range = pendingRange.current;
+    pendingRange.current = null;
+    return range;
+  }, []);
+
+  const requestImage = useCallback((range: Range) => {
+    pendingRange.current = range;
+    setPickerOpen(true);
+  }, []);
 
   /*
    * 斜杠菜单是一个 TipTap 扩展，而扩展只能在创建编辑器时一次性传入 ——
@@ -76,8 +107,12 @@ export function HtmlEditor({
    * 并把它的开关状态接到上方的 React state 上（面板本身由 SlashMenu 渲染）。
    */
   const slashExtension = useMemo(
-    () => createSlashCommand({ onOpenChange: setSlashOpen }),
-    [setSlashOpen],
+    () =>
+      createSlashCommand({
+        onOpenChange: setSlashOpen,
+        onRequestImage: requestImage,
+      }),
+    [setSlashOpen, requestImage],
   );
 
   const editor = useEditor({
@@ -138,31 +173,110 @@ export function HtmlEditor({
     }
   }, [editor, initialContent]);
 
-  const setLink = useCallback(() => {
+  /**
+   * 打开链接弹窗，并把「当前光标处是什么情况」一并量出来。
+   *
+   * 三种情况在弹窗里长得不一样：光标落在已有链接上（可编辑、可移除）、
+   * 选中了一段文字（只填地址）、什么都没选（连显示文本一起填）。
+   */
+  const openLink = useCallback(() => {
     if (!editor) {
       return;
     }
-    const previous = editor.getAttributes("link").href as string | undefined;
-    // 用 prompt 而不是自建浮层：链接输入是一次性的单字段输入，
-    // 为它写一个弹窗组件不值得（接入附件库时再考虑替换）。
-    const url = window.prompt(
-      "链接地址（留空则移除链接）",
-      previous ?? "https://",
-    );
-    if (url === null) {
-      return;
+    /*
+     * 选中的是图片这类整块节点时，链接**加不上去**——链接是行内标记，
+     * 而节点上挂不住标记。过去（prompt 时代）这种情况下点了确定什么也不会发生，
+     * 看起来像是坏了。这里把光标先移到节点之后，于是它变成「没有选区」，
+     * 走下面连显示文本一起填的那条路：链接落在图片后面，是能预期的结果。
+     */
+    const { selection } = editor.state;
+    if (selection instanceof NodeSelection) {
+      editor.commands.setTextSelection(selection.to);
     }
-    if (url === "") {
-      editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
-    }
-    // 只有 http(s) 与站内相对地址成为链接，与评论模块的白名单同策
-    if (!/^(https?:\/\/|\/)/i.test(url)) {
-      window.alert("只支持 http(s) 链接或站内相对地址（以 / 开头）");
-      return;
-    }
-    editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
+    const attrs = editor.getAttributes("link");
+    const onLink = editor.isActive("link");
+    setLinkTarget({
+      href: typeof attrs.href === "string" ? attrs.href : "",
+      newWindow: attrs.target === "_blank",
+      needsText: editor.state.selection.empty && !onLink,
+      canRemove: onLink,
+    });
   }, [editor]);
+
+  const applyLink = useCallback(
+    (value: LinkValue) => {
+      if (!editor) {
+        return;
+      }
+      // target 显式写 null 而不是省略：省略时 setLink 会保留上一次的值，
+      // 于是「取消勾选新窗口」看起来没生效。
+      const attrs = {
+        href: value.href,
+        target: value.newWindow ? "_blank" : null,
+      };
+      if (value.text) {
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: "text",
+            text: value.text,
+            marks: [{ type: "link", attrs }],
+          })
+          .run();
+      } else {
+        editor.chain().focus().extendMarkRange("link").setLink(attrs).run();
+      }
+      setLinkTarget(null);
+    },
+    [editor],
+  );
+
+  const removeLink = useCallback(() => {
+    editor?.chain().focus().extendMarkRange("link").unsetLink().run();
+    setLinkTarget(null);
+  }, [editor]);
+
+  /** 插入选中的图片。多选时按选中顺序逐张插入。 */
+  const insertImages = useCallback(
+    (picks: MediaPick[]) => {
+      const range = takeRange();
+      if (!editor) {
+        return;
+      }
+      if (range) {
+        // 斜杠菜单唤出的，先把 `/图片` 那段删掉
+        editor.chain().focus().deleteRange(range).run();
+      }
+      for (const pick of picks) {
+        editor
+          .chain()
+          .focus()
+          .setImage({
+            src: pick.url,
+            alt: pick.alt,
+            ...(pick.title ? { title: pick.title } : {}),
+          })
+          .run();
+      }
+      setPickerOpen(false);
+    },
+    [editor, takeRange],
+  );
+
+  /** 关掉选择器。范围还没被取走说明是取消，此时要把 `/图片` 清掉。 */
+  const closePicker = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        const range = takeRange();
+        if (range && editor) {
+          editor.chain().focus().deleteRange(range).run();
+        }
+      }
+      setPickerOpen(open);
+    },
+    [editor, takeRange],
+  );
 
   if (!editor) {
     return (
@@ -172,7 +286,17 @@ export function HtmlEditor({
     );
   }
 
-  const toolbar = <Toolbar editor={editor} onSetLink={setLink} />;
+  const toolbar = (
+    <Toolbar
+      editor={editor}
+      onOpenLink={openLink}
+      onInsertImage={() => {
+        // 工具条唤出的没有 `/图片` 要清理
+        pendingRange.current = null;
+        setPickerOpen(true);
+      }}
+    />
+  );
 
   return (
     <div className="flex flex-col">
@@ -203,17 +327,53 @@ export function HtmlEditor({
 
       {/* 斜杠菜单：输入 / 唤出，键盘可导航 */}
       <SlashMenu open={slashOpen} onClose={() => setSlashOpen(null)} />
+
+      <LinkDialog
+        open={linkTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLinkTarget(null);
+          }
+        }}
+        initial={{
+          href: linkTarget?.href ?? "",
+          newWindow: linkTarget?.newWindow ?? false,
+        }}
+        needsText={linkTarget?.needsText ?? false}
+        onSubmit={applyLink}
+        onRemove={linkTarget?.canRemove ? removeLink : undefined}
+      />
+
+      <MediaPickerDialog
+        open={pickerOpen}
+        onOpenChange={closePicker}
+        onSelect={insertImages}
+        kind="image"
+        multiple
+        title="插入图片"
+        confirmLabel="插入"
+      />
     </div>
   );
 }
 
+/** 打开链接弹窗时光标处的情况。 */
+type LinkTarget = {
+  href: string;
+  newWindow: boolean;
+  needsText: boolean;
+  canRemove: boolean;
+};
+
 /** 工具条：48px 高、居中，按用途分段，段间用竖线分隔（Halo 的 editor-header 同形）。 */
 function Toolbar({
   editor,
-  onSetLink,
+  onOpenLink,
+  onInsertImage,
 }: {
   editor: NonNullable<ReturnType<typeof useEditor>>;
-  onSetLink: () => void;
+  onOpenLink: () => void;
+  onInsertImage: () => void;
 }) {
   const actions = [
     {
@@ -325,12 +485,7 @@ function Toolbar({
       group: 4,
       label: "插入图片",
       icon: ImageIcon,
-      run: () => {
-        const url = window.prompt("图片地址", "https://");
-        if (url && /^(https?:\/\/|\/)/i.test(url)) {
-          editor.chain().focus().setImage({ src: url }).run();
-        }
-      },
+      run: onInsertImage,
       active: false,
     },
     {
@@ -380,10 +535,10 @@ function Toolbar({
       <Button
         variant="ghost"
         size="icon-sm"
-        onClick={onSetLink}
+        onClick={onOpenLink}
         aria-pressed={editor.isActive("link")}
-        aria-label="插入链接"
-        title="插入链接"
+        aria-label={editor.isActive("link") ? "编辑链接" : "插入链接"}
+        title={editor.isActive("link") ? "编辑链接" : "插入链接"}
         className={cn(editor.isActive("link") && "bg-seal-soft text-seal")}
       >
         <LinkIcon aria-hidden="true" />

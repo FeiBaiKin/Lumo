@@ -44,116 +44,137 @@ export type Command = {
   run: (editor: Editor, range: Range) => void;
 };
 
-const COMMANDS: Command[] = [
-  {
-    title: "正文",
-    hint: "普通段落",
-    icon: Type,
-    keywords: "zhengwen text paragraph duanluo p",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).setParagraph().run(),
-  },
-  {
-    title: "一级标题",
-    hint: "文章内的大标题",
-    icon: Heading1,
-    keywords: "h1 biaoti heading yiji",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).setHeading({ level: 1 }).run(),
-  },
-  {
-    title: "二级标题",
-    hint: "小节标题",
-    icon: Heading2,
-    keywords: "h2 biaoti heading erji",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).setHeading({ level: 2 }).run(),
-  },
-  {
-    title: "三级标题",
-    hint: "更细的分节",
-    icon: Heading3,
-    keywords: "h3 biaoti heading sanji",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).setHeading({ level: 3 }).run(),
-  },
-  {
-    title: "无序列表",
-    hint: "圆点列表",
-    icon: List,
-    keywords: "ul liebiao list wuxu",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).toggleBulletList().run(),
-  },
-  {
-    title: "有序列表",
-    hint: "带序号",
-    icon: ListOrdered,
-    keywords: "ol liebiao list youxu shuzi",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
-  },
-  {
-    title: "引用",
-    hint: "引述他人的话",
-    icon: Quote,
-    keywords: "quote yinyong yinwen",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
-  },
-  {
-    title: "代码块",
-    hint: "等宽字体、保留缩进",
-    icon: Code2,
-    keywords: "code daima codeblock",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
-  },
-  {
-    title: "表格",
-    hint: "三行三列，带表头",
-    icon: TableIcon,
-    keywords: "table biaoge",
-    run: (editor, range) =>
-      editor
-        .chain()
-        .focus()
-        .deleteRange(range)
-        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-        .run(),
-  },
-  {
-    title: "图片",
-    hint: "按地址插入",
-    icon: ImageIcon,
-    keywords: "image tupian picture img",
-    run: (editor, range) => {
-      const url = window.prompt("图片地址", "https://");
-      if (url && /^(https?:\/\/|\/)/i.test(url)) {
-        editor.chain().focus().deleteRange(range).setImage({ src: url }).run();
-        return;
-      }
-      // 取消时只把 `/关键字` 删掉，不留一段垃圾文本
-      editor.chain().focus().deleteRange(range).run();
-    },
-  },
-  {
-    title: "分隔线",
-    hint: "一条水平线",
-    icon: Minus,
-    keywords: "hr fengexian line",
-    run: (editor, range) =>
-      editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
-  },
-];
+/**
+ * 需要由编辑器组件承担的动作。
+ *
+ * 「图片」这一项不能在这里就地完成：它要开一个附件选择器，而弹窗是 React 组件，
+ * 活在编辑器组件那一层。故命令表由工厂函数产出，把 `/图片` 的那段范围
+ * 交回去 —— 插入或取消时再由调用方删掉它（取消也要删，否则正文里
+ * 留着一段「/图片」的垃圾文本）。
+ */
+export type SlashHandlers = {
+  requestImage: (range: Range) => void;
+};
 
-function filterCommands(query: string): Command[] {
+function buildCommands(handlers: SlashHandlers): Command[] {
+  return [
+    {
+      title: "正文",
+      hint: "普通段落",
+      icon: Type,
+      keywords: "zhengwen text paragraph duanluo p",
+      run: (editor, range) =>
+        editor.chain().focus().deleteRange(range).setParagraph().run(),
+    },
+    {
+      title: "一级标题",
+      hint: "文章内的大标题",
+      icon: Heading1,
+      keywords: "h1 biaoti heading yiji",
+      run: (editor, range) =>
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .setHeading({ level: 1 })
+          .run(),
+    },
+    {
+      title: "二级标题",
+      hint: "小节标题",
+      icon: Heading2,
+      keywords: "h2 biaoti heading erji",
+      run: (editor, range) =>
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .setHeading({ level: 2 })
+          .run(),
+    },
+    {
+      title: "三级标题",
+      hint: "更细的分节",
+      icon: Heading3,
+      keywords: "h3 biaoti heading sanji",
+      run: (editor, range) =>
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .setHeading({ level: 3 })
+          .run(),
+    },
+    {
+      title: "无序列表",
+      hint: "圆点列表",
+      icon: List,
+      keywords: "ul liebiao list wuxu",
+      run: (editor, range) =>
+        editor.chain().focus().deleteRange(range).toggleBulletList().run(),
+    },
+    {
+      title: "有序列表",
+      hint: "带序号",
+      icon: ListOrdered,
+      keywords: "ol liebiao list youxu shuzi",
+      run: (editor, range) =>
+        editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
+    },
+    {
+      title: "引用",
+      hint: "引述他人的话",
+      icon: Quote,
+      keywords: "quote yinyong yinwen",
+      run: (editor, range) =>
+        editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
+    },
+    {
+      title: "代码块",
+      hint: "等宽字体、保留缩进",
+      icon: Code2,
+      keywords: "code daima codeblock",
+      run: (editor, range) =>
+        editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
+    },
+    {
+      title: "表格",
+      hint: "三行三列，带表头",
+      icon: TableIcon,
+      keywords: "table biaoge",
+      run: (editor, range) =>
+        editor
+          .chain()
+          .focus()
+          .deleteRange(range)
+          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+          .run(),
+    },
+    {
+      title: "图片",
+      hint: "从附件库选，或传一张",
+      icon: ImageIcon,
+      keywords: "image tupian picture img fujian",
+      run: (_editor, range) => handlers.requestImage(range),
+    },
+    {
+      title: "分隔线",
+      hint: "一条水平线",
+      icon: Minus,
+      keywords: "hr fengexian line",
+      run: (editor, range) =>
+        editor.chain().focus().deleteRange(range).setHorizontalRule().run(),
+    },
+  ];
+}
+
+function filterCommands(commands: Command[], query: string): Command[] {
   const q = query.trim().toLowerCase();
   if (!q) {
     // 空输入时列出全部 —— 打开菜单就看到有什么可用
-    return COMMANDS;
+    return commands;
   }
-  return COMMANDS.filter(
+  return commands.filter(
     (command) =>
       command.title.toLowerCase().includes(q) || command.keywords.includes(q),
   );
@@ -172,6 +193,8 @@ export type SlashState = {
 
 type Options = {
   onOpenChange: (state: SlashState | null) => void;
+  /** 「图片」项要开附件选择器，由编辑器组件接手。 */
+  onRequestImage: (range: Range) => void;
 };
 
 /**
@@ -180,7 +203,9 @@ type Options = {
  * 用工厂函数而不是 `Extension.create` 的静态 options：
  * 回调需要闭包捕获 React 的 setState，而 defaultOptions 是模块级的。
  */
-export function createSlashCommand({ onOpenChange }: Options) {
+export function createSlashCommand({ onOpenChange, onRequestImage }: Options) {
+  const commands = buildCommands({ requestImage: onRequestImage });
+
   return Extension.create({
     name: "slashCommand",
 
@@ -193,7 +218,7 @@ export function createSlashCommand({ onOpenChange }: Options) {
           // 否则写下 https://… 里的斜杠也会弹出菜单
           allowSpaces: false,
           startOfLine: false,
-          items: ({ query }) => filterCommands(query),
+          items: ({ query }) => filterCommands(commands, query),
           command: ({ editor, range, props }) => {
             props.run(editor, range);
           },

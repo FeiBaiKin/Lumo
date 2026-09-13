@@ -11,6 +11,7 @@ import {
 import { HtmlEditor } from "@/components/editor/html-editor";
 import { MarkdownEditor } from "@/components/editor/markdown-editor";
 import { PageHeader } from "@/components/layout/page-header";
+import { MediaPickerDialog } from "@/components/media/media-picker";
 import { UnsavedChangesGuard } from "@/components/navigation/unsaved-guard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,10 +60,12 @@ import {
   FileCode2,
   FileText,
   History,
+  Image as ImageIcon,
   ListTree,
   Save,
   Settings,
   Undo2,
+  X,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -223,6 +226,8 @@ function EditorSession({ kind }: { kind: ContentType }) {
   const [switchOpen, setSwitchOpen] = useState(false);
   const [pendingType, setPendingType] = useState<RawType | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 封面图的附件选择器。与设置弹窗并列挂载，不套在它里面。 */
+  const [coverPicker, setCoverPicker] = useState(false);
   const [revisionsOpen, setRevisionsOpen] = useState(false);
   const [restoring, setRestoring] = useState<RevisionSummary | null>(null);
   const [sideTab, setSideTab] = useState("outline");
@@ -1139,25 +1144,51 @@ function EditorSession({ kind }: { kind: ContentType }) {
 
               <SettingRow>
                 <Field>
-                  <FieldLabel htmlFor="content-cover">封面图地址</FieldLabel>
-                  <Input
-                    id="content-cover"
-                    value={coverUrl}
-                    onChange={(e) => {
-                      setCoverUrl(e.target.value);
-                      markDirty();
-                    }}
-                    placeholder="https://… 或 /uploads/…"
-                  />
+                  <FieldLabel htmlFor="content-cover">封面图</FieldLabel>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="content-cover"
+                      value={coverUrl}
+                      onChange={(e) => {
+                        setCoverUrl(e.target.value);
+                        markDirty();
+                      }}
+                      placeholder="https://… 或 /uploads/…"
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setCoverPicker(true)}
+                      className="shrink-0"
+                    >
+                      <ImageIcon aria-hidden="true" />
+                      从附件库选
+                    </Button>
+                  </div>
                   <FieldDescription>
-                    用于列表卡片与社交分享。可以从附件库复制地址。
+                    用于列表卡片与社交分享。也可以直接填地址。
                   </FieldDescription>
                   {coverUrl ? (
-                    <img
-                      src={coverUrl}
-                      alt="封面预览"
-                      className="mt-1 aspect-video w-full max-w-xs rounded-control border border-line object-cover"
-                    />
+                    <div className="mt-1 flex items-start gap-2">
+                      <img
+                        src={coverUrl}
+                        alt="封面预览"
+                        className="aspect-video w-full max-w-xs rounded-control border border-line object-cover"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="清除封面图"
+                        title="清除封面图"
+                        onClick={() => {
+                          setCoverUrl("");
+                          markDirty();
+                        }}
+                        className="hover:text-danger"
+                      >
+                        <X aria-hidden="true" />
+                      </Button>
+                    </div>
                   ) : null}
                 </Field>
               </SettingRow>
@@ -1288,6 +1319,22 @@ function EditorSession({ kind }: { kind: ContentType }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ---- 封面图：从附件库选 ---- */}
+      <MediaPickerDialog
+        open={coverPicker}
+        onOpenChange={setCoverPicker}
+        onSelect={(picks) => {
+          const pick = picks[0];
+          if (pick) {
+            setCoverUrl(pick.url);
+            markDirty();
+          }
+        }}
+        kind="image"
+        title="选择封面图"
+        confirmLabel="用作封面"
+      />
 
       {/* ---- 修订历史 ---- */}
       <Dialog open={revisionsOpen} onOpenChange={setRevisionsOpen}>
