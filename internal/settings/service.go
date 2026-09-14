@@ -517,7 +517,16 @@ func (s *Service) openSecrets(g *Group, values map[string]any) map[string]any {
 		return values
 	}
 	out := maps.Clone(values)
+	// 正常装配下这里必有主密钥——声明了口令字段就必然在 Start 里加载了它。
+	// 但 nil 的 Keyring 一解引用就是 panic，与其把它留给「装配顺序变了」的那天，
+	// 不如和「解不开」同一个待遇：按未设置处理。
 	keyring := s.keyringNow()
+	if keyring == nil {
+		for _, key := range g.secrets {
+			out[key] = ""
+		}
+		return out
+	}
 	for _, key := range g.secrets {
 		raw, ok := out[key].(string)
 		if !ok || !secret.Encrypted(raw) {
