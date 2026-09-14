@@ -8,6 +8,10 @@
  * 这份**自带 DOM 夹板**，不需要服务与数据库——菜单结构由模板产出，
  * 而这里要验的是脚本对着那套结构做了什么，两者之间只隔着 aria-controls 这一个契约。
  *
+ * 悬停那几条要先把 window.matchMedia 换掉：jsdom 没有布局，它一律回 matches:false，
+ * 而 nav.js 靠 (min-width: 641px) 判断「子菜单此刻是不是一个绝对定位的下拉」。
+ * 夹板在这里明确声明「这个窗口宽到够放下拉」，于是悬停那条路才走得到。
+ *
  * 用法：
  *
  *   cd console && node ../internal/theme/builtin/ink/scripts/verify-nav.cjs
@@ -17,7 +21,8 @@
  *
  * 覆盖不到的部分：真实的键盘 Tab 顺序、真实的 CSS 展开动效与布局——
  * jsdom 没有布局引擎，那两项只能在浏览器里人工过一遍
- * （尤其是「没有 JS 时子菜单会不会浮在正文之上」，那条只能靠真浏览器截图看）。
+ * （尤其是「没有 JS 时子菜单会不会浮在正文之上」、以及
+ * 「[hidden] 会不会被桌面那条 display:block 压过」，两条都只能靠真浏览器看）。
  */
 const fs = require("fs");
 const path = require("path");
@@ -91,6 +96,9 @@ const FIXTURE = `<!doctype html>
  * 留 150ms 的余量，比 90 宽出一截，避免慢机器上偶发失败。 */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 150));
 
+/* 悬停收起是「180ms 等待 + 90ms 淡出」两段之和，等的时间要盖过它。 */
+const settleHover = () => new Promise((resolve) => setTimeout(resolve, 400));
+
 /** 等 jsdom 把文档解析完（readyState 变成 complete），再跑主题脚本。 */
 function ready(dom) {
   return new Promise((resolve) => {
@@ -112,6 +120,17 @@ async function main() {
 
   const { window } = dom;
   const { document } = window;
+
+  /* 声明窗口宽度。jsdom 不评估媒体查询，不换掉它，nav.js 里的悬停判断
+   * 永远拿到 matches:false，那几条断言就成了空转的绿灯。 */
+  const realMatchMedia = window.matchMedia
+    ? window.matchMedia.bind(window)
+    : () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  window.matchMedia = (query) =>
+    query === "(min-width: 641px)"
+      ? { matches: true, addEventListener() {}, removeEventListener() {} }
+      : realMatchMedia(query);
+
   window.eval(source);
 
   const buttons = Array.from(document.querySelectorAll(".site-nav-toggle"));
@@ -184,6 +203,49 @@ async function main() {
   );
   await settle();
   check("焦点移出整个导航时收起", subs[0].hidden === true);
+
+  /* 悬停：鼠标进入一级项即展开、移出即收起。
+   * jsdom 没有 PointerEvent 构造器，故造一个普通事件再补上 pointerType ——
+   * nav.js 判的正是这一个字段。 */
+  const pointer = (type, pointerType, target) => {
+    const event = new window.Event(type, { bubbles: false });
+    event.pointerType = pointerType;
+    target.dispatchEvent(event);
+  };
+
+  console.log("悬停展开与收起（鼠标）");
+  pointer("pointerenter", "mouse", buttons[0].closest("li"));
+  check(
+    "鼠标进入一级项即展开",
+    subs[0].hidden === false && expanded(buttons[0]),
+    "不用先点一下",
+  );
+  pointer("pointerleave", "mouse", buttons[0].closest("li"));
+  await settleHover();
+  check("鼠标移出即收起", subs[0].hidden === true);
+
+  console.log("穿过页眉下内边距时不闪断");
+  // 下拉与一级项之间隔着一截空隙，指针中途既不在 li 上也不在子菜单上。
+  // 没有那段延迟，这里会看到「关掉又打开」的一闪。
+  pointer("pointerenter", "mouse", buttons[0].closest("li"));
+  pointer("pointerleave", "mouse", buttons[0].closest("li"));
+  await new Promise((resolve) => setTimeout(resolve, 90));
+  pointer("pointerenter", "mouse", buttons[0].closest("li"));
+  check("离开后 90ms 内又回来，仍然是展开的", subs[0].hidden === false);
+  pointer("pointerleave", "mouse", buttons[0].closest("li"));
+  await settleHover();
+  check("再次移出后收起", subs[0].hidden === true);
+
+  console.log("触摸不触发悬停");
+  // 手指没有「悬停」，触摸设备会在按下之前先发一次 pointerenter。
+  // 挡不住它的话，菜单会抢在 click 之前自己弹开，而 click 又把它关掉——
+  // 用户看到的是「点一下闪一下，什么都没打开」。
+  pointer("pointerenter", "touch", buttons[1].closest("li"));
+  check("触摸的 pointerenter 不展开", subs[1].hidden === true);
+  click(buttons[1]);
+  check("触摸设备靠点击展开", subs[1].hidden === false && expanded(buttons[1]));
+  click(buttons[1]);
+  await settle();
 
   console.log("焦点仍在 nav 内时不收起");
   click(buttons[0]);

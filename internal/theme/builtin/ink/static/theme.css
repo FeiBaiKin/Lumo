@@ -57,6 +57,11 @@
   --border: var(--rule);
   --link: var(--seal);
   --error: var(--vermilion);
+  /*
+   * 模态弹窗背后的那一层。用墨而不是纯黑：纸被墨罩住一层，而不是被涂黑，
+   * 这与「三个颜色各自对应一种真实物质」是同一条纪律——第四个色号不许出现。
+   */
+  --scrim: color-mix(in srgb, var(--ink) 22%, transparent);
 
   /*
    * 中文字体分层（agent.md §11.1）：
@@ -84,6 +89,8 @@
     --link: #7fa6e8;
     /* 暗底上的朱砂要提亮，否则 #9b2c24 落在近黑上几乎看不见 */
     --error: #de7a70;
+    /* 墨罩在墨上等于没罩，暗色下改用真正的黑，否则弹窗与背景分不出层次 */
+    --scrim: color-mix(in srgb, #000 45%, transparent);
   }
 }
 :root[data-scheme="dark"] {
@@ -95,6 +102,7 @@
   --border: #2e322d;
   --link: #7fa6e8;
   --error: #de7a70;
+  --scrim: color-mix(in srgb, #000 45%, transparent);
 }
 
 /* ---------- 基础 ---------- */
@@ -378,6 +386,16 @@ button {
     border-radius: 0 0 var(--radius) var(--radius);
   }
 
+  /*
+   * 这条必须在这里再声明一次。上面那条 `.site-nav[data-nav="js"] .site-nav-sub`
+   * 的选择器特异性是（0,3,0），高过块外那条 `.site-nav-sub[hidden]` 的（0,2,0）——
+   * 少了它，脚本设的 hidden 在桌面上完全失效，二级菜单一直摊开着收不起来。
+   * 站上报的就是这个现象：看着像「默认展开」，其实是关不掉。
+   */
+  .site-nav[data-nav="js"] .site-nav-sub[hidden] {
+    display: none;
+  }
+
   .site-nav[data-nav="js"] .site-nav-sub li {
     padding-left: 0;
     border-left: 0;
@@ -394,7 +412,15 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s6);
-  align-items: baseline;
+  /*
+   * 与页眉的中线对齐，而不是跟导航一起走基线。
+   *
+   * 基线对齐的含义是「底边坐在基线上」——对文字是对的，对一枚方印不是：
+   * 印的底边落在基线上，它那 1.75rem 的高度就整块吊到文字上方去了（实测高了 8px）。
+   * 匿名时这一条不改变任何东西：两个链接的盒子一样高，居中与基线对齐结果相同。
+   */
+  align-self: center;
+  align-items: center;
 }
 
 .site-account a {
@@ -407,9 +433,30 @@ button {
   color: var(--fg);
 }
 
-/* 已登录时显示名是当前身份，比导航项更实一档 */
-.site-account .site-account-name {
-  color: var(--fg);
+/*
+ * 已登录：一枚方印，盖显示名的第一个字。
+ *
+ * 用印而不是圆形头像：本主题一个圆形元素都没有，凭空出现的圆会立刻成为
+ * 整页唯一一个圆角到极致的东西；而印正是既有插图系统的原件
+ * （partials/seal.html，与「无头像作者」同源），这里只是把它缩小到 1.75rem。
+ * 印面那个 -5° 的倾斜保留——印章没人能盖得完全正。
+ *
+ * 它是指向 /account 的普通链接，没有下拉：页眉只有二级菜单那一处非模态弹出层。
+ */
+.site-avatar {
+  display: inline-flex;
+}
+
+.site-avatar .seal,
+.site-avatar img {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius);
+}
+
+.site-avatar img {
+  display: block;
+  object-fit: cover;
 }
 
 /* ---------- 首页与列表 ---------- */
@@ -1673,6 +1720,113 @@ button {
   border-top: var(--rule-w) solid var(--border);
 }
 
+/* ---------- 账户弹窗：页眉翻开的第二只角 ---------- */
+/*
+ * 几何与二级菜单同源：顶边正好落在页眉那条分隔线上（那条线充当它的上边框），
+ * 右下圆角 2px，无阴影。宽度 20em —— 与账户页那块表单同宽，
+ * 因为它就是同一块纸被翻到了页眉右下角，不是另做的一张浮起的卡片。
+ *
+ * --auth-top 与 --auth-gutter 由 auth.js 在打开时按页眉与正文栏的**实测**位置写入。
+ * 「对齐页眉底线」这件事只能量：页眉高度取决于站名是否换行、导航有几项，
+ * 写死一个数值在窄屏或长站名上就会错位。两个变量都有兜底值，脚本没跑到也能显示。
+ */
+.auth-dialog {
+  --auth-top: var(--s16);
+  --auth-gutter: var(--s6);
+
+  position: fixed;
+  inset: var(--auth-top) var(--auth-gutter) auto auto;
+  /*
+   * 上限用 --s6 乘二而不是 --auth-gutter：宽屏时 gutter 是「视口到正文栏的距离」，
+   * 可能有好几百像素，两边各减一个会算出负宽度。窄屏上正文栏的左右留白正好就是 --s6。
+   */
+  width: min(calc(20em + var(--s6) * 2), calc(100% - var(--s6) * 2));
+  max-height: calc(100% - var(--auth-top) - var(--s4));
+  margin: 0;
+  padding: var(--s6);
+  overflow: auto;
+  background: var(--bg);
+  color: var(--fg);
+  /* 顶边不画：借用页眉那条既有分隔线，与二级菜单同一条理由 */
+  border: var(--rule-w) solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+/* 墨色薄薄罩住纸面，而不是把页面涂黑 */
+.auth-dialog::backdrop {
+  background: var(--scrim);
+}
+
+.auth-dialog[open] {
+  animation: auth-dialog-in 120ms ease-out;
+}
+
+@keyframes auth-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * 三个标签替换独立页上的 <h1>：登录页是「标题 + 表单块」，
+ * 弹窗里就是「标签 + 同一块表单」。
+ *
+ * 左内边距 --s6 是为了与下面表单的字段对齐——面板自带 --s6 的装订线内边距，
+ * 标签落在装订线右侧，与「标题在面板之上」的独立页版式正好对得上。
+ *
+ * 它们是 <a href="/login">，不是按钮：没有 JS 时点下去就是去那个页面，
+ * 弹出层只是把这一步拦下来换成了原地换内容。激活态靠 aria-current，
+ * 只改颜色不加下划线——输入框那条底线是这几个页面唯一的大胆之处，不给它找对手。
+ */
+.auth-dialog-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s6);
+  margin-bottom: var(--s6);
+  padding-left: var(--s6);
+  font-size: 0.9375rem;
+}
+
+.auth-dialog-tabs a {
+  color: var(--fg-faint);
+  text-decoration: none;
+}
+
+.auth-dialog-tabs a:hover {
+  color: var(--fg-muted);
+}
+
+.auth-dialog-tabs a[aria-current="true"] {
+  color: var(--fg);
+}
+
+/* 弹窗里的面板宽度交给弹窗，装订线保留 */
+.auth-dialog .auth-panel {
+  max-width: none;
+}
+
+/*
+ * 页面上的那行出口链接（「忘记密码」「还没有账户？注册」「返回登录」）
+ * 在弹窗里是重复的：上面的标签栏就是它们。藏掉的是重复，不是功能。
+ */
+.auth-dialog .auth-alt {
+  display: none;
+}
+
+/* 取页面面板的那一小段时间。留着空面板会像坏掉了 */
+.auth-dialog-loading {
+  margin: 0;
+  padding-left: var(--s6);
+  color: var(--fg-faint);
+  font-size: 0.875rem;
+}
+
 /*
  * 窄屏：表单块降为 100% 宽。
  * 20em 在 390px 上只比可用宽度小一点点，再窄一点（320px 的老设备）就会横向溢出，
@@ -1686,7 +1840,9 @@ button {
     max-width: 100%;
   }
 
-  .auth-panel {
+  .auth-panel,
+  .auth-dialog-tabs,
+  .auth-dialog-loading {
     padding-left: var(--s4);
   }
 }
