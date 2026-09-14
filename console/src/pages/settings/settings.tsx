@@ -171,6 +171,7 @@ export function SettingsPage({ defaultGroup }: { defaultGroup?: string } = {}) {
               key={current.name}
               schema={schema}
               values={values}
+              secretSet={current.secretSet ?? undefined}
               serverErrors={errors}
               serverMessages={messages}
               onSubmit={async (next) => {

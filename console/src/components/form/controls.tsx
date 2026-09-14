@@ -29,8 +29,14 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { CheckboxRow, Switch } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
-import { ImageOff, ImagePlus, Plus, X } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { Eye, EyeOff, ImageOff, ImagePlus, Plus, X } from "lucide-react";
+import {
+  type ReactNode,
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 /**
  * 通用表单的控件渲染。
@@ -92,6 +98,93 @@ function textProps(
     "aria-invalid": error ? (true as const) : undefined,
     "aria-describedby": error ? `${fieldId(path)}-error` : undefined,
   };
+}
+
+/**
+ * 「哪些口令字段已经设过值」。
+ *
+ * 口令本身不会回传（服务端把它抹成空串，见 internal/settings 的 Group.Mask），
+ * 所以「已设置」这件事只能另行告诉界面。少了它，站长面对的是一片空白，
+ * 分不出「没存过」和「存过但没显示」——而这两件事的下一步动作正好相反。
+ *
+ * 用 context 而不是逐层传参：字段是递归渲染的，一个只对顶层有效的参数
+ * 要穿过分组渲染器一路传到底，传参的路径比它的意义还长。
+ */
+export const SecretSetContext = createContext<readonly string[]>([]);
+
+/**
+ * 口令 / 密钥。
+ *
+ * 三态与后端一一对应：空串 = 不改动，null = 清除，非空 = 设为该值。
+ * 界面上必须把「现在到底是哪一态」说清楚，否则站长填完口令再点一次保存，
+ * 会不确定自己刚才是存进去了、还是把原来那把抹掉了。
+ */
+function SecretControl({
+  path,
+  schema,
+  value,
+  error,
+  disabled,
+  onChange,
+  onBlur,
+}: ControlProps) {
+  const [revealed, setRevealed] = useState(false);
+  const stored = useContext(SecretSetContext).includes(path);
+  const clearing = value === null;
+  const text = typeof value === "string" ? value : "";
+
+  const status = clearing
+    ? "保存后将清除已存的口令"
+    : stored && text === ""
+      ? "已设置，留空即不改动"
+      : text !== ""
+        ? "保存后生效"
+        : "尚未设置";
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <Input
+          {...textProps(path, schema, error)}
+          type={revealed ? "text" : "password"}
+          value={text}
+          disabled={disabled}
+          // 口令框的占位提示只说状态，不写「请输入口令」——
+          // 那行字在「已设置」的情形下反而会让人以为必须重新填一遍。
+          placeholder={stored ? "留空即不改动" : ""}
+          autoComplete="new-password"
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={disabled}
+          aria-pressed={revealed}
+          aria-label={revealed ? "隐藏口令" : "显示口令"}
+          onClick={() => setRevealed((v) => !v)}
+        >
+          {revealed ? <EyeOff /> : <Eye />}
+        </Button>
+        {stored && !clearing ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => {
+              onChange(null);
+              onBlur();
+            }}
+          >
+            清除
+          </Button>
+        ) : null}
+      </div>
+      <FieldDescription>{status}</FieldDescription>
+    </div>
+  );
 }
 
 function TextControl({
@@ -669,6 +762,8 @@ function renderControl(
       return <TextareaControl {...control} />;
     case "code":
       return <CodeControl {...control} />;
+    case "secret":
+      return <SecretControl {...control} />;
     case "number":
       return <NumberControl {...control} />;
     case "slider":

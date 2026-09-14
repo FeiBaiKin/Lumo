@@ -15,15 +15,32 @@ const GroupStorage = "storage"
 
 // StorageSettings 是 storage 分组的有效值。
 //
-// 注意此处**没有**密钥字段：S3 访问密钥只从环境变量读取（见 EnvS3AccessKey）。
+// 两个密钥字段是解密后的明文，只在这条链路里流转：设置服务 → S3 客户端。
+// 出接口时它们恒为空串，见 settings.Group.Mask。
 type StorageSettings struct {
 	Driver      string `json:"driver"`
 	S3Endpoint  string `json:"s3Endpoint"`
 	S3Bucket    string `json:"s3Bucket"`
+	S3AccessKey string `json:"s3AccessKey"`
+	S3SecretKey string `json:"s3SecretKey"`
 	S3Region    string `json:"s3Region"`
 	S3PathStyle bool   `json:"s3PathStyle"`
 	S3UseSSL    bool   `json:"s3UseSsl"`
 	S3PublicURL string `json:"s3PublicUrl"`
+}
+
+// Credentials 返回本次连接该用的访问密钥：后台填过就用后台的，否则回退环境变量。
+//
+// 只有一边填了就用一边、另一边去环境变量里凑是不行的——那样拼出来的是一个
+// 谁也没配过的密钥对，错误信息还会指向「密钥不对」，而真正的问题是少填了一格。
+func (st *StorageSettings) Credentials() (accessKey, secretKey string, err error) {
+	if st.S3AccessKey != "" || st.S3SecretKey != "" {
+		if st.S3AccessKey == "" || st.S3SecretKey == "" {
+			return "", "", ErrMissingS3Credentials
+		}
+		return st.S3AccessKey, st.S3SecretKey, nil
+	}
+	return S3Credentials()
 }
 
 // s3Only 表达「只在选了 S3 时才成立」。
@@ -49,6 +66,11 @@ var storageForm = form.New(
 		form.Text("s3Endpoint").Label("服务地址").Required().MaxLen(256).Default("").ShowIf(s3Only).
 			Help("如 https://s3.example.com 或 minio.internal:9000；带协议时以协议为准"),
 		form.Text("s3Bucket").Label("存储桶").Required().MaxLen(128).Default("").ShowIf(s3Only),
+		form.Secret("s3AccessKey").Label("访问密钥").MaxLen(256).Default("").ShowIf(s3Only).
+			Help("加密存放，保存后不再回显；留空表示不改动"),
+		form.Secret("s3SecretKey").Label("秘密密钥").MaxLen(256).Default("").ShowIf(s3Only).
+			Help("加密存放，保存后不再回显。"+
+				"两个密钥都留空且从未设置过时，回退环境变量 "+EnvS3AccessKey+" / "+EnvS3SecretKey),
 		form.Text("s3Region").Label("区域").MaxLen(64).Default("us-east-1").ShowIf(s3Only).
 			Help("兼容实现大多不支持区域探测，建议显式填写"),
 		form.Bool("s3PathStyle").Label("路径寻址").Default(false).ShowIf(s3Only).
@@ -65,7 +87,7 @@ func storageGroup() app.SettingGroup {
 	return app.SettingGroup{
 		Name:        GroupStorage,
 		Label:       "附件存储",
-		Description: "附件存放位置。S3 访问密钥只从环境变量 " + EnvS3AccessKey + " 与 " + EnvS3SecretKey + " 读取，不保存在此处。",
+		Description: "附件存放位置。S3 访问密钥加密存放、不回传，留空即不改动。",
 		Order:       20,
 		Icon:        "hard-drive",
 		Form:        storageForm,

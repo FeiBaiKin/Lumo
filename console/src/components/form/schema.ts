@@ -24,6 +24,7 @@ export type WidgetKind =
   | "text"
   | "textarea"
   | "code"
+  | "secret"
   | "select"
   | "radio"
   | "multiselect"
@@ -149,6 +150,7 @@ const WIDGETS = new Set<string>([
   "text",
   "textarea",
   "code",
+  "secret",
   "select",
   "radio",
   "multiselect",
@@ -301,6 +303,7 @@ export function validateField(
     widget === "text" ||
     widget === "textarea" ||
     widget === "code" ||
+    widget === "secret" ||
     widget === "color"
   ) {
     const text = String(value);

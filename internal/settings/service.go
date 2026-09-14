@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -18,6 +20,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/form"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
+	"github.com/FeiBaiKin/lumo/internal/secret"
 	"github.com/FeiBaiKin/lumo/internal/slug"
 )
 
@@ -60,6 +63,8 @@ type Group struct {
 	schema   *jsonschema.Schema
 	doc      map[string]any
 	defaults map[string]any
+	// secrets 是本分组里以 form.Secret 声明的顶层字段名：进库前加密，出接口前抹掉。
+	secrets []string
 }
 
 // SchemaDoc 返回解析后的 Schema 文档，供接口输出。
@@ -73,9 +78,26 @@ type cacheEntry struct {
 	expires time.Time
 }
 
+// ValueStore 是设置值的持久化接口。
+//
+// 抽成接口不是为了将来换数据库——它的实现只有 Store 一个——而是为了让
+// 「口令进库是密文」这类断言能在纯内存的测试里验：真去连一个 PG 才能验加密，
+// 代价是这条最要紧的性质在最常见的开发环境里跑不起来。
+type ValueStore interface {
+	// Load 读取分组的已保存值；从未保存过时返回空对象。
+	Load(ctx context.Context, name string) (map[string]any, error)
+	// Save 覆盖式写入分组的值。
+	Save(ctx context.Context, name string, values map[string]any) error
+}
+
 // Service 是设置的读写入口：持有已注册分组、校验器与缓存。
 type Service struct {
-	store *Store
+	store ValueStore
+
+	// keyring 与 logger 由模块在 Start 时注入：主密钥的加载会碰文件系统，
+	// 而没有任何分组声明口令字段的站点不该在磁盘上多出一个必须备份的密钥文件。
+	keyring *secret.Keyring
+	logger  *slog.Logger
 
 	mu     sync.RWMutex
 	groups map[string]*Group
@@ -84,8 +106,37 @@ type Service struct {
 }
 
 // NewService 构造 Service；store 可为 nil（仅做 Schema 校验的场景）。
-func NewService(store *Store) *Service {
+func NewService(store ValueStore) *Service {
 	return &Service{store: store, groups: map[string]*Group{}, cache: map[string]cacheEntry{}}
+}
+
+// SetKeyring 注入主密钥，供口令字段加解密。须在开始服务之前调用。
+func (s *Service) SetKeyring(k *secret.Keyring) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.keyring = k
+}
+
+// SetLogger 注入日志器；口令解不开时靠它留一条线索。
+func (s *Service) SetLogger(l *slog.Logger) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.logger = l
+}
+
+// HasSecrets 报告已注册分组里有没有口令字段。
+//
+// 模块据此决定要不要去加载主密钥：没有口令字段就不碰密钥文件，
+// 免得每个只装了本站的目录里都躺着一个没人知道该不该备份的 secret.key。
+func (s *Service) HasSecrets() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, name := range s.order {
+		if len(s.groups[name].secrets) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // RegisterGroups 编译并登记分组。任一分组的 Schema 或 Defaults 不合法即整体失败：
@@ -101,6 +152,13 @@ func (s *Service) RegisterGroups(groups []app.SettingGroup) error {
 		}
 		if _, dup := s.groups[g.Name]; dup {
 			return fmt.Errorf("settings: 分组 %q 重复注册", g.Name)
+		}
+		// 口令字段一旦出现在 Public 白名单里，前台就能读到它——
+		// 这是配置事故里最容易发生也最不该发生的一种，在注册这一刻直接拦下。
+		for _, key := range g.secrets {
+			if slices.Contains(g.Public, key) {
+				return fmt.Errorf("settings: 分组 %q 把口令字段 %q 列进了 Public，前台会读到它", g.Name, key)
+			}
 		}
 		s.groups[g.Name] = g
 		s.order = append(s.order, g.Name)
@@ -134,6 +192,7 @@ func compileGroup(decl *app.SettingGroup) (*Group, error) {
 		schema:       validator.schema,
 		doc:          validator.Doc(),
 		defaults:     defaults,
+		secrets:      decl.Form.SecretKeys(),
 	}
 	// 缺省值必须自洽：模块作者把缺省值写成不合自身约束时，
 	// 站长打开设置页会看到一堆无法保存的初始值。
@@ -330,7 +389,7 @@ func (s *Service) Effective(ctx context.Context, name string) (map[string]any, e
 		}
 		stored = loaded
 	}
-	values := merge(g.defaults, stored)
+	values := merge(g.defaults, s.openSecrets(g, stored))
 
 	s.mu.Lock()
 	s.cache[name] = cacheEntry{values: values, expires: time.Now().Add(cacheTTL)}
@@ -354,27 +413,176 @@ func (s *Service) Get(ctx context.Context, name string, out any) error {
 	return nil
 }
 
-// Update 用给定值覆盖分组：先与缺省值合并成完整对象，校验通过后整体保存并返回有效值。
-func (s *Service) Update(ctx context.Context, name string, values map[string]any) (map[string]any, error) {
+// Update 用给定值覆盖分组：先与缺省值合并成完整对象，校验通过后整体保存。
+//
+// **不返回有效值**：有效值里含解密后的口令，返回它等于把明文口令递给每一个调用方，
+// 而接口要的是抹掉口令的视图（见 Group.Mask）。少一个返回值就少一条泄漏路径。
+func (s *Service) Update(ctx context.Context, name string, values map[string]any) error {
 	g, ok := s.Group(name)
 	if !ok {
-		return nil, ErrUnknownGroup
+		return ErrUnknownGroup
 	}
-	effective := merge(g.defaults, values)
-	if err := g.validate(effective); err != nil {
-		return nil, err
+	resolved, err := s.resolveSecrets(ctx, g, values)
+	if err != nil {
+		return err
+	}
+	// 校验的是明文：Schema 与 Check 声明的是「口令长什么样」，
+	// 拿密文去校验的话，口令一存进去就再也过不了自己的规则。
+	effective := merge(g.defaults, resolved)
+	// 写成独立语句而不是 if 的初始化子句：那里新声明 err 会遮住上面这个，
+	// 而下面还要用它接 sealSecrets 的结果；不新声明又会招来 sloppyReassign。
+	err = g.validate(effective)
+	if err != nil {
+		return err
 	}
 	if s.store == nil {
-		return nil, errors.New("settings: 未配置存储，无法写入")
+		return errors.New("settings: 未配置存储，无法写入")
 	}
-	if err := s.store.Save(ctx, name, effective); err != nil {
-		return nil, err
+	sealed, err := s.sealSecrets(g, effective)
+	if err != nil {
+		return err
+	}
+	if err := s.store.Save(ctx, name, sealed); err != nil {
+		return err
 	}
 
 	s.mu.Lock()
 	delete(s.cache, name)
 	s.mu.Unlock()
-	return maps.Clone(effective), nil
+	return nil
+}
+
+// resolveSecrets 定下本次提交里每个口令字段最终要存的值。
+//
+// 三态是刻意的，为的是让「不改动」成为缺省行为：
+// 缺席或空串 = 保持原值（表单上那个框本来就是空的，把空当成「清空」会让
+// 每次改别的字段都顺手抹掉口令），JSON null = 清除，非空串 = 设为该值。
+func (s *Service) resolveSecrets(ctx context.Context, g *Group, values map[string]any) (map[string]any, error) {
+	if len(g.secrets) == 0 {
+		return values, nil
+	}
+	current, err := s.Effective(ctx, g.Name)
+	if err != nil {
+		return nil, err
+	}
+	out := maps.Clone(values)
+	for _, key := range g.secrets {
+		raw, present := out[key]
+		switch {
+		case present && raw == nil:
+			out[key] = ""
+		case !present || raw == "":
+			out[key] = current[key]
+		default:
+			if _, ok := raw.(string); !ok {
+				return nil, &ValidationError{Details: []httpx.ErrorDetail{{
+					Location: "body." + key, Message: "口令必须是文本"}}}
+			}
+		}
+	}
+	return out, nil
+}
+
+// sealSecrets 在写库前把口令字段换成密文。
+func (s *Service) sealSecrets(g *Group, values map[string]any) (map[string]any, error) {
+	if len(g.secrets) == 0 {
+		return values, nil
+	}
+	keyring := s.keyringNow()
+	if keyring == nil {
+		return nil, errors.New("settings: 分组声明了口令字段，但没有加载主密钥，拒绝以明文写入")
+	}
+	out := maps.Clone(values)
+	for _, key := range g.secrets {
+		plain, ok := out[key].(string)
+		if !ok || plain == "" {
+			continue
+		}
+		sealed, err := keyring.Seal(plain)
+		if err != nil {
+			return nil, fmt.Errorf("加密设置 %s 的 %s: %w", g.Name, key, err)
+		}
+		out[key] = sealed
+	}
+	return out, nil
+}
+
+// openSecrets 在读库后把口令字段换回明文。
+//
+// 解不开时按「未设置」处理并记一条 warn，**不让它变成错误**：
+// 密钥文件被换掉之后，站长打开设置页要能填回口令——这里返回错误的话，
+// 整页会变成 500，他连重填的入口都没有了。
+func (s *Service) openSecrets(g *Group, values map[string]any) map[string]any {
+	if len(g.secrets) == 0 {
+		return values
+	}
+	out := maps.Clone(values)
+	keyring := s.keyringNow()
+	for _, key := range g.secrets {
+		raw, ok := out[key].(string)
+		if !ok || !secret.Encrypted(raw) {
+			continue
+		}
+		plain, err := keyring.Unseal(raw)
+		if err != nil {
+			if logger := s.loggerNow(); logger != nil {
+				logger.Warn("设置里的口令解不开，按未设置处理，请在后台重新填写",
+					slog.String("group", g.Name), slog.String("field", key), slog.Any("error", err))
+			}
+			out[key] = ""
+			continue
+		}
+		out[key] = plain
+	}
+	return out
+}
+
+// keyringNow 取当前主密钥；未注入时为 nil。
+func (s *Service) keyringNow() *secret.Keyring {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.keyring
+}
+
+// loggerNow 取当前日志器；未注入时为 nil。
+func (s *Service) loggerNow() *slog.Logger {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.logger
+}
+
+// Mask 抹掉口令字段的值，返回抹过的副本与其中确有值的字段名。
+//
+// 「确有值」这件事必须单独告诉界面：抹完之后每个口令字段都是空串，
+// 而站长需要知道库里到底存没存过——否则他无从判断要不要重填。
+func (g *Group) Mask(values map[string]any) (masked map[string]any, set []string) {
+	if len(g.secrets) == 0 {
+		return values, nil
+	}
+	set = make([]string, 0, len(g.secrets))
+	masked = maps.Clone(values)
+	for _, key := range g.secrets {
+		if plain, ok := masked[key].(string); ok && plain != "" {
+			set = append(set, key)
+		}
+		masked[key] = ""
+	}
+	return masked, set
+}
+
+// RejectSecrets 拒绝在作用域设置（主题、插件）里声明的口令字段。
+//
+// 那些设置的存法与站点设置不同，加解密没有接进去；放任它们声明 Secret
+// 会得到一个「界面上写着不回传、库里其实躺着明文」的假象，比直接不支持更糟。
+func RejectSecrets(scope string, f *form.Form) error {
+	if f == nil {
+		return nil
+	}
+	if keys := f.SecretKeys(); len(keys) > 0 {
+		return fmt.Errorf("%s 不支持口令字段 %s：作用域设置不进加密存储，请改用环境变量或站点设置",
+			scope, strings.Join(keys, "、"))
+	}
+	return nil
 }
 
 // Public 返回各分组中标记为公开的字段，供前台与登录页使用。

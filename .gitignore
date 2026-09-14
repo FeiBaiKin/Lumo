@@ -8,6 +8,8 @@ internal/console/dist/*
 
 # 运行时数据（工作目录）
 /data/
+# 主密钥：正常只会在 data/ 下，但测试偶尔会把它落到别处，落了也不能入库
+secret.key
 
 # 内部工作文档（仅本地，不入库）
 /agent.md

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
@@ -35,22 +34,22 @@ func TestStorageGroupDefaultsPassOwnSchema(t *testing.T) {
 	}
 }
 
-// TestStorageSchemaHasNoSecretFields 是一条硬性约束：
-// 设置会随备份、日志与接口响应流出，长期有效的对象存储密钥绝不能出现在这里。
+// TestStorageSecretsAreDeclared 盯住密钥字段的唯一合法写法：form.Secret。
 //
-// 检查的是编译出的整份 Schema（含每个字段的标题与说明文字），
-// 因此「顺手加一个密钥输入框」和「在说明里提示填密钥」都会被抓到。
-func TestStorageSchemaHasNoSecretFields(t *testing.T) {
+// 这条替代了此前那条「storage 表单里不许出现密钥字段」的硬性约束。那条规则挡住了密钥，
+// 也把站长挡在了 SSH 里——改一次密钥要登服务器、改环境变量、重启进程（agent.md §9）。
+// 现在要守的是另外两件事：密钥必须以 Secret 声明（否则接口会把它原样回传给浏览器），
+// 且不得出现在 Public 白名单里（否则前台就能读到）。
+func TestStorageSecretsAreDeclared(t *testing.T) {
 	t.Parallel()
 
-	raw, err := json.Marshal(storageForm.Doc())
-	if err != nil {
-		t.Fatalf("Schema 无法序列化: %v", err)
+	want := []string{"s3AccessKey", "s3SecretKey"}
+	if got := storageForm.SecretKeys(); !slices.Equal(got, want) {
+		t.Fatalf("storage 的口令字段应为 %v，实际 %v", want, got)
 	}
-	schema := strings.ToLower(string(raw))
-	for _, word := range []string{"secret", "accesskey", "password", "credential"} {
-		if strings.Contains(schema, word) {
-			t.Errorf("storage 表单不应出现 %q 一类的密钥字段", word)
+	for _, key := range want {
+		if slices.Contains(storageGroup().Public, key) {
+			t.Errorf("%s 出现在 Public 白名单里，前台会读到它", key)
 		}
 	}
 }

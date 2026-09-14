@@ -810,9 +810,19 @@
             "description": "JSON Schema 2020-12 子集 + x-widget",
             "type": "object"
           },
+          "secretSet": {
+            "description": "确实已设置口令的字段名；口令本身不回传",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "values": {
             "additionalProperties": {},
-            "description": "当前有效值：缺省值被已保存值覆盖",
+            "description": "当前有效值：缺省值被已保存值覆盖，口令字段恒为空串",
             "type": "object"
           }
         },
@@ -824,7 +834,8 @@
           "public",
           "schema",
           "defaults",
-          "values"
+          "values",
+          "secretSet"
         ],
         "type": "object"
       },

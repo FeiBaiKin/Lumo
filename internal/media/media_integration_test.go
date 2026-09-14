@@ -346,7 +346,7 @@ func TestMediaEndToEnd(t *testing.T) {
 	})
 }
 
-// TestMediaStorageSettings 验证存储设置分组随模块注册，且不含任何密钥字段。
+// TestMediaStorageSettings 验证存储设置分组随模块注册，且密钥字段不回传明文。
 func TestMediaStorageSettings(t *testing.T) {
 	s := newStack(t)
 	admin := s.Bearer(t, "admin", perm.RoleAdmin)
@@ -356,10 +356,18 @@ func TestMediaStorageSettings(t *testing.T) {
 	if values["driver"] != media.DriverLocal {
 		t.Errorf("默认驱动应为 local，实际 %v", values["driver"])
 	}
-	for key := range values {
-		if strings.Contains(strings.ToLower(key), "secret") || strings.Contains(strings.ToLower(key), "accesskey") {
-			t.Errorf("设置里不应出现密钥字段 %q", key)
+	// 两个密钥字段是 2026-09-14 加进来的：此前「设置里不许有密钥字段」，
+	// 那条规则把密钥和站长一起挡在了后台外面（agent.md §9）。现在要守的是
+	// 「字段在、值恒空」——后台填得进去，接口吐不出来。
+	for _, key := range []string{"s3AccessKey", "s3SecretKey"} {
+		if v, ok := values[key]; !ok {
+			t.Errorf("密钥字段 %q 不在设置里，后台上就填不了", key)
+		} else if v != "" {
+			t.Errorf("%s 回传了值：%v", key, v)
 		}
+	}
+	if set, _ := body["secretSet"].([]any); len(set) != 0 {
+		t.Errorf("尚未设置任何密钥，secretSet 应为空，实际 %v", set)
 	}
 
 	// 选 s3 却不填地址与桶名，应逐条报错且不改动已保存值。
@@ -373,5 +381,18 @@ func TestMediaStorageSettings(t *testing.T) {
 	after := mustStatus(t, req(t, s, http.MethodGet, consolePrefix+"/settings/storage", "", admin), http.StatusOK)
 	if v, _ := after["values"].(map[string]any); v["driver"] != media.DriverLocal {
 		t.Errorf("校验失败不应改动已保存值，实际 %v", v["driver"])
+	}
+
+	// 填上密钥：响应里仍是空串，另由 secretSet 说明「已设置」。
+	// 界面靠这条区分「没存过」和「存过但没显示」——两者在输入框里长得一样，
+	// 而该做的下一步正好相反。
+	saved := mustStatus(t, req(t, s, http.MethodPut, consolePrefix+"/settings/storage",
+		`{"driver":"local","s3AccessKey":"AKIA_TEST","s3SecretKey":"secret_test"}`, admin), http.StatusOK)
+	if v, _ := saved["values"].(map[string]any); v["s3SecretKey"] != "" {
+		t.Errorf("保存响应回传了密钥：%v", v)
+	}
+	set, _ := saved["secretSet"].([]any)
+	if len(set) != 2 {
+		t.Errorf("secretSet = %v，期望两个密钥都在里面", set)
 	}
 }

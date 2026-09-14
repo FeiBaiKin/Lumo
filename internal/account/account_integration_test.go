@@ -84,7 +84,7 @@ func configure(t *testing.T, stack *testsupport.Stack, group string, values map[
 	if svc == nil {
 		t.Fatal("设置服务未装配")
 	}
-	if _, err := svc.Update(context.Background(), group, values); err != nil {
+	if err := svc.Update(context.Background(), group, values); err != nil {
 		t.Fatalf("更新设置分组 %s 失败: %v", group, err)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -78,6 +79,7 @@ func checkGroup(t *testing.T, group *app.SettingGroup, doc, defaults map[string]
 		field, _ := props[key].(map[string]any)
 		checkField(t, group.Name, key, field, widgets)
 	}
+	checkSecrets(t, group, props)
 
 	// 每个字段都要有缺省值：否则表单首次打开时该字段是空的，
 	// 而「空」与「未设置」在多数控件上分不出来。
@@ -95,6 +97,38 @@ func checkGroup(t *testing.T, group *app.SettingGroup, doc, defaults map[string]
 	}
 
 	checkSections(t, group.Name, doc, props)
+}
+
+// credentialName 是「这个字段名看着像凭据」的判据。
+//
+// 拿名字当判据是不得已：声明里没有任何一个关键字能保证作者想的是「这是口令」。
+// 但漏网的代价很大——一个叫 s3SessionToken 的字段若用 form.Text 声明，
+// 它会连密文都不加就进库、还照原样回传给浏览器，而界面上看不出任何区别。
+var credentialName = regexp.MustCompile(`(?i)(password|passwd|secret|accesskey|apikey|token|credential)`)
+
+// checkSecrets 盯住凭据字段：要么以 Secret 声明，要么进 Public 白名单被拒。
+//
+// 两条都是「声明错了不会报错、只会静默泄漏」的性质，所以放在契约测试里，
+// 让新增凭据字段的人在这里被拦一次（agent.md §5）。
+func checkSecrets(t *testing.T, group *app.SettingGroup, props map[string]any) {
+	t.Helper()
+
+	declared := map[string]bool{}
+	for _, key := range group.Form.SecretKeys() {
+		declared[key] = true
+	}
+	for _, key := range sortedKeys(props) {
+		if !credentialName.MatchString(key) || declared[key] {
+			continue
+		}
+		t.Errorf("[%s.%s] 名字看着是凭据却不是用 form.Secret 声明的——它会明文入库并原样回传接口，"+
+			"要么改成 form.Secret，要么换个不叫这个名字的字段名", group.Name, key)
+	}
+	for key := range declared {
+		if slices.Contains(group.Public, key) {
+			t.Errorf("[%s.%s] 口令字段被列进了 Public，前台会读到它", group.Name, key)
+		}
+	}
 }
 
 // checkField 核对单个字段。
@@ -247,14 +281,14 @@ func allWidgets(t *testing.T) []string {
 	t.Helper()
 	out := []string{
 		string(form.WidgetText), string(form.WidgetTextarea), string(form.WidgetCode),
-		string(form.WidgetSelect), string(form.WidgetRadio),
+		string(form.WidgetSecret), string(form.WidgetSelect), string(form.WidgetRadio),
 		string(form.WidgetMultiselect), string(form.WidgetColor), string(form.WidgetImage),
 		string(form.WidgetImages), string(form.WidgetDate), string(form.WidgetIcon),
 		string(form.WidgetNumber), string(form.WidgetSlider), string(form.WidgetSwitch),
 		string(form.WidgetList), string(form.WidgetRepeater), string(form.WidgetGroup),
 	}
-	if len(out) < 17 {
-		t.Fatalf("internal/form 的控件常量少了：只列出 %d 个，期望 17 个。"+
+	if len(out) < 18 {
+		t.Fatalf("internal/form 的控件常量少了：只列出 %d 个，期望 18 个。"+
 			"新增控件时请一并更新这里", len(out))
 	}
 	return out

@@ -241,7 +241,9 @@ func (s *Service) sendOnce(ctx context.Context, msg *Message) error {
 // sender 返回与当前设置匹配的发信器，配置未变时复用。
 func (s *Service) sender(ctx context.Context) (Sender, error) {
 	cfg := s.Settings(ctx)
-	password := Password()
+	// 口令算进 cfg 的一部分再进缓存键：换口令就是要重建发信器，
+	// 而这个比较是结构体相等，只要口令在结构体里，这一条就自动成立。
+	password := cfg.Credential()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

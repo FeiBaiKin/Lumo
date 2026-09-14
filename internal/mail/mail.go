@@ -53,6 +53,6 @@ type Sender interface {
 // ErrDisabled 表示未启用发信。
 var ErrDisabled = errors.New("未启用邮件发送")
 
-// ErrMissingPassword 表示配置了用户名却没有口令环境变量。
+// ErrMissingPassword 表示配置了用户名却没有任何口令可用。
 var ErrMissingPassword = fmt.Errorf(
-	"已配置 SMTP 用户名但未设置 %s（口令只走环境变量，不入库）", EnvSMTPPassword)
+	"已配置 SMTP 用户名但没有口令：请在「设置 → 邮件发送」里填写，或设置环境变量 %s", EnvSMTPPassword)

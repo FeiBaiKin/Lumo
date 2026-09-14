@@ -75,7 +75,8 @@ type groupView struct {
 	Public      []string       `json:"public" doc:"可经 Public 平面读取的字段"`
 	Schema      map[string]any `json:"schema" doc:"JSON Schema 2020-12 子集 + x-widget"`
 	Defaults    map[string]any `json:"defaults"`
-	Values      map[string]any `json:"values" doc:"当前有效值：缺省值被已保存值覆盖"`
+	Values      map[string]any `json:"values" doc:"当前有效值：缺省值被已保存值覆盖，口令字段恒为空串"`
+	SecretSet   []string       `json:"secretSet" doc:"确实已设置口令的字段名；口令本身不回传"`
 }
 
 type groupInput struct {
@@ -112,6 +113,10 @@ func (h *Handler) view(ctx context.Context, g *Group) (groupView, error) {
 	if public == nil {
 		public = []string{}
 	}
+	// 口令字段在这里抹掉。抹的位置刻意选在接口视图这一层，而不是 Service 里：
+	// Service 的有效值还要喂给 mail、media 这些模块去发信、去连对象存储，
+	// 在那里抹掉等于它们也拿不到口令。
+	masked, secretSet := g.Mask(values)
 	return groupView{
 		Name:        g.Name,
 		Label:       g.Label,
@@ -120,7 +125,8 @@ func (h *Handler) view(ctx context.Context, g *Group) (groupView, error) {
 		Public:      public,
 		Schema:      g.SchemaDoc(),
 		Defaults:    g.DefaultValues(),
-		Values:      values,
+		Values:      masked,
+		SecretSet:   secretSet,
 	}, nil
 }
 
@@ -154,7 +160,7 @@ func (h *Handler) update(ctx context.Context, in *groupUpdateInput) (*groupOutpu
 	if !ok {
 		return nil, huma.Error404NotFound(ErrUnknownGroup.Error())
 	}
-	if _, err := h.service.Update(ctx, in.Group, in.Body); err != nil {
+	if err := h.service.Update(ctx, in.Group, in.Body); err != nil {
 		var verr *ValidationError
 		if errors.As(err, &verr) {
 			details := make([]error, 0, len(verr.Details))

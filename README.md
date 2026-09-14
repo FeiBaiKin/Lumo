@@ -206,8 +206,11 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 - **评论**：匿名访客的唯一写入面，一律先全文转义再做有限富化；邮箱 / IP / UA 不进前台响应
 
 生产环境务必设置 `LUMO_SECURE_COOKIES=true`（HTTPS）与 `LUMO_TRUSTED_PROXIES`（可信反代 CIDR）。
-口令与密钥只走环境变量（`LUMO_DATABASE_DSN`、`LUMO_S3_ACCESS_KEY` / `LUMO_S3_SECRET_KEY`、
-`LUMO_SMTP_PASSWORD`），不进配置文件、不进设置表。
+**数据库 DSN 只走环境变量 `LUMO_DATABASE_DSN`**，不进配置文件。
+SMTP 口令与 S3 访问密钥在后台「设置 → 邮件发送 / 附件存储」里填，**加密入库**
+（AES-256-GCM，主密钥是 `data/secret.key`，可用 `LUMO_SECRET_KEY` 指定），接口不回传明文。
+**备份必须连 `data/` 一起备份**：只恢复数据库，库里那些口令解不开。
+`LUMO_SMTP_PASSWORD` / `LUMO_S3_ACCESS_KEY` / `LUMO_S3_SECRET_KEY` 保留为兜底，后台没填时生效。
 
 ## 配置
 
@@ -219,7 +222,7 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 - `dataDir` — 运行时工作目录（`themes` / `uploads` / `cache` / `logs` / `backups`）
 
 普通请求（默认 10 MiB）与 multipart 上传（默认 64 MiB）是**两条独立上限**，按内容类型区分。
-附件存储在后台「设置 → 附件存储」切换本地或 S3，密钥只从环境变量读取。
+附件存储在后台「设置 → 附件存储」切换本地或 S3，密钥在同一页上填。
 
 ## 开发
 

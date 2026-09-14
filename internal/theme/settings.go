@@ -79,6 +79,11 @@ func compileSettings(themeName string, decl *SettingsDecl) (*compiledSettings, e
 	out := &compiledSettings{byName: make(map[string]*compiledGroup, len(groups))}
 	for i := range groups {
 		g := groups[i]
+		// 主题设置走的是 theme_settings 表，加解密没接进去。放行 Secret 字段会得到
+		// 一个「界面上写着不回传、库里其实躺着明文」的假象，比直接不支持更糟。
+		if err := settings.RejectSecrets("主题 "+themeName+" 的设置", g.Form); err != nil {
+			return nil, fmt.Errorf("%w：%w", ErrInvalidPackage, err)
+		}
 		validator, err := settings.NewValidator(themeName+"."+g.Name, g.Form)
 		if err != nil {
 			return nil, fmt.Errorf("%w：%w", ErrInvalidPackage, err)

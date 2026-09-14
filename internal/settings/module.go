@@ -7,10 +7,12 @@ package settings
 import (
 	"context"
 	"embed"
+	"fmt"
 	"io/fs"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/secret"
 )
 
 //go:embed migrations/*.sql
@@ -36,7 +38,9 @@ func (m *Module) Name() string { return Name }
 // Register 实现 app.Module：装配存储与服务，并登记为共享服务供后续模块取用。
 func (m *Module) Register(a *app.App) error {
 	m.app = a
-	var store *Store
+	// 声明成接口类型而不是 *Store：nil 的 *Store 装进接口之后不等于 nil，
+	// 于是 s.store != nil 会成立，接着就是一次空指针解引用。
+	var store ValueStore
 	if db := a.DB(); db != nil {
 		store = NewStore(db.DB)
 	}
@@ -74,8 +78,24 @@ func (m *Module) Routes(r app.Router) {
 }
 
 // Start 实现 app.Starter：此时全部模块已注册，汇总它们声明的分组并编译。
+//
+// 主密钥在编译之后才加载：只有真有分组声明了口令字段时才需要碰密钥文件。
+// 反过来的话，每个只装了本站的目录里都会多出一个 secret.key——多一个「这文件要不要
+// 跟着备份」的问题，而多数站点根本没有任何需要加密的口令。
 func (m *Module) Start(context.Context) error {
-	return m.service.RegisterGroups(m.app.Settings())
+	if err := m.service.RegisterGroups(m.app.Settings()); err != nil {
+		return err
+	}
+	m.service.SetLogger(m.app.Logger())
+	if !m.service.HasSecrets() {
+		return nil
+	}
+	keyring, err := secret.Open(m.app.Config().DataDir)
+	if err != nil {
+		return fmt.Errorf("settings: 加载主密钥: %w", err)
+	}
+	m.service.SetKeyring(keyring)
+	return nil
 }
 
 // From 取回设置服务；settings 模块未装配（或尚未注册）时返回 nil。

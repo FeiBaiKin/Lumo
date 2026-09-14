@@ -322,7 +322,7 @@ func (s *Service) build(cfg *StorageSettings) (Storage, error) {
 	if cfg.Driver != DriverS3 {
 		return s.newLocal()
 	}
-	accessKey, secretKey, err := S3Credentials()
+	accessKey, secretKey, err := cfg.Credentials()
 	if err != nil {
 		return nil, err
 	}

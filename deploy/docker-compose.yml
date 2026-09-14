@@ -81,10 +81,12 @@ services:
       LUMO_LOG_LEVEL: ${LUMO_LOG_LEVEL:-info}
       # 容器日志默认走 json，便于 docker logs 之后的采集。
       LUMO_LOG_FORMAT: ${LUMO_LOG_FORMAT:-json}
-      # SMTP 口令与 S3 密钥同样只走环境变量，用到时在 .env 里填：
+      # SMTP 口令与 S3 密钥在后台填，加密后存进 /data（见下面的卷）。
+      # 这三个是兜底，后台没填时生效；多实例部署用 LUMO_SECRET_KEY 统一主密钥。
       LUMO_SMTP_PASSWORD: ${LUMO_SMTP_PASSWORD:-}
       LUMO_S3_ACCESS_KEY: ${LUMO_S3_ACCESS_KEY:-}
       LUMO_S3_SECRET_KEY: ${LUMO_S3_SECRET_KEY:-}
+      LUMO_SECRET_KEY: ${LUMO_SECRET_KEY:-}
     ports:
       # 默认只绑回环：TLS 交给前面的反向代理。
       # 要直接对公网暴露，把 .env 里的 LUMO_BIND 改成 0.0.0.0:8080 —— 那是明文 HTTP，

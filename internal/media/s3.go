@@ -22,16 +22,19 @@ const (
 	schemeHTTPS = "https"
 )
 
-// S3 凭据只走环境变量（agent.md §9）：设置表会随备份、日志与接口响应流出，
-// 长期有效的对象存储密钥绝不能进库。
+// S3 凭据的兜底环境变量（agent.md §9）。
+//
+// 密钥的正规去处是后台「附件存储」里的两个字段（加密入库、接口不回传），
+// 环境变量留给不便改后台的部署。两处都有时以后台为准。
 const (
 	EnvS3AccessKey = "LUMO_S3_ACCESS_KEY"
 	EnvS3SecretKey = "LUMO_S3_SECRET_KEY"
 )
 
-// ErrMissingS3Credentials 表示未配置 S3 凭据环境变量。
+// ErrMissingS3Credentials 表示没有可用的 S3 凭据。
 var ErrMissingS3Credentials = fmt.Errorf(
-	"未设置 %s 与 %s，无法使用 S3 存储（密钥只走环境变量，不入库）", EnvS3AccessKey, EnvS3SecretKey)
+	"没有对象存储访问密钥：请在「设置 → 附件存储」里填写，或设置环境变量 %s 与 %s",
+	EnvS3AccessKey, EnvS3SecretKey)
 
 // S3Config 是 S3 兼容存储的连接参数，来自 storage 设置分组（密钥除外）。
 type S3Config struct {
@@ -55,7 +58,7 @@ type S3Storage struct {
 	urlPrefix string
 }
 
-// S3Credentials 从环境变量读取访问密钥。
+// S3Credentials 从环境变量读取访问密钥，作为后台未配置时的兜底。
 func S3Credentials() (accessKey, secretKey string, err error) {
 	accessKey = strings.TrimSpace(os.Getenv(EnvS3AccessKey))
 	secretKey = strings.TrimSpace(os.Getenv(EnvS3SecretKey))

@@ -14,9 +14,11 @@ import (
 // GroupMail 是发信设置分组。
 const GroupMail = "mail"
 
-// EnvSMTPPassword 是 SMTP 口令的环境变量名（agent.md §9）。
+// EnvSMTPPassword 是 SMTP 口令的兜底环境变量（agent.md §9）。
 //
-// 与数据库 DSN、S3 密钥同一处置：设置会随备份、日志与接口响应流出，口令不进库。
+// 口令的正规去处是后台「邮件发送」里的口令字段（加密入库、接口不回传），
+// 环境变量留给不便改后台的部署：容器编排里注入密钥、或者口令由运维统管。
+// 两处都有时以后台为准——站长刚在界面上填的那一个才是他此刻的意图。
 const EnvSMTPPassword = "LUMO_SMTP_PASSWORD"
 
 // 传输加密方式。
@@ -31,19 +33,24 @@ const (
 
 // Settings 是 mail 分组的有效值。
 //
-// 注意此处**没有**口令字段：口令只从环境变量读取。
+// Password 是解密后的明文，只在这条链路里流转：设置服务 → 发信器。
+// 出接口（GET /api/v1/console/settings/mail）时它恒为空串，见 settings.Group.Mask。
 type Settings struct {
 	Enabled     bool   `json:"enabled"`
 	Host        string `json:"host"`
 	Port        int    `json:"port"`
 	Username    string `json:"username"`
+	Password    string `json:"password"`
 	Encryption  string `json:"encryption"`
 	FromAddress string `json:"fromAddress"`
 	FromName    string `json:"fromName"`
 }
 
-// Password 从环境变量读取 SMTP 口令。
-func Password() string {
+// Credential 返回本次发信该用的口令：后台填过就用后台的，否则回退环境变量。
+func (st *Settings) Credential() string {
+	if st.Password != "" {
+		return st.Password
+	}
 	return os.Getenv(EnvSMTPPassword)
 }
 
@@ -55,7 +62,7 @@ var mailForm = form.New(
 	form.NewSection("发信",
 		form.Bool("enabled").Label("启用邮件发送").Default(false).
 			Help("关闭时评论通知等邮件不会发出，也不会重试"),
-	).Describe("口令只从环境变量 "+EnvSMTPPassword+" 读取，不保存在这里"),
+	),
 
 	form.NewSection("SMTP 服务器",
 		form.Text("host").Label("SMTP 服务器").Required().MaxLen(256).Default("").
@@ -64,7 +71,11 @@ var mailForm = form.New(
 			ShowIf(form.Eq("enabled", true)),
 		form.Text("username").Label("用户名").MaxLen(256).Default("").
 			ShowIf(form.Eq("enabled", true)).
-			Help("留空表示服务器不需要认证；口令请设环境变量 "+EnvSMTPPassword),
+			Help("留空表示服务器不需要认证"),
+		form.Secret("password").Label("口令").MaxLen(512).Default("").
+			ShowIf(form.Eq("enabled", true)).
+			Help("加密存放，保存后不再回显；留空表示不改动。"+
+				"留空且从未设置过时回退环境变量 "+EnvSMTPPassword),
 		form.Select("encryption",
 			form.Opt(EncryptionNone, "不加密"),
 			form.Opt(EncryptionStartTLS, "STARTTLS"),
@@ -88,7 +99,7 @@ func group() app.SettingGroup {
 	return app.SettingGroup{
 		Name:        GroupMail,
 		Label:       "邮件发送",
-		Description: "SMTP 发信配置。口令只从环境变量 " + EnvSMTPPassword + " 读取，不保存在此处。",
+		Description: "SMTP 发信配置。口令加密存放、不回传，留空即不改动。",
 		Order:       30,
 		Icon:        "mail",
 		Form:        mailForm,

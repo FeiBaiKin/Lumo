@@ -197,12 +197,13 @@ func TestParseEndpoint(t *testing.T) {
 	}
 }
 
-// TestS3CredentialsRequireEnv 验证缺少环境变量时给出明确错误，而不是静默用空密钥去连。
-func TestS3CredentialsRequireEnv(t *testing.T) {
+// TestS3Credentials 验证密钥的来源顺序与「缺一个就报错」。
+func TestS3Credentials(t *testing.T) {
 	t.Setenv(EnvS3AccessKey, "")
 	t.Setenv(EnvS3SecretKey, "")
+
 	if _, _, err := S3Credentials(); !errors.Is(err, ErrMissingS3Credentials) {
-		t.Fatalf("应返回 ErrMissingS3Credentials，实际 %v", err)
+		t.Fatalf("缺少环境变量应返回 ErrMissingS3Credentials，实际 %v", err)
 	}
 
 	t.Setenv(EnvS3AccessKey, "AKIA_TEST")
@@ -213,6 +214,19 @@ func TestS3CredentialsRequireEnv(t *testing.T) {
 	}
 	if access != "AKIA_TEST" || secret != "secret_test" {
 		t.Errorf("读到的密钥不正确：%q / %q", access, secret)
+	}
+
+	// 后台填了就以后台为准，环境变量只是兜底。
+	stored := StorageSettings{S3AccessKey: "AKIA_STORED", S3SecretKey: "secret_stored"}
+	if access, secret, err := stored.Credentials(); err != nil || access != "AKIA_STORED" || secret != "secret_stored" {
+		t.Errorf("后台填的密钥应优先：%q / %q, err %v", access, secret, err)
+	}
+
+	// 只填一边是个配置错误。若这时去环境变量里凑另一边，拼出来的是一个
+	// 谁也没配过的密钥对，报错还会指向「密钥不对」——真正的问题是少填了一格。
+	half := StorageSettings{S3AccessKey: "AKIA_STORED"}
+	if _, _, err := half.Credentials(); !errors.Is(err, ErrMissingS3Credentials) {
+		t.Errorf("只填一个密钥时应报错，实际 %v", err)
 	}
 }
 

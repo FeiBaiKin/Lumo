@@ -135,6 +135,21 @@ func (f *Form) Field(key string) (*Field, bool) {
 	return nil, false
 }
 
+// SecretKeys 返回以 Secret 声明的顶层字段名。
+//
+// 只认顶层：口令字段没有嵌套在对象里的用法，而支持嵌套会让「路径 → 值」的
+// 加解密与掩码都要跟着走点号，收益为零而分支翻倍。
+func (f *Form) SecretKeys() []string {
+	_, _, _ = f.Build()
+	out := make([]string, 0, 2)
+	for _, field := range f.top {
+		if field.spec.widget == WidgetSecret {
+			out = append(out, field.key)
+		}
+	}
+	return out
+}
+
 // compileLocked 按来源分派编译。调用方须已持锁。
 func (f *Form) compileLocked() {
 	if f.compiled {

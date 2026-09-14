@@ -1,6 +1,7 @@
 import {
   type RenderGroup,
   SchemaField,
+  SecretSetContext,
   fieldId,
 } from "@/components/form/controls";
 import {
@@ -55,12 +56,23 @@ export type SchemaFormProps = {
   submitLabel?: string;
   /** 值未变化时禁用提交按钮。默认开启。 */
   disableWhenPristine?: boolean;
+  /**
+   * 已经设过值的口令字段名。
+   *
+   * 口令不回传（服务端抹成空串），界面靠这份名单把「已设置」画出来。
+   * 数组的引用要稳定：每次渲染新建一个 `[]` 会让下面的 context 每次都是新值。
+   */
+  secretSet?: readonly string[] | undefined;
   /** 值的比较器。设置值都是 JSON 可序列化的，默认用序列化结果比较。 */
   isEqual?: (a: FormValues, b: FormValues) => boolean;
   className?: string;
 };
 
 const serialize = (values: FormValues) => JSON.stringify(values);
+
+// 稳定的空数组：默认值写成 `[]` 会让 context 每次渲染都是新引用，
+// 下游的 useMemo 依赖它时每次都失效。
+const EMPTY_SECRETS: readonly string[] = [];
 
 export function SchemaForm({
   schema,
@@ -72,6 +84,7 @@ export function SchemaForm({
   submitLabel = "保存",
   disableWhenPristine = true,
   isEqual,
+  secretSet,
   className,
 }: SchemaFormProps) {
   /*
@@ -214,7 +227,7 @@ export function SchemaForm({
     }
   }
 
-  return (
+  const formNode = (
     <form
       onSubmit={handleSubmit}
       className={cn("flex flex-col gap-5", className)}
@@ -353,6 +366,14 @@ export function SchemaForm({
         ) : null}
       </div>
     </form>
+  );
+
+  // context 只包一层，不改变表单自身的结构：指令类字段要读「这个口令设过没有」，
+  // 而它藏在递归渲染的深处，逐层传参传不到。
+  return (
+    <SecretSetContext.Provider value={secretSet ?? EMPTY_SECRETS}>
+      {formNode}
+    </SecretSetContext.Provider>
   );
 }
 

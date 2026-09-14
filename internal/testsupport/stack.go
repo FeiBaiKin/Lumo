@@ -54,6 +54,13 @@ func NewStackWith(t *testing.T, db *database.DB, opts *StackOptions) *Stack {
 	t.Helper()
 	ctx := context.Background()
 
+	// 调用方没指定工作目录（零值，或 config.Default() 那个项目相对的 ./data）
+	// 时换成一个临时目录：附件、主题缓存与主密钥都会往 DataDir 里落文件，
+	// 用默认值等于让测试往源码目录里写，跑一遍就在仓库里留下 data/、secret.key。
+	if opts.Config.DataDir == "" || opts.Config.DataDir == "./data" {
+		opts.Config.DataDir = t.TempDir()
+	}
+
 	// 走与 serve 相同的构造路径（auth.NewCore），而不是在这里再拼一遍：
 	// 拼两遍的话，模块从 app 容器里取到的实例与测试自己用的那个是两批，
 	// 限流额度、会话开关这些「必须只有一份」的东西会在测试里悄悄分叉。

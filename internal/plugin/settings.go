@@ -97,6 +97,12 @@ func loadSettings(fsys fs.FS) ([]SettingsGroup, error) {
 			return nil, fmt.Errorf("%w：设置分组 %q：%w", ErrInvalidPackage, name, err)
 		}
 
+		// 插件设置走的是 plugin_settings 表，加解密没接进去，理由同主题设置。
+		// 这里复用上面那个 err 而不是新声明一个：新声明会在这一层把它遮住，
+		// 后面几处 `err != nil` 检查的就成了另一个变量。
+		if err = settings.RejectSecrets("插件设置分组 "+name, parsed); err != nil {
+			return nil, fmt.Errorf("%w：%w", ErrInvalidPackage, err)
+		}
 		validator, err := settings.NewValidator(name, parsed)
 		if err != nil {
 			return nil, fmt.Errorf("%w：设置分组 %q：%w", ErrInvalidPackage, name, err)
