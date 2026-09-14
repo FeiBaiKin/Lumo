@@ -37,12 +37,18 @@
   <link rel="stylesheet" href="{{ $.Theme.AssetsBase }}/fonts/display-font.css">
   {{ end }}{{ end }}
   <link rel="stylesheet" href="{{ .Theme.AssetsBase }}/theme.css">
-  {{- /* 印色可在后台改，作为内联变量覆盖样式表里的默认值。 */}}
+  {{- /*
+  站长能改的配色只有一个值：主题色。悬停、活动、淡底与暗色下的提亮全部
+  由 theme.css 从它算出来（见那里的 --seal 一节），所以这里注入的是 --theme 而不是 --seal。
+
+  栏宽注入的是**纯数字**（多少个汉字），由 theme.css 乘以正文字号得到真实宽度。
+  不注入 em：em 的基准随所在元素的字号漂移，页眉与正文上的同一个 36em 不是同一个宽度。
+  */}}
   {{ with .Theme.Settings.appearance }}
   <style>
     :root {
-      {{ with .seal }}--seal: {{ . }};{{ end }}
-      {{ with .contentWidth }}--measure: {{ . }}em;{{ end }}
+      {{ with .seal }}--theme: {{ . }};{{ end }}
+      {{ with .contentWidth }}--measure-ch: {{ . }};{{ end }}
       {{ if .webFont }}--font-display: "Noto Serif SC", var(--font-serif);{{ end }}
     }
   </style>

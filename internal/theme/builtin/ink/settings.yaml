@@ -3,7 +3,7 @@
 groups:
   - name: appearance
     label: 外观
-    description: 配色与版式。三个颜色各自对应一种真实物质：纸、墨、印。
+    description: 配色与版式。配色只需选一个主题色，其余的颜色由它自动算出来。
     order: 0
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -18,9 +18,9 @@ groups:
           description: auto 跟随访客的系统设置
         seal:
           type: string
-          title: 印色
+          title: 主题色
           x-widget: color
-          description: 链接与交互态的颜色。默认取蓝黑墨水，纸底对比度 9.5:1
+          description: 链接、当前项与焦点的颜色。悬停态、淡底与暗色下的提亮由它自动算出，不必分别设置；深浅过头时会自动调整到正文能读清的程度
           maxLength: 32
         contentWidth:
           type: integer
@@ -30,8 +30,8 @@ groups:
           description: 单位为汉字个数。36 对应拉丁 65–75 字符，是长文阅读的舒适区间
         showMeta:
           type: boolean
-          title: 显示侧栏元信息
-          description: 宽屏时在正文左外侧显示日期、分类与阅读时长
+          title: 显示文章元信息
+          description: 在文章标题下方显示发表日期、作者、分类与篇幅
         showReadingTime:
           type: boolean
           title: 显示阅读时长

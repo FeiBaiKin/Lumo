@@ -32,16 +32,39 @@
   }
 
   /*
-   * 给密码框加「显示 / 隐藏」。
+   * 「显示密码」那个按钮用的两个图标，取自 Lucide 的 eye 与 eye-off
+   * ——与页眉的下拉箭头、弹窗的关闭键同一套（全站只用这一套图标）。
+   * 只写路径，外框与描边属性由 CSS 的 .field-reveal svg 统一给。
+   */
+  var ICON_EYE =
+    '<path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/>' +
+    '<circle cx="12" cy="12" r="3"/>';
+  var ICON_EYE_OFF =
+    '<path d="M10.73 5.08a10.74 10.74 0 0 1 11.2 6.57 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-1.44 2.49"/>' +
+    '<path d="M14.08 14.16a3 3 0 0 1-4.24-4.24"/>' +
+    '<path d="M17.48 17.5a10.75 10.75 0 0 1-15.42-5.15 1 1 0 0 1 0-.7 10.75 10.75 0 0 1 4.45-5.14"/>' +
+    '<path d="m2 2 20 20"/>';
+
+  function revealIcon(revealed) {
+    return (
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      (revealed ? ICON_EYE_OFF : ICON_EYE) +
+      "</svg>"
+    );
+  }
+
+  /*
+   * 给密码框加「显示密码」。
    *
    * 由脚本注入而不是写在模板里：没有 JS 时那个按钮点了不会有任何反应，
    * 而一个不响应的控件比没有这个控件更糟。
    *
-   * 是两个字，不是一只眼睛图标——这套语言里只有线与字（agent.md §11.2），
-   * 一个描边图标会引入第三种材质。也不用 aria-pressed：按钮上的字本身就在说
-   * 下一步会发生什么，两者同时给，读屏会念出「隐藏 已按下」这种绕口的东西。
+   * 位置在输入框右端内侧，与 Console 搜索框里的清除键是同一种做法。
+   * 第二版把它放在标签那一行的右端、写成「显示 / 隐藏」两个字，
+   * 那是「只有线与字」那条纪律的产物；纪律随设计一起作废了。
    *
-   * 独立页面与弹窗共用这一段：两处的表单本来就是同一张。
+   * 无障碍：按钮本身没有可见文字，故 aria-label 说明它是什么，
+   * aria-pressed 说明它现在处于哪一态——图标按钮必须两样都给。
    */
   function enhancePasswords(root) {
     if (!root || !root.querySelectorAll) {
@@ -50,31 +73,33 @@
     var inputs = root.querySelectorAll('input[type="password"]');
     Array.prototype.forEach.call(inputs, function (input) {
       var field = input.closest ? input.closest(".auth-field") : null;
-      var label = field && field.querySelector("label");
-      if (!field || !label || field.querySelector(".auth-reveal")) {
+      if (!field || field.querySelector(".field-reveal")) {
         return;
       }
-      /* 用 <span> 而不是 <div> 包这一行：字段外层是 <p>，
+      /* 用 <span> 而不是 <div> 包输入框：字段外层是 <p>，
        * 里面出现块级元素在 HTML 解析规则下会把那个 <p> 就地截断。
        * 这里是往已有 DOM 里插，不会重新解析，但留着一处不合法的结构
        * 迟早会在某个把它序列化再解析的地方（比如本文件里的 DOMParser）咬回来。 */
-      var row = document.createElement("span");
-      row.className = "auth-field-label";
-      label.parentNode.insertBefore(row, label);
-      row.appendChild(label);
+      var shell = document.createElement("span");
+      shell.className = "field-control";
+      input.parentNode.insertBefore(shell, input);
+      shell.appendChild(input);
 
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "auth-reveal";
-      button.textContent = "显示";
+      button.className = "field-reveal";
+      button.setAttribute("aria-label", "显示密码");
+      button.setAttribute("aria-pressed", "false");
+      button.innerHTML = revealIcon(false);
       button.addEventListener("click", function () {
         var reveal = input.type === "password";
         input.type = reveal ? "text" : "password";
-        button.textContent = reveal ? "隐藏" : "显示";
+        button.setAttribute("aria-pressed", reveal ? "true" : "false");
+        button.innerHTML = revealIcon(reveal);
         // 焦点还给输入框：切换是为了继续打字，不是为了停在按钮上
         input.focus();
       });
-      row.appendChild(button);
+      shell.appendChild(button);
     });
   }
 

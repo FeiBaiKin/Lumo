@@ -56,7 +56,7 @@
 
         <p class="auth-hint">保存后其他设备上的登录会全部失效，需要重新登录。</p>
         <p class="auth-actions comment-form-actions">
-          <button type="submit">保存</button>
+          <button class="btn btn-primary" type="submit">保存</button>
         </p>
       </form>
     </div>
@@ -67,7 +67,7 @@
     */ -}}
     <form class="account-logout" method="post" action="/logout">
       <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">
-      <p class="comment-form-actions"><button type="submit">退出登录</button></p>
+      <p class="comment-form-actions"><button class="btn btn-secondary" type="submit">退出登录</button></p>
     </form>
     {{ end }}
   </section>

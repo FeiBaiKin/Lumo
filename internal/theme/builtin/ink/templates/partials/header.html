@@ -68,8 +68,9 @@
     账户入口（agent.md §11.5）。
 
     匿名：「登录」「注册」两个入口，点了打开账户弹窗（没有 JS 时就是去那个页面）。
-    已登录：一枚方印，盖显示名的第一个字；用户上传过头像图就用图。
-    用印而不是圆形头像——本主题一个圆形元素都没有，而印是既有插图系统的原件。
+    已登录：一枚圆头像，落显示名的第一个字；用户上传过头像图就用图。
+    第二版这里是一枚方印（主题的插图原件，刻意不用圆）。改成圆是跟着 Console 的规矩走：
+    人用圆、物用方角。方印退回它真正该在的地方——空状态与归档页头的插图。
     头像是普通链接，没有下拉：退出登录在账户页上，页眉只保留二级菜单那一处非模态弹出层。
 
     关掉它只是不显示入口，/account 仍然可以直接用地址访问。
@@ -101,14 +102,16 @@
       <a class="site-avatar" href="/account"
          aria-label="账户：{{ .DisplayName }}">
         {{- if .AvatarURL -}}
-        <img src="{{ .AvatarURL }}" alt="" width="28" height="28">
+        <img src="{{ .AvatarURL }}" alt="" width="32" height="32">
         {{- else -}}
-        {{ template "partials/seal.html" (printf "%.1s" .DisplayName) }}
+        {{- /* 没有头像图就落名字的第一个字。不画一个通用人形图标：
+               那会让每个访客的头像长得一模一样。printf 的精度按字符数截取，中文安全。 */ -}}
+        <span class="avatar-fallback" aria-hidden="true">{{ printf "%.1s" .DisplayName }}</span>
         {{- end -}}
       </a>
       {{ else }}
-      <a href="/login" data-auth-tab="login">登录</a>
-      {{ if $registerOpen }}<a href="/register" data-auth-tab="register">注册</a>{{ end }}
+      <a class="btn btn-ghost btn-sm" href="/login" data-auth-tab="login">登录</a>
+      {{ if $registerOpen }}<a class="btn btn-primary btn-sm" href="/register" data-auth-tab="register">注册</a>{{ end }}
       {{ end }}
     </div>
 
@@ -134,10 +137,13 @@
       <div class="auth-dialog-head">
         <h2 class="auth-dialog-title" id="site-auth-title" data-auth-title>登录</h2>
         {{- /*
-        关闭键是一个 × 字符，不是图标：这套语言里只有线与字（见 agent.md §11.2），
-        一个描边图标会引入第三种材质。可点区域 44px，视觉上只有那个字。
+        关闭键与 Console 浮层右上角的那一个是同一个：Lucide 的 x，2rem 见方的 ghost 按钮。
+        第二版这里是个 × 字符（那时的纪律是「只有线与字」）；纪律随设计一起作废，
+        全站图标统一走 Lucide 一套，页眉那个下拉箭头也是它。
         */ -}}
-        <button type="button" class="auth-dialog-close" data-auth-close aria-label="关闭">&#215;</button>
+        <button type="button" class="auth-dialog-close" data-auth-close aria-label="关闭">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
       </div>
       <div class="auth-dialog-body" data-auth-body></div>
     </dialog>

@@ -7,7 +7,7 @@
     <form class="search-form" action="/search" method="get" role="search">
       <label for="q" class="visually-hidden">搜索站内内容</label>
       <input id="q" name="q" type="search" value="{{ .Query }}" placeholder="输入关键词" maxlength="100" autofocus>
-      <button type="submit">搜索</button>
+      <button class="btn btn-primary" type="submit">搜索</button>
     </form>
     {{ if .Query }}
     <p class="archive-count">「{{ .Query }}」找到 {{ .Pagination.Total }} 篇</p>

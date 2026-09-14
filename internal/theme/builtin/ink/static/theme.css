@@ -1,115 +1,334 @@
 /*
- * 墨 Ink — Lumo 内置默认主题
+ * 墨 Ink — Lumo 内置默认主题（第三版，2026-09-14）
  *
- * 设计方向见 agent.md §11.2。三个颜色各自对应一种真实物质：
- *   纸 #F7F8F7  未漂白书纸，带 0.5% 绿相，避开奶油黄与数字灰白
- *   墨 #1A1D1A  与纸同相的近黑，暖光下不发紫
- *   印 #1B3A6B  蓝黑墨水，纸底对比度 9.5:1
+ * 设计方向见 agent.md §11.2。
  *
- * 强调色只用于链接与交互态，不做装饰。无阴影、无渐变、圆角 2px、分隔只用 1px 实线。
+ * 这一版把前两版整个推翻：前台与后台（Console）改用同一套设计语言。
+ * 一个站长白天在 Console 里写稿、晚上在前台读自己的站，不该觉得那是两个产品。
+ * 所以三层 token 的结构、中性梯级的取值、圆角的四档、阴影的三档、
+ * 按钮与输入框的形态、浮层的骨架，全部与 console/src/styles/tokens.css 对齐。
+ *
+ * 两处**故意不一致**，各有理由：
+ *
+ *   1. 材质分野。界面走无衬线（与 Console 同一条字体栈），
+ *      但**读者要读的东西走衬线**——刊名、文章标题、正文。
+ *      Console 是工作台，前台是读物；把正文也换成无衬线，这个站就没有读物的样子了。
+ *      分界线是可执行的一句话：要读的用衬线，要操作的用无衬线。
+ *
+ *   2. 尺寸上移一档。Console 的界面基准是 14px、按钮 36px 高——那是密集工作区的密度。
+ *      前台面对的是随手点进来的访客，故界面基准 15px、可点元素 44px。
+ *
+ * 配色由站长在后台选**一个**主题色，其余全部派生（见下方 --seal 一节）。
  */
 
-/* ---------- 层一：原始值 ---------- */
+/* ==================================================================
+   第 1 层 · Primitive —— 原始值，无语义
+   ================================================================== */
+
 :root {
-  --paper: #f7f8f7;
-  --ink: #1a1d1a;
-  --seal: #1b3a6b;
   /*
-   * 朱砂 #9b2c24：校勘用的朱笔批注，与「印」同属矿物颜料体系，
-   * 是纸墨印三色之外唯一新认的颜色，只用于错误态。纸底对比度 6.6:1，过 AA。
+   * 中性梯级。与 Console 逐值相同（色相 286，彩度 0.001–0.010：
+   * 肉眼不可辨的一点冷调，只用来避开纯灰在某些屏上发闷的观感）。
+   * 抄值而不是重新取色，是因为「同一套灰」正是这次改版要的东西。
    */
-  --vermilion: #9b2c24;
+  --n-0: oklch(1 0 0); /* #FFFFFF */
+  --n-50: oklch(0.9851 0 0); /* #FAFAFA */
+  --n-100: oklch(0.9674 0.0013 286.4); /* #F4F4F5 */
+  --n-workspace: oklch(0.9467 0.0027 286.3); /* #EDEDEF 工作区底色 */
+  --n-150: oklch(0.9316 0.0027 286.3); /* #E8E8EA */
+  --n-200: oklch(0.9073 0.0027 286.3); /* #E0E0E2 */
+  --n-300: oklch(0.8554 0.0041 286.3); /* #CFCFD2 */
+  --n-400: oklch(0.6979 0.0087 286.2); /* #9D9DA3 */
+  --n-500: oklch(0.5088 0.0094 286.1); /* #65656B */
+  --n-850: oklch(0.2359 0.0038 286.1); /* #1E1E20 */
+  --n-900: oklch(0.2011 0.0039 286); /* #161618 */
+  --n-950: oklch(0.1693 0.0041 286); /* #0F0F11 */
 
-  /* 纸与墨之间的梯度，全部由这两色插值得到，保证色相一致 */
-  --paper-sunk: #eeefed;
-  --rule: #dcdedb;
-  --ink-soft: #5a615a;
-  --ink-faint: #878d86;
+  /* 只服务于暗色的几块 */
+  --n-dark-inset: oklch(0.1785 0.0041 286); /* #111113 */
+  --n-dark-hover: oklch(0.249 0.0056 286); /* #212124 */
+  --n-dark-active: oklch(0.2825 0.0073 285.9); /* #29292D */
+  --n-dark-line: oklch(0.278 0.0055 286); /* #28282B */
+  --n-dark-line-strong: oklch(0.3661 0.0102 285.9); /* #3E3E44 */
 
-  /* 间距用 4px 基准的模块化梯级（Swiss 的数学化间距） */
+  /*
+   * 墨（暖调，色相 145）。这是主题名字的由来，也是 Console 里
+   * --color-ink-light / --color-ink-dark 的同源值：文字与主按钮都用它。
+   * 中性梯级偏冷，墨偏暖——两者放在一起，字看着是「写上去的」而不是「打上去的」。
+   */
+  --ink-light: oklch(0.2264 0.0073 145.3); /* #1A1D1A */
+  --ink-light-hover: oklch(0.3 0.008 145.3); /* #2B2F2B */
+  --ink-dark: oklch(0.935 0.0034 145.5); /* #E8EAE8 */
+  --ink-dark-hover: oklch(0.97 0.002 145.5); /* #F4F5F4 */
+
+  /*
+   * 主题色。**站长能改的只有这一个**，其余（悬停、活动、淡底、暗色下的提亮）
+   * 全部由它算出来——见第 2 层的 --seal 一节。默认值与 Console 的强调色同号。
+   */
+  --theme: #1b3a6b;
+
+  /* 状态三色。与 Console 同值：它们表达的是同一批状态 */
+  --ok-600: oklch(0.4902 0.0852 158.4);
+  --ok-300: oklch(0.7401 0.106 156.3);
+  --warn-600: oklch(0.5078 0.108 73.3);
+  --warn-300: oklch(0.7613 0.1248 81.9);
+  --danger-600: oklch(0.4693 0.1648 27.6);
+  --danger-300: oklch(0.7315 0.1157 23.5);
+
+  /*
+   * 圆角四档，与 Console 逐值相同：
+   * 控件与卡片 4px、浮层 6px（大一档以表达高度）。
+   * 头像是唯一的整圆，也与 Console 一致（人用圆、物用方角）。
+   */
+  --corner-control: 4px;
+  --corner-card: 4px;
+  --corner-overlay: 6px;
+  --corner-full: 9999px;
+
+  /* 间距：4px 基准的模块化梯级 */
   --s1: 0.25rem;
   --s2: 0.5rem;
   --s3: 0.75rem;
   --s4: 1rem;
+  --s5: 1.25rem;
   --s6: 1.5rem;
   --s8: 2rem;
+  --s10: 2.5rem;
   --s12: 3rem;
   --s16: 4rem;
-  --s24: 6rem;
 
-  /* 正文列宽，单位为汉字数；可由主题设置覆盖 */
-  --measure: 36em;
-  /* 元信息栏宽度与它到正文的间距 */
-  --aside-w: 9rem;
-  --aside-gap: var(--s8);
+  /* 字号。比 Console 整体上移一档（界面 15px / 正文 17px），理由见文件头 */
+  --fs-xs: 0.8125rem; /* 13px 元信息、角标 */
+  --fs-sm: 0.875rem; /* 14px 次要说明 */
+  --fs-base: 0.9375rem; /* 15px 界面默认 */
+  --fs-md: 1rem; /* 16px 输入框 */
+  --fs-lg: 1.0625rem; /* 17px 正文 */
+  --fs-xl: 1.25rem; /* 20px 卡片与浮层标题 */
+  --fs-2xl: 1.5rem; /* 24px 列表项标题、归档标题 */
 
-  --radius: 2px;
-  --rule-w: 1px;
-}
-
-/* ---------- 层二：语义别名 ---------- */
-:root {
-  --bg: var(--paper);
-  --bg-sunk: var(--paper-sunk);
-  --fg: var(--ink);
-  --fg-muted: var(--ink-soft);
-  --fg-faint: var(--ink-faint);
-  --border: var(--rule);
-  --link: var(--seal);
-  --error: var(--vermilion);
-  /*
-   * 模态弹窗背后的那一层。用墨而不是纯黑：纸被墨罩住一层，而不是被涂黑，
-   * 这与「三个颜色各自对应一种真实物质」是同一条纪律——第四个色号不许出现。
-   *
-   * 浓度从 22% 提到 38%（2026-09-14，弹窗改居中时）：贴在页眉下沿的旧弹窗
-   * 靠位置与那条页眉线就能和页面分开；居中之后它四面都是正文，
-   * 22% 的罩太薄——背景照样能读，人的视线不知道该落在哪一层。
-   */
-  --scrim: color-mix(in srgb, var(--ink) 38%, transparent);
+  --lh-tight: 1.3;
+  --lh-ui: 1.6;
+  --lh-prose: 1.85;
 
   /*
-   * 中文字体分层（agent.md §11.1）：
-   * 正文 CJK 走系统字体栈，零加载成本；标题走系统衬线栈。
-   * 本主题不依赖任何 Web 字体 CDN——Google Fonts 在国内访问不稳，
-   * 而默认主题必须能离线跑。--font-display 是留给阶段 8 自托管字体的槽位。
+   * 字体栈。本主题不依赖任何 Web 字体 CDN——默认主题必须能离线跑。
+   * --font-ui 与 Console 的 --typeface-ui 逐字相同。
+   * --font-display 是标题槽位，站长开启自托管思源宋体时由 base.html 覆盖。
    */
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC",
+    sans-serif;
   --font-serif: "Songti SC", "SimSun", "Noto Serif CJK SC", "Source Han Serif SC",
     Georgia, "Times New Roman", serif;
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
   --font-display: var(--font-serif);
+
+  /* 动效：只做回应用户动作的那一类，时长按位移距离分档（与 Console 同值） */
+  --t-fast: 130ms;
+  --t-normal: 190ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /*
+   * 正文列宽。站长设的是「多少个汉字」，是个**纯数字**（见 base.html 的注入），
+   * 在这里乘以正文字号得到真实宽度。
+   * 不让站长直接填 em：那样它的基准会随所在元素的字号漂移，
+   * 页眉（15px）与正文（17px）上的同一个 36em 不是同一个宽度。
+   */
+  --measure-ch: 36;
+  --measure: calc(var(--measure-ch) * var(--fs-lg));
+  /*
+   * 页面外壳：正文列 + 卡片左右内边距 + 页面左右留白。
+   * 三项都要算进来，因为 box-sizing 是 border-box：少算一项，
+   * 卡片里的正文就比站长设的栏宽窄掉那一项。
+   */
+  --card-pad: var(--s8);
+  --gutter: var(--s4);
+  --shell: calc(var(--measure) + var(--card-pad) * 2 + var(--gutter) * 2);
+
+  --z-sticky: 20;
 }
 
-/* 暗色：把纸墨关系反过来，而不是简单地把颜色取反 */
-@media (prefers-color-scheme: dark) {
-  :root[data-scheme="auto"] {
-    --bg: #161816;
-    --bg-sunk: #1d201d;
-    --fg: #e6e8e5;
-    --fg-muted: #a2a89f;
-    --fg-faint: #757b73;
-    --border: #2e322d;
-    --link: #7fa6e8;
-    /* 暗底上的朱砂要提亮，否则 #9b2c24 落在近黑上几乎看不见 */
-    --error: #de7a70;
-    /* 墨罩在墨上等于没罩，暗色下改用真正的黑，否则弹窗与背景分不出层次 */
-    --scrim: color-mix(in srgb, #000 45%, transparent);
-  }
+/* ==================================================================
+   第 2 层 · Semantic —— 用途别名。明暗主题在此切换
+   ================================================================== */
+
+/*
+ * color-scheme 决定表单控件、滚动条与 UA 默认色跟着哪一边走。
+ * 三种取值各自对应站长在后台选的那一档。
+ */
+:root {
+  color-scheme: light;
+}
+:root[data-scheme="auto"] {
+  color-scheme: light dark;
 }
 :root[data-scheme="dark"] {
-  --bg: #161816;
-  --bg-sunk: #1d201d;
-  --fg: #e6e8e5;
-  --fg-muted: #a2a89f;
-  --fg-faint: #757b73;
-  --border: #2e322d;
-  --link: #7fa6e8;
-  --error: #de7a70;
-  --scrim: color-mix(in srgb, #000 45%, transparent);
+  color-scheme: dark;
 }
 
-/* ---------- 基础 ---------- */
+:root {
+  /* 表面三层：器底 → 面板 → 嵌入区。与 Console 的骨架一致 */
+  --chrome: var(--n-workspace); /* 页面底色 */
+  --surface: var(--n-0); /* 页眉、页脚、卡片 */
+  --surface-raised: var(--n-50); /* 卡片内的次级区块 */
+  --surface-hover: var(--n-50);
+  --surface-active: var(--n-150);
+  --surface-inset: var(--n-100); /* 嵌在卡片里的代码块、行内码 */
+
+  --fg: var(--ink-light); /* 主文字 */
+  --fg-muted: var(--n-500); /* 次要文字：说明、时间、分类 */
+  /*
+   * 最淡的一档。**只用在不承载信息的地方**：禁用态、省略号、锚点符号。
+   * 它在纸底上只有 2.7:1，任何读者需要读懂的字都不能用它——
+   * 元信息、时间、说明文字一律用上面那档 --fg-muted（5.8:1）。
+   * Console 那边同样只拿它做占位符与禁用态，这条纪律是跟着抄过来的。
+   */
+  --fg-subtle: var(--n-400);
+
+  /* 墨是主行动色：主按钮、置顶角标 */
+  --action: var(--ink-light);
+  --action-hover: var(--ink-light-hover);
+  --action-on: var(--n-0);
+
+  --line: var(--n-200); /* 分隔线与卡片描边 */
+  --line-strong: var(--n-300); /* 输入框边框：需要看得出边界 */
+
+  --ok: var(--ok-600);
+  --warn: var(--warn-600);
+  --danger: var(--danger-600);
+
+  /*
+   * 主题色的派生。站长只选 --theme，下面五个全算出来：
+   *
+   *   --seal        亮色下压到 L≤0.48、暗色下提到 L≥0.72。
+   *                 这一条是**对比度保证**：纸底 / 墨底上都至少 4.5:1，
+   *                 站长挑了一个浅黄或深紫也不会出现读不清的链接。
+   *   --seal-hover  往「当前的字色」混 12%：亮色下字是深的→变深，
+   *   --seal-active 往同一个方向混 22%：暗色下字是浅的→变亮。
+   *                 一条式子同时管住两种模式，不必各写一遍。
+   *   --seal-soft   往「当前的面板色」混，得到淡底（选中项、角标、软提示）。
+   *
+   * 兜底：相对颜色语法（oklch(from …)）不被支持时，--seal 就是站长填的原值，
+   * 页面完整可用，只是少了那层对比度保证。故它先在这里无条件写一遍。
+   */
+  --seal: var(--theme);
+  --seal-hover: color-mix(in oklab, var(--seal), var(--fg) 12%);
+  --seal-active: color-mix(in oklab, var(--seal), var(--fg) 22%);
+  --seal-soft: color-mix(in oklab, var(--seal) 12%, var(--surface));
+  --seal-soft-strong: color-mix(in oklab, var(--seal) 22%, var(--surface));
+  --seal-on: var(--n-0);
+
+  --focus-ring: var(--seal);
+
+  /*
+   * 阴影三档。明暗差异只落在阴影的**颜色**上，几何形状两边共用一套——
+   * 那本来也不该随主题变。
+   */
+  --shadow-tint: oklch(0.2 0 0 / 0.04);
+  --shadow-tint-2: oklch(0.2 0 0 / 0.16);
+  --shadow-tint-3: oklch(0.2 0 0 / 0.28);
+  --elevation-card: 0 1px 2px 0 var(--shadow-tint);
+  --elevation-overlay: 0 16px 40px -12px var(--shadow-tint-3),
+    0 2px 8px -2px var(--shadow-tint-2);
+
+  --scrim: oklch(0.2 0 0 / 0.45);
+}
+
+/*
+ * 暗色。两个入口各写一遍——这是 CSS 的限制，不是复制粘贴的疏忽：
+ * 「跟随系统」要包在 @media 里，「站长指定暗色」是个属性选择器，
+ * 二者没有能合并的写法。改动时两块必须同时改。
+ */
+@media (prefers-color-scheme: dark) {
+  :root[data-scheme="auto"] {
+    --chrome: var(--n-950);
+    --surface: var(--n-900);
+    --surface-raised: var(--n-850);
+    --surface-hover: var(--n-dark-hover);
+    --surface-active: var(--n-dark-active);
+    --surface-inset: var(--n-dark-inset);
+
+    --fg: var(--ink-dark);
+    /* 暗色下次要文字指向 400 而非 500：照搬亮色的值只剩 2.7:1 */
+    --fg-muted: var(--n-400);
+    --fg-subtle: var(--n-500);
+
+    --action: var(--ink-dark);
+    --action-hover: var(--ink-dark-hover);
+    --action-on: var(--n-900);
+
+    --line: var(--n-dark-line);
+    --line-strong: var(--n-dark-line-strong);
+
+    --ok: var(--ok-300);
+    --warn: var(--warn-300);
+    --danger: var(--danger-300);
+
+    --seal-on: var(--n-900);
+
+    --shadow-tint: oklch(0 0 0 / 0.3);
+    --shadow-tint-2: oklch(0 0 0 / 0.5);
+    --shadow-tint-3: oklch(0 0 0 / 0.7);
+    --scrim: oklch(0 0 0 / 0.6);
+  }
+}
+
+:root[data-scheme="dark"] {
+  --chrome: var(--n-950);
+  --surface: var(--n-900);
+  --surface-raised: var(--n-850);
+  --surface-hover: var(--n-dark-hover);
+  --surface-active: var(--n-dark-active);
+  --surface-inset: var(--n-dark-inset);
+
+  --fg: var(--ink-dark);
+  --fg-muted: var(--n-400);
+  --fg-subtle: var(--n-500);
+
+  --action: var(--ink-dark);
+  --action-hover: var(--ink-dark-hover);
+  --action-on: var(--n-900);
+
+  --line: var(--n-dark-line);
+  --line-strong: var(--n-dark-line-strong);
+
+  --ok: var(--ok-300);
+  --warn: var(--warn-300);
+  --danger: var(--danger-300);
+
+  --seal-on: var(--n-900);
+
+  --shadow-tint: oklch(0 0 0 / 0.3);
+  --shadow-tint-2: oklch(0 0 0 / 0.5);
+  --shadow-tint-3: oklch(0 0 0 / 0.7);
+  --scrim: oklch(0 0 0 / 0.6);
+}
+
+/*
+ * 主题色的对比度保证。单独关在 @supports 里：相对颜色语法不被支持时
+ * 这三条整块失效，上面那句 `--seal: var(--theme)` 原样生效。
+ */
+@supports (color: oklch(from red l c h)) {
+  :root {
+    --seal: oklch(from var(--theme) calc(min(l, 0.48)) c h);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root[data-scheme="auto"] {
+      --seal: oklch(from var(--theme) calc(max(l, 0.72)) c h);
+    }
+  }
+
+  :root[data-scheme="dark"] {
+    --seal: oklch(from var(--theme) calc(max(l, 0.72)) c h);
+  }
+}
+
+/* ==================================================================
+   基础
+   ================================================================== */
+
 *,
 *::before,
 *::after {
@@ -118,16 +337,28 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+  /*
+   * 滚动条的位置一直留着。弹窗打开时 <html> 会被设成 overflow: hidden，
+   * 滚动条随之消失——不留位的话整页会在那一瞬间往右跳十几个像素。
+   */
+  scrollbar-gutter: stable;
 }
 
+/*
+ * 整页是一列 flex，正文区吃掉多余的高度——页脚因此永远贴在视口底部，
+ * 而不是吊在内容后面、下面露出一片空的工作区底色。
+ * 登录页、404、空状态这三处内容最短，问题也最明显。
+ */
 body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
   margin: 0;
-  background: var(--bg);
+  background: var(--chrome);
   color: var(--fg);
-  /* 正文 18px：中文在 16px 下笔画容易糊，长文阅读需要更大的字身 */
-  font: 18px/1.75 var(--font-sans);
+  font: var(--fs-base) / var(--lh-ui) var(--font-ui);
   font-feature-settings: "kern" 1;
-  text-rendering: optimizeLegibility;
 }
 
 img,
@@ -138,50 +369,69 @@ video {
 }
 
 a {
-  color: var(--link);
+  color: var(--seal);
   text-decoration: none;
-  /* 下划线压到基线下方并留出字形缺口，中文下划线不再粘住笔画 */
-  text-decoration: underline;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 0.2em;
-  text-decoration-color: color-mix(in srgb, var(--link) 35%, transparent);
-  transition: text-decoration-color 0.2s ease, color 0.2s ease;
+  transition: color var(--t-fast) var(--ease-out);
 }
 
 a:hover {
-  text-decoration-color: currentColor;
+  color: var(--seal-hover);
 }
 
+/*
+ * 焦点环。全站唯一写法，任何地方都不得用 outline: none 抹掉它。
+ * WCAG 2.2：至少 2px 周长与 3:1 状态对比，不用 box-shadow 假装。
+ */
 :focus-visible {
-  outline: 2px solid var(--link);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
-  border-radius: var(--radius);
+  border-radius: var(--corner-control);
 }
 
-button,
-input,
-textarea {
+:where(input, textarea, select, button) {
   font: inherit;
   color: inherit;
 }
 
-button {
+:where(button, [role="button"], a, label[for], select, summary):not(:disabled) {
   cursor: pointer;
+}
+
+::selection {
+  background: var(--seal-soft-strong);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+/* 数字一律等宽：列表里的日期、篇数、页码要能对齐 */
+.tabular,
+.post-item-meta time,
+.archive-count,
+.page-numbers,
+.count,
+.notfound-code {
+  font-variant-numeric: tabular-nums;
 }
 
 /* 键盘用户的第一站：仅在聚焦时出现 */
 .skip-link {
   position: absolute;
-  left: -9999px;
   top: var(--s2);
+  left: -9999px;
+  z-index: 50;
   padding: var(--s2) var(--s4);
-  background: var(--fg);
-  color: var(--bg);
-  border-radius: var(--radius);
-  z-index: 10;
+  border-radius: var(--corner-control);
+  background: var(--action);
+  color: var(--action-on);
+  box-shadow: var(--elevation-overlay);
 }
+
 .skip-link:focus {
   left: var(--s4);
+  color: var(--action-on);
 }
 
 .visually-hidden {
@@ -189,77 +439,408 @@ button {
   width: 1px;
   height: 1px;
   overflow: hidden;
-  clip: rect(0 0 0 0);
   clip-path: inset(50%);
   white-space: nowrap;
 }
 
-/* ---------- 栅格 ---------- */
+/* ==================================================================
+   骨架 —— 白页眉 / 浅灰工作区 / 白卡片 / 白页脚
+   ================================================================== */
 /*
- * 全站只有一个容器：正文列限宽 var(--measure)，居中。
- * 元信息栏靠 .has-aside 在宽屏上挂到正文左外侧（本主题唯一的破格处）。
+ * 这正是 Console 的骨架：白色的页头把工作区框出来，卡片浮在浅灰上。
+ * 前台没有侧栏，其余一一对应。
  */
+
 .wrap {
-  max-width: var(--measure);
+  max-width: var(--shell);
   margin-inline: auto;
-  padding-inline: var(--s6);
+  padding-inline: var(--gutter);
 }
 
 .main {
-  padding-block: var(--s12) var(--s24);
-  min-height: 60vh;
+  flex: 1;
+  padding-block: var(--s6) var(--s16);
 }
 
 /* ---------- 页眉 ---------- */
+/*
+ * 吸顶。Console 的页头一直在那里，前台也是——长文读到一半想换个分类，
+ * 不该先滚回顶部。最小高度取 3.5rem，与 Console 的 --page-header-height 同值。
+ */
 .site-header {
-  border-bottom: var(--rule-w) solid var(--border);
-  padding-block: var(--s6);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
 }
 
 .site-header .wrap {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s5);
+  min-height: 3.5rem;
+  padding-block: var(--s2);
+}
+
+.site-id {
+  display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  /* 列间距取 --s6：页眉里相邻的两组是「导航 ↔ 账户入口」，
-     规范要求的间距就是它。站名与导航之间靠 margin-inline-start:auto 撑开，不靠 gap。 */
-  gap: var(--s4) var(--s6);
-  /* 页眉比正文宽一档：导航挤在 36em 里会换行 */
-  max-width: calc(var(--measure) + var(--aside-w) + var(--aside-gap));
+  gap: var(--s3);
+  min-width: 0;
 }
 
-/* 站名贴左、导航与账户入口一起靠右 */
-.site-nav {
-  margin-inline-start: auto;
-}
-
+/*
+ * 刊名走衬线。这是文件头那条分界线的应用：刊名是读者要读的东西，
+ * 不是一个可操作的控件——它和文章标题、正文属于同一侧。
+ */
 .site-title {
   font-family: var(--font-display);
-  font-size: 1.375rem;
+  font-size: var(--fs-xl);
   font-weight: 600;
   color: var(--fg);
-  text-decoration: none;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+}
+
+.site-title:hover {
+  color: var(--fg);
 }
 
 .site-logo {
   display: block;
-  max-height: 2rem;
+  max-height: 1.75rem;
   width: auto;
 }
 
 .site-subtitle {
-  margin: var(--s1) 0 0;
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
 }
 
 /*
- * 导航。两级：一级是链接或「点击展开」的按钮，二级是它控制的列表。
+ * 窄屏页眉。
+ *
+ * 四个菜单项加两个账户入口在 390px 上排不下，换行是必然的；
+ * 要管的是**换行之后的次序**：默认换行会把「登录 / 注册」甩到第二行，
+ * 第一行剩下刊名和半截导航，看着像页眉坏了。
+ *
+ * 所以这里明确指派：第一行是刊名（左）与账户入口（右）——这两样任何时候都要在；
+ * 导航整条落到第二行。
+ *
+ * 导航本身仍然允许换行，不做成横向滚动条：滚动容器会把二级菜单裁掉，
+ * 而二级菜单在这个宽度上是内嵌展开的，展开一次就得横竖都能看见。
+ */
+@media (max-width: 48rem) {
+  .site-subtitle {
+    display: none;
+  }
+
+  .site-header .wrap {
+    gap: var(--s2) var(--s3);
+  }
+
+  .site-nav {
+    order: 3;
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .site-account {
+    margin-inline-start: auto;
+  }
+}
+
+/* ---------- 页脚 ---------- */
+.site-footer {
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+
+.site-footer .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2) var(--s6);
+  padding-block: var(--s6);
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+.site-footer a {
+  color: var(--fg-muted);
+}
+
+.site-footer a:hover {
+  color: var(--seal);
+}
+
+.footer-links {
+  display: flex;
+  gap: var(--s4);
+}
+
+/* ==================================================================
+   卡片 —— 内容区里的每一块
+   ================================================================== */
+/*
+ * 与 Console 的 Card 同一套：白底、1px 描边、极轻的一层托底阴影、4px 圆角。
+ * 卡片之间靠器底的浅灰分开，卡片内部靠分隔线分区；卡片里不再套卡片。
+ *
+ * 「什么是一张卡片」只在这一处定义，下面各块只补自己的内边距与内部排版。
+ * 本主题没有 .card 这个类：前台的每一块都有自己的名字（文章、列表、评论…），
+ * 让它们各自挂一个通用类只是多一层要同步的东西。
+ */
+.card,
+.site-intro,
+.post-list,
+.article,
+.archive-header,
+.related,
+.archive-months,
+.notfound-suggest,
+.notfound-head,
+.tag-cloud,
+.comments,
+.empty-state,
+.auth-panel,
+.account-meta {
+  border: 1px solid var(--line);
+  border-radius: var(--corner-card);
+  background: var(--surface);
+  box-shadow: var(--elevation-card);
+}
+
+/* 卡片里的分区标题：一条线加一行小字，与 Console 的 CardHeader 同调 */
+.section-title {
+  margin: 0 0 var(--s4);
+  color: var(--fg-muted);
+  font-size: var(--fs-base);
+  font-weight: 600;
+}
+
+/* 窄屏收内边距：2rem 在 390px 上会把正文挤成一条 */
+@media (max-width: 40rem) {
+  :root {
+    --card-pad: var(--s4);
+  }
+}
+
+/* ==================================================================
+   控件 —— 按钮 / 输入框 / 角标 / 提示条
+   ================================================================== */
+/*
+ * 与 Console 的 Button、Input、Badge、Alert 一一对应，只把尺寸放大一档：
+ * 前台的可点元素做到 44px 高（触屏的最小目标），Console 的 36px 是工作区密度。
+ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: 2.75rem;
+  padding-inline: var(--s4);
+  border: 1px solid transparent;
+  border-radius: var(--corner-control);
+  background: none;
+  font-size: var(--fs-base);
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out);
+}
+
+/* 主行动：墨底白字，暗色下反转。一个页面里最多一个 */
+.btn-primary {
+  background: var(--action);
+  color: var(--action-on);
+}
+
+.btn-primary:hover {
+  background: var(--action-hover);
+  color: var(--action-on);
+}
+
+/* 次行动：白底描边 */
+.btn-secondary {
+  border-color: var(--line-strong);
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.btn-secondary:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
+}
+
+/* 行内操作：无边无底，只在悬停时浮出 */
+.btn-ghost {
+  color: var(--fg-muted);
+}
+
+.btn-ghost:hover {
+  background: var(--surface-active);
+  color: var(--fg);
+}
+
+.btn-sm {
+  min-height: 2.25rem;
+  padding-inline: var(--s3);
+  font-size: var(--fs-sm);
+}
+
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/*
+ * 文本输入。与 Console 的 Input 同一套：1px 描边、4px 圆角、面板底色，
+ * 悬停时边框加重、聚焦时换成主题色、aria-invalid 时换成错误色。
+ *
+ * 「视觉上的错误」由 aria-invalid 驱动，而不是各处手写一个红边框类——
+ * 这样它与「语义上的错误」永远同步，读屏软件和眼睛看到的是同一件事。
+ */
+.field-input,
+.auth-form input:not([type="hidden"]),
+.comment-form :is(input, textarea),
+.search-form input {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--corner-control);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  transition: border-color var(--t-fast) var(--ease-out);
+}
+
+:is(.field-input, .auth-form input, .comment-form :is(input, textarea), .search-form input)::placeholder {
+  color: var(--fg-muted);
+}
+
+:is(.field-input, .auth-form input, .comment-form :is(input, textarea), .search-form input):hover {
+  border-color: var(--fg-subtle);
+}
+
+:is(.field-input, .auth-form input, .comment-form :is(input, textarea), .search-form input):focus-visible {
+  border-color: var(--seal);
+}
+
+:is(.field-input, .auth-form input, .comment-form input)[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+textarea.field-input,
+.comment-form textarea {
+  resize: vertical;
+  line-height: 1.7;
+}
+
+/*
+ * 字段行：标签在上、控件在下、说明与错误在最下。
+ * 选择器带上模板里既有的类名（.auth-field / .comment-form-row / .auth-hint …），
+ * 这样第三方主题照抄一段现成的表单标记也能直接套上这套样式，
+ * 不必先学会一套新类名。
+ */
+.field-label,
+.auth-field > label,
+.comment-form-row > label {
+  display: block;
+  margin-bottom: var(--s2);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+
+.field-hint,
+.auth-hint,
+.comment-form .hint {
+  display: block;
+  margin-top: var(--s1);
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+.field-error,
+.auth-error {
+  display: block;
+  margin-top: var(--s1);
+  color: var(--danger);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+}
+
+/*
+ * 角标（Console 的 Badge）。淡底 + 同色文字，不描边。
+ * 颜色不单独表意：每一个角标里都有字。
+ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding-inline: var(--s2);
+  border-radius: var(--corner-control);
+  background: var(--seal-soft);
+  color: var(--seal);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge-neutral {
+  background: var(--surface-active);
+  color: var(--fg-muted);
+}
+
+/*
+ * 提示条（Console 的 Alert）。淡底 + 左侧 3px 竖线 + 同色文字。
+ * 成功走主题色，失败走错误色；两种都带文字，不靠颜色单独表意。
+ */
+.notice {
+  margin: 0 0 var(--s4);
+  padding: var(--s3) var(--s4);
+  border-left: 3px solid var(--seal);
+  border-radius: var(--corner-control);
+  background: var(--seal-soft);
+  color: var(--fg);
+  font-size: var(--fs-sm);
+}
+
+.notice[data-kind="error"] {
+  border-left-color: var(--danger);
+  background: color-mix(in oklab, var(--danger) 10%, var(--surface));
+}
+
+/* ==================================================================
+   主导航
+   ================================================================== */
+/*
+ * 一级项是链接或「点击展开」的按钮，两者视觉完全一致——用户不该需要分辨
+ * 「这一个能点、那一个是链接」，它们都是主导航里的一项。
  *
  * 二级菜单**默认不隐藏**（模板里不写 hidden），由 nav.js 在初始化时收起。
- * 没有 JS 时它就是下面这一列内嵌展开的链接，页面依然完整可用。
+ * 没有 JS 时它就是一列内嵌展开的链接，页面依然完整可用。
  */
+
+.site-nav {
+  margin-inline-start: auto;
+  min-width: 0;
+}
+
 .site-nav > ul,
 .site-nav-sub {
   display: flex;
@@ -270,44 +851,41 @@ button {
 }
 
 .site-nav > ul {
-  gap: var(--s6);
+  gap: var(--s1);
 }
 
+/* 导航项。与 Console 侧栏的条目同一套：圆角、悬停浮出一块底色 */
 .site-nav a,
 .site-nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  min-height: 2.25rem;
+  padding-inline: var(--s3);
+  border: 0;
+  border-radius: var(--corner-control);
+  background: none;
   color: var(--fg-muted);
-  font-size: 0.9375rem;
-  text-decoration: none;
+  font: inherit;
+  font-size: var(--fs-base);
+  transition: color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out);
 }
 
 .site-nav a:hover,
 .site-nav-toggle:hover {
+  background: var(--surface-active);
   color: var(--fg);
 }
 
-/*
- * 触发按钮要完全看不出是按钮：背景、边框、内边距与字体全部重置，
- * 与旁边的 <a> 视觉一致。用户不该需要分辨「这一个能点、那一个是链接」——
- * 它们都是主导航里的一项。
- */
-.site-nav-toggle {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.25em;
-  margin: 0;
-  padding: 0;
-  background: none;
-  border: 0;
-  font: inherit;
-  font-size: 0.9375rem;
+.site-nav-chevron {
   color: var(--fg-muted);
-  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease-out);
 }
 
-.site-nav-chevron {
-  align-self: center;
-  color: var(--fg-faint);
-  transition: transform 120ms ease-out;
+.site-nav-toggle[aria-expanded="true"] {
+  background: var(--surface-active);
+  color: var(--fg);
 }
 
 .site-nav-toggle[aria-expanded="true"] .site-nav-chevron {
@@ -315,32 +893,27 @@ button {
 }
 
 /*
- * 二级菜单。这里的默认形态是**内嵌展开**，也是没有 JS 时的形态：
- * 子项左内缩并带一条 1px 竖线，与正文里引用块的标记方式同源。
- *
- * 绝对定位的下拉只在 nav.js 盖过 data-nav="js" 之后才启用（见下面的媒体查询）。
- * 少了那个开关，没有 JS 时桌面上的下拉照样生效，子菜单会浮在正文之上把文章盖掉——
+ * 二级菜单的默认形态是**内嵌展开**，也是没有 JS 时的形态：
+ * 子项左内缩并带一条 1px 竖线。
+ * 绝对定位的下拉只在 nav.js 盖过 data-nav="js" 之后才启用（见下面的媒体查询）；
+ * 少了那个开关，没有 JS 时桌面上的下拉照样生效，会浮在正文之上把文章盖掉——
  * 那不是降级，那是一个看起来坏掉的页面。
- *
- * 展开用 animation 而不是 transition：元素是从 display:none 变回来的，
- * transition 没有可过渡的起始帧；而 animation 在 display 变化时会重新播放。
- * 收起由 .is-closing 的 transition 承担（90ms），到点再由 nav.js 真正隐藏。
  */
 .site-nav-sub {
-  gap: var(--s3);
-  margin-top: var(--s2);
-  font-size: 0.875rem;
-  animation: nav-sub-in 120ms ease-out;
-  transition: opacity 90ms ease-out, transform 90ms ease-out;
+  flex-direction: column;
+  gap: var(--s1);
+  width: 100%;
+  margin-top: var(--s1);
+  padding-left: var(--s3);
+  border-left: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  animation: nav-sub-in var(--t-fast) var(--ease-out);
+  transition: opacity var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out);
 }
 
 .site-nav-sub[hidden] {
   display: none;
-}
-
-.site-nav-sub li {
-  padding-left: var(--s4);
-  border-left: var(--rule-w) solid var(--border);
 }
 
 .site-nav-sub.is-closing {
@@ -360,160 +933,189 @@ button {
 }
 
 /*
- * 桌面（>640px）且 JS 已就位：绝对定位的下拉。
- * 只画左 / 右 / 下三边，顶边由页眉那条既有分隔线充当——这个「借用顶边」是刻意的：
- * 它让下拉看起来是从页眉这张纸上翻开的一角，而不是浮在上面的一张新纸。
- * 故这里也绝不会有阴影。
+ * 桌面（>640px）且 JS 已就位：浮层下拉。
+ * 形态照 Console 的 DropdownMenu —— 6px 圆角、1px 描边、浮层阴影。
+ * 这与第二版相反：那时它借页眉的分隔线当上边框、刻意不加阴影，
+ * 是「把纸翻开一角」的隐喻。隐喻连同整版设计一起作废了，
+ * 现在它就是一块浮在内容之上的面板，所以该有浮起来的样子。
  */
-@media (min-width: 641px) {
+@media (min-width: 41rem) {
   .site-nav[data-nav="js"] > ul > li {
     position: relative;
   }
 
   .site-nav[data-nav="js"] .site-nav-sub {
     position: absolute;
-    /*
-     * 顶边要正好落在页眉那条既有分隔线上，而不是贴在导航行下面：
-     * 100% 是 li 的底边（= 页眉内容区的底边），再加上页眉的下内边距与它那 1px 底线，
-     * 就正好是那条线所在的位置。下拉的顶边没有自己的边框，就靠这条线收口。
-     */
-    top: calc(100% + var(--s6) + var(--rule-w));
+    top: calc(100% + var(--s1));
     left: 0;
+    z-index: var(--z-sticky);
+    display: flex;
+    width: auto;
+    min-width: 11rem;
     margin-top: 0;
-    z-index: 5;
-    display: block;
-    min-width: 10em;
-    padding-block: var(--s2);
-    background: var(--bg);
-    border: var(--rule-w) solid var(--border);
-    border-top: 0;
-    border-radius: 0 0 var(--radius) var(--radius);
+    padding: var(--s1);
+    border: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+    border-radius: var(--corner-overlay);
+    background: var(--surface);
+    box-shadow: var(--elevation-overlay);
   }
 
   /*
-   * 这条必须在这里再声明一次。上面那条 `.site-nav[data-nav="js"] .site-nav-sub`
-   * 的选择器特异性是（0,3,0），高过块外那条 `.site-nav-sub[hidden]` 的（0,2,0）——
-   * 少了它，脚本设的 hidden 在桌面上完全失效，二级菜单一直摊开着收不起来。
-   * 站上报的就是这个现象：看着像「默认展开」，其实是关不掉。
+   * 这条必须在这里再声明一次。上面那条选择器的特异性是（0,3,0），
+   * 高过块外那条 `.site-nav-sub[hidden]` 的（0,2,0）——少了它，
+   * 脚本设的 hidden 在桌面上完全失效，二级菜单一直摊开着收不起来。
    */
   .site-nav[data-nav="js"] .site-nav-sub[hidden] {
     display: none;
   }
 
-  .site-nav[data-nav="js"] .site-nav-sub li {
-    padding-left: 0;
-    border-left: 0;
-  }
-
   .site-nav[data-nav="js"] .site-nav-sub a {
-    display: block;
-    padding: var(--s2) var(--s4);
+    display: flex;
+    width: 100%;
   }
 }
 
-/* 账户入口。与导航之间保持 --s6，窄屏随 flex 换行到导航下方。 */
+/* ---------- 账户入口 ---------- */
 .site-account {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--s6);
-  /*
-   * 与页眉的中线对齐，而不是跟导航一起走基线。
-   *
-   * 基线对齐的含义是「底边坐在基线上」——对文字是对的，对一枚方印不是：
-   * 印的底边落在基线上，它那 1.75rem 的高度就整块吊到文字上方去了（实测高了 8px）。
-   * 匿名时这一条不改变任何东西：两个链接的盒子一样高，居中与基线对齐结果相同。
-   */
-  align-self: center;
   align-items: center;
-}
-
-.site-account a {
-  color: var(--fg-muted);
-  font-size: 0.9375rem;
-  text-decoration: none;
-}
-
-.site-account a:hover {
-  color: var(--fg);
+  gap: var(--s2);
 }
 
 /*
- * 已登录：一枚方印，盖显示名的第一个字。
+ * 已登录：一枚圆头像。
  *
- * 用印而不是圆形头像：本主题一个圆形元素都没有，凭空出现的圆会立刻成为
- * 整页唯一一个圆角到极致的东西；而印正是既有插图系统的原件
- * （partials/seal.html，与「无头像作者」同源），这里只是把它缩小到 1.75rem。
- * 印面那个 -5° 的倾斜保留——印章没人能盖得完全正。
- *
- * 它是指向 /account 的普通链接，没有下拉：页眉只有二级菜单那一处非模态弹出层。
+ * 第二版这里是一枚方印（主题的插图原件，刻意不用圆形）。改成圆，
+ * 因为 Console 的规矩是「人用圆、物用方角」，而这里挂的是一个人。
+ * 方印保留在它真正该在的地方：空状态与归档页头的插图。
  */
 .site-avatar {
   display: inline-flex;
+  border-radius: var(--corner-full);
 }
 
-.site-avatar .seal,
-.site-avatar img {
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: var(--radius);
-}
-
-.site-avatar img {
-  display: block;
-  object-fit: cover;
-}
-
-/* ---------- 首页与列表 ---------- */
-.site-intro {
-  margin: 0 0 var(--s12);
+.site-avatar img,
+.avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--corner-full);
+  background: var(--surface-active);
   color: var(--fg-muted);
-  font-size: 1.0625rem;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  object-fit: cover;
+  user-select: none;
 }
 
+/* ==================================================================
+   首页与列表
+   ================================================================== */
+
+.site-intro {
+  margin: 0 0 var(--s4);
+  padding: var(--s5) var(--card-pad);
+  color: var(--fg-muted);
+  font-size: var(--fs-lg);
+  line-height: 1.7;
+}
+
+/*
+ * 列表是一张卡片，每篇文章是其中一行——这是 Console 列表页的基本单位。
+ * 第二版刻意反对卡片（「像目录而不是商品网格」），这一版把那条推翻：
+ * 一张卡片里排十行，仍然是目录；十张卡片排成一列才是商品网格。
+ */
 .post-list {
   margin: 0;
   padding: 0;
   list-style: none;
+  /* 行的悬停底色要被卡片的圆角剪住，否则首尾两行会从圆角里探出方角 */
+  overflow: hidden;
+}
+
+.post-item {
+  display: flex;
+  gap: var(--s4);
+  padding: var(--s5) var(--card-pad);
+  transition: background-color var(--t-fast) var(--ease-out);
+}
+
+.post-item + .post-item {
+  border-top: 1px solid var(--line);
+}
+
+.post-item:hover {
+  background: var(--surface-hover);
+}
+
+.post-item-body {
+  min-width: 0;
+  flex: 1;
+}
+
+/* 封面缩略图。Console 的实体行把缩略图放在左侧固定宽度的一列里 */
+.post-cover {
+  display: block;
+  flex: none;
+  width: 7.5rem;
+  border-radius: var(--corner-control);
+  overflow: hidden;
+}
+
+.post-cover img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+@media (max-width: 34rem) {
+  .post-item {
+    flex-direction: column;
+  }
+
+  .post-cover {
+    width: 100%;
+  }
 }
 
 /*
- * 列表项不是卡片：没有边框、没有阴影、没有背景色。
- * 只有一条 1px 分隔线，像目录而不是商品网格。
+ * 标题是普通的内联流，不是 flex：「置顶」角标要跟在标题最后一个字后面，
+ * 随文字一起换行。flex 的话它会被当成第二个项目，标题一满就单独掉到下一行，
+ * 看着像一个跟标题无关的孤立标签——窄屏上每一条都是这样。
  */
-.post-item + .post-item {
-  margin-top: var(--s8);
-  padding-top: var(--s8);
-  border-top: var(--rule-w) solid var(--border);
-}
-
 .post-item-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.5rem;
+  font-size: var(--fs-xl);
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.45;
   letter-spacing: 0.01em;
 }
 
 .post-item-title a {
   color: var(--fg);
-  text-decoration: none;
 }
 
 .post-item-title a:hover {
-  color: var(--link);
+  color: var(--seal);
 }
 
 .pin {
+  display: inline-block;
   margin-left: var(--s2);
-  padding: 0 var(--s2);
-  border: var(--rule-w) solid var(--border);
-  border-radius: var(--radius);
-  color: var(--fg-faint);
-  font-family: var(--font-sans);
-  font-size: 0.6875rem;
-  font-weight: 400;
-  vertical-align: 0.3em;
+  padding: 0.1em var(--s2);
+  vertical-align: 0.15em;
+  border-radius: var(--corner-control);
+  background: var(--surface-active);
+  color: var(--fg-muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
 }
 
 /*
@@ -523,53 +1125,74 @@ button {
 .post-item-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s4);
+  gap: var(--s1) var(--s3);
   margin: var(--s2) 0 0;
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
 }
 
 .post-item-meta a {
-  color: var(--fg-faint);
+  color: var(--fg-muted);
 }
 
-.post-item-meta a:hover {
-  color: var(--link);
-}
-
+/*
+ * 摘要最多两行。列表是目录，一条目录项被六行摘要撑开之后，
+ * 一屏就只剩两篇文章——窄屏上尤其明显。想读全文的人会点进去。
+ */
 .post-item-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
   margin: var(--s3) 0 0;
   color: var(--fg-muted);
-  font-size: 0.9375rem;
+  font-size: var(--fs-sm);
   line-height: 1.7;
 }
 
-.post-cover {
-  display: block;
-  margin-bottom: var(--s4);
+.empty {
+  margin: 0;
+  color: var(--fg-muted);
 }
 
-.post-cover img {
+/* ==================================================================
+   文章页
+   ================================================================== */
+/*
+ * 整篇文章是一张卡片：封面铺满卡片顶端，标题与元信息在上，正文在下。
+ *
+ * 第二版把元信息挂在正文列的左外侧（「本主题唯一的破格处」）。
+ * 那条栏与 Console 的任何东西都对不上，随旧设计一起去掉；
+ * 元信息回到标题下方一行，仍由 appearance.showMeta 控制显示与否。
+ */
+.article {
+  padding: var(--card-pad);
+}
+
+/* 封面铺满卡片顶端：用负边距抵掉卡片内边距，只留上两角的圆角 */
+.article-cover {
+  margin: calc(var(--card-pad) * -1) calc(var(--card-pad) * -1) var(--s6);
+  overflow: hidden;
+  border-radius: calc(var(--corner-card) - 1px) calc(var(--corner-card) - 1px) 0 0;
+}
+
+.article-cover img {
   display: block;
   width: 100%;
-  border-radius: var(--radius);
+  aspect-ratio: 2 / 1;
+  object-fit: cover;
 }
 
-.empty {
-  margin: var(--s12) 0;
-  color: var(--fg-faint);
-}
-
-/* ---------- 文章页 ---------- */
 .article-header {
-  margin-bottom: var(--s8);
+  margin-bottom: var(--s6);
 }
 
 .article-title {
   margin: 0;
   font-family: var(--font-display);
   /* 标题随视口缩放，但有上下限：纯 vw 在超宽屏上会失控 */
-  font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.5rem);
+  font-size: clamp(1.625rem, 1.2rem + 1.8vw, 2.25rem);
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: 0.01em;
@@ -577,58 +1200,107 @@ button {
 }
 
 .article-lede {
-  margin: var(--s4) 0 0;
+  margin: var(--s3) 0 0;
   color: var(--fg-muted);
-  font-size: 1.0625rem;
+  font-size: var(--fs-lg);
   line-height: 1.7;
 }
 
-/*
- * 元信息栏：窄屏时是标题下方的一行行文字，宽屏时挂到正文左外侧。
- * 用 grid 而不是 float 或绝对定位，是为了让它参与文档流、
- * 内容超长时正文不会被压住。
- */
+/* 元信息：一行会换行的键值对，底下一条线把它与正文分开 */
 .article-aside {
-  margin-bottom: var(--s8);
-  padding-block: var(--s4);
-  border-block: var(--rule-w) solid var(--border);
-  max-width: var(--measure);
-  margin-inline: auto;
-  padding-inline: var(--s6);
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s6);
+  margin-bottom: var(--s6);
+  padding-bottom: var(--s4);
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
 }
 
 .aside-row {
   display: flex;
-  gap: var(--s3);
-}
-
-.aside-row + .aside-row {
-  margin-top: var(--s1);
+  gap: var(--s2);
 }
 
 .aside-key {
   flex: none;
-  min-width: 2.5em;
-  color: var(--fg-faint);
+  color: var(--fg-muted);
 }
 
 .aside-row a {
   color: var(--fg-muted);
 }
 
-.article-cover img {
-  display: block;
-  width: 100%;
-  margin-bottom: var(--s8);
-  border-radius: var(--radius);
+.aside-row a:hover {
+  color: var(--seal);
 }
 
-/* ---------- 正文排版 ---------- */
+/* 文末的标签与作者 */
+.article-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin: var(--s10) 0 0;
+}
+
+.article-author {
+  display: flex;
+  gap: var(--s4);
+  align-items: center;
+  margin-top: var(--s8);
+  padding-top: var(--s6);
+  border-top: 1px solid var(--line);
+}
+
+.avatar {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--corner-full);
+  background: var(--surface-active);
+  object-fit: cover;
+}
+
+.avatar-lg {
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.author-name {
+  margin: 0;
+  font-weight: 600;
+}
+
+.author-name a {
+  color: var(--fg);
+}
+
+.author-name a:hover {
+  color: var(--seal);
+}
+
+.author-bio {
+  margin: var(--s1) 0 0;
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+
+/* ==================================================================
+   正文排版
+   ================================================================== */
+/*
+ * 这里是整个前台唯一「读物」的部分：衬线、17px、行高 1.85。
+ * 与 Console 编辑器里的 .prose-editor 是同一种排版意图——
+ * 那边写的东西，在这里读起来应当是同一个样子。
+ */
 .prose {
-  font-size: 1.0625rem;
-  line-height: 1.85;
+  max-width: var(--measure);
+  color: var(--fg);
+  font-family: var(--font-serif);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-prose);
+  overflow-wrap: anywhere;
 }
 
 .prose > * + * {
@@ -638,21 +1310,23 @@ button {
 .prose h2,
 .prose h3,
 .prose h4 {
-  margin-top: var(--s12);
+  margin-top: var(--s10);
   margin-bottom: var(--s4);
   font-family: var(--font-display);
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: 0.01em;
-  scroll-margin-top: var(--s8);
+  scroll-margin-top: 4.5rem; /* 吸顶页眉的高度，锚点跳转时别被盖住 */
 }
 
 .prose h2 {
   font-size: 1.5rem;
 }
+
 .prose h3 {
   font-size: 1.25rem;
 }
+
 .prose h4 {
   font-size: 1.0625rem;
 }
@@ -671,11 +1345,24 @@ button {
   margin-top: var(--s2);
 }
 
-/* 引文靠一条印色竖线标记，不加背景块 */
+.prose a {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: color-mix(in oklab, var(--seal) 40%, transparent);
+}
+
+.prose a:hover {
+  text-decoration-color: currentColor;
+}
+
+/* 引文：一条主题色竖线 + 淡底，与提示条同一种语言 */
 .prose blockquote {
   margin: var(--s8) 0;
-  padding-left: var(--s6);
-  border-left: 2px solid var(--link);
+  padding: var(--s4) var(--s5);
+  border-left: 3px solid var(--seal);
+  border-radius: var(--corner-control);
+  background: var(--surface-raised);
   color: var(--fg-muted);
 }
 
@@ -683,61 +1370,80 @@ button {
   margin-top: var(--s4);
 }
 
+.prose img {
+  border-radius: var(--corner-control);
+}
+
+.prose hr {
+  margin: var(--s10) 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+}
+
+.prose :is(th, td) {
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose th {
+  background: var(--surface-raised);
+  font-weight: 600;
+}
+
 .prose code {
   padding: 0.1em 0.35em;
-  background: var(--bg-sunk);
-  border-radius: var(--radius);
+  border-radius: 3px;
+  background: var(--surface-active);
   font-family: var(--font-mono);
   font-size: 0.875em;
 }
 
-/* ---------- 代码块 ---------- */
+.prose :is(h2, h3, h4) > a[href^="#"] {
+  color: var(--fg-subtle);
+  text-decoration: none;
+}
+
+/* ==================================================================
+   代码块
+   ================================================================== */
 /*
  * 结构由服务端给出（internal/content/highlight.go）：<figure.code-block> +
  * <pre.code-lines>，每行是 <span.line><span.cl>…。行号**不是 DOM 文本**，
  * 由 CSS 计数器生成——读者选中复制时不会把行号一并带走。
  *
- * 配色仍走进化自纸/墨/印的一套颜料，只是分得更细：
- * 苔绿（注释，退到背景里）、印蓝（关键字与运算符）、朱砂（字符串）、
- * 赭石（数字与类型）。函数名不动色相，靠 600 字重与上下文区分。
- * 全部取色都在 #eeefed 上实测过对比度，最低 5.1:1。
+ * 外壳与 Console 编辑器里的 pre 同一套：嵌入底色、1px 描边、4px 圆角。
  */
 :root {
   --code-gutter: 2.75em;
-  --code-gap: var(--s6);
+  --code-gap: var(--s5);
   --code-pad-block: var(--s4);
-  --code-pad-inline: var(--s6);
-  --code-gutter-fg: #676e67;
-  --code-comment: #4a6b52;
-  --code-keyword: #1b3a6b;
-  --code-string: #9c3122;
-  --code-number: #7a4a1e;
-  --code-row: color-mix(in srgb, var(--link) 7%, transparent);
-  --code-tool-bg: color-mix(in srgb, var(--bg-sunk) 82%, var(--fg) 4%);
+  --code-pad-inline: var(--s5);
   /* 收起态的高度上限：约 22 行，超出即折起 */
   --code-collapse-h: 24rem;
-}
 
-@media (prefers-color-scheme: dark) {
-  :root[data-scheme="auto"] {
-    --code-gutter-fg: #8a9a8d;
-    --code-comment: #8fa192;
-    --code-keyword: #8fb0f0;
-    --code-string: #e5938a;
-    --code-number: #d9ab7a;
-    --code-row: color-mix(in srgb, var(--link) 12%, transparent);
-    --code-tool-bg: color-mix(in srgb, var(--bg-sunk) 82%, var(--fg) 6%);
-  }
-}
-
-:root[data-scheme="dark"] {
-  --code-gutter-fg: #8a9a8d;
-  --code-comment: #8fa192;
-  --code-keyword: #8fb0f0;
-  --code-string: #e5938a;
-  --code-number: #d9ab7a;
-  --code-row: color-mix(in srgb, var(--link) 12%, transparent);
-  --code-tool-bg: color-mix(in srgb, var(--bg-sunk) 82%, var(--fg) 6%);
+  /*
+   * 语法着色。四种颜料各管一类记号，与主题色无关——
+   * 站长把主题色改成橙的那天，字符串不该跟着变成橙的。
+   *
+   * 这里用 light-dark() 一次写完明暗，而上方的主 token 是双写的。
+   * 区别在失效后果：主 token 失效页面会塌，着色失效只是代码退回墨色、照样能读，
+   * 所以这一小片值得用更简洁的写法换一点兼容面。
+   */
+  --code-gutter-fg: light-dark(#6b7280, #8b8f99);
+  --code-comment: light-dark(#4a6b52, #8fa192);
+  --code-keyword: light-dark(#1b3a6b, #8fb0f0);
+  --code-string: light-dark(#9c3122, #e5938a);
+  --code-number: light-dark(#7a4a1e, #d9ab7a);
+  --code-row: color-mix(in oklab, var(--fg) 5%, transparent);
 }
 
 /* 兜底：没有走服务端包装的裸 <pre>（第三方主题或历史内容）仍要有像样的排版 */
@@ -745,8 +1451,9 @@ button {
   margin: var(--s8) 0;
   padding: var(--code-pad-block) var(--code-pad-inline);
   overflow-x: auto;
-  background: var(--bg-sunk);
-  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-radius: var(--corner-control);
+  background: var(--surface-inset);
   font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.7;
@@ -762,14 +1469,16 @@ button {
 .code-block {
   position: relative;
   margin: var(--s8) 0;
-  background: var(--bg-sunk);
-  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-radius: var(--corner-control);
+  background: var(--surface-inset);
 }
 
 .code-block .code-lines {
   margin: 0;
   padding: var(--code-pad-block) 0 var(--code-pad-block) var(--code-pad-inline);
   overflow-x: auto;
+  border: 0;
   background: none;
   border-radius: inherit;
 }
@@ -800,7 +1509,7 @@ button {
   content: counter(line);
   counter-increment: line;
   padding-right: var(--s3);
-  border-right: var(--rule-w) solid var(--border);
+  border-right: 1px solid var(--line);
   color: var(--code-gutter-fg);
   text-align: right;
   /* 行号是辅助信息，不该被选中、也不该被读屏逐行念出来 */
@@ -817,20 +1526,14 @@ button {
   width: auto;
 }
 
-.code-block.is-wrapped .code-lines .line {
-  grid-template-columns: var(--code-gutter) minmax(0, 1fr);
-}
-
 .code-block.is-wrapped .code-lines {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 /*
- * 展开/收起：长代码块默认折到 --code-collapse-h，底部用遮罩淡出。
- * 不用「加宽到屏宽」那种做法：宽屏时正文列左侧还挂着元信息栏，
- * 向两侧溢出必然压住它，而元信息栏是本主题唯一的破格处，不能被盖。
- * 收起态由 .js-code 脚本测量高度后决定，短代码块不显示展开按钮。
+ * 展开 / 收起：长代码块默认折到 --code-collapse-h，底部用遮罩淡出。
+ * 收起态由 code.js 测量高度后决定，短代码块不显示展开按钮。
  */
 .code-block.is-collapsed .code-lines {
   max-height: var(--code-collapse-h);
@@ -854,10 +1557,12 @@ button {
   display: flex;
   gap: var(--s1);
   padding: var(--s1);
-  border-radius: var(--radius);
-  background: var(--code-tool-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--corner-control);
+  background: var(--surface);
+  box-shadow: var(--elevation-card);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--t-fast) var(--ease-out);
 }
 
 .code-block:hover .code-tools,
@@ -875,14 +1580,15 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.875rem;
-  height: 1.875rem;
+  width: 2rem;
+  height: 2rem;
   padding: 0;
   border: 0;
-  border-radius: var(--radius);
+  border-radius: var(--corner-control);
   background: none;
   color: var(--fg-muted);
-  transition: color 0.15s ease, background-color 0.15s ease;
+  transition: color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out);
 }
 
 /* 触屏与窄屏给足 44px 的命中区 */
@@ -903,8 +1609,8 @@ button {
 }
 
 .code-tool:hover {
-  color: var(--link);
-  background: color-mix(in srgb, var(--link) 10%, transparent);
+  background: var(--surface-active);
+  color: var(--fg);
 }
 
 .code-tool svg {
@@ -923,7 +1629,7 @@ button {
 }
 
 .code-tool.is-done {
-  color: var(--link);
+  color: var(--ok);
 }
 
 .code-tool.is-done .icon-idle {
@@ -934,7 +1640,6 @@ button {
   display: block;
 }
 
-/* 工具条按钮在展开态下跟随加宽后的代码块 */
 .code-tool-status {
   position: absolute;
   width: 1px;
@@ -999,8 +1704,7 @@ button {
 
 /*
  * 运算符与标点刻意不另上色，保持墨色。
- * 它们在代码里密度最高，一旦着色，一段普通的 PHP 会花成一张电路图——
- * 与「强调色只用于交互态，不做装饰」是同一条纪律。
+ * 它们在代码里密度最高，一旦着色，一段普通的 PHP 会花成一张电路图。
  */
 .code-lines .na,
 .code-lines .nt {
@@ -1019,11 +1723,11 @@ button {
 
 /* diff 的增删行：只做极轻的底色，不做整行反白 */
 .code-lines .gi {
-  background: color-mix(in srgb, var(--code-comment) 14%, transparent);
+  background: color-mix(in oklab, var(--ok) 16%, transparent);
 }
 
 .code-lines .gd {
-  background: color-mix(in srgb, var(--code-string) 14%, transparent);
+  background: color-mix(in oklab, var(--danger) 16%, transparent);
 }
 
 .code-lines .gh,
@@ -1034,15 +1738,16 @@ button {
 
 /* chroma 的 err 默认是红底白字，太吵；这里退成一条下划波浪 */
 .code-lines .err {
-  color: var(--code-string);
+  color: var(--danger);
   text-decoration: underline wavy currentColor;
   text-decoration-thickness: 1px;
 }
 
+/* ---------- 正文里的图与题注 ---------- */
 .prose img,
 .prose video {
   display: block;
-  border-radius: var(--radius);
+  border-radius: var(--corner-control);
 }
 
 .prose figure {
@@ -1051,59 +1756,34 @@ button {
 
 .prose figcaption {
   margin-top: var(--s2);
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
+  color: var(--fg-muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
   text-align: center;
 }
 
-.prose hr {
-  margin: var(--s12) 0;
-  border: 0;
-  border-top: var(--rule-w) solid var(--border);
-}
-
-.prose table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9375rem;
-}
-
-.prose th,
-.prose td {
-  padding: var(--s2) var(--s3);
-  border-bottom: var(--rule-w) solid var(--border);
-  text-align: left;
-}
-
-.prose th {
-  font-weight: 600;
-}
-
-.prose :is(h2, h3, h4) > a[href^="#"] {
-  color: var(--fg-faint);
-  text-decoration: none;
-}
-
-/* ---------- 标签 ---------- */
-.article-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s2);
-  margin-top: var(--s12);
-}
-
+/* ==================================================================
+   标签
+   ================================================================== */
+/*
+ * 描边式角标（Console 的 Badge outline 变体）。标签可以带站长指定的颜色，
+ * 那时描边与文字都跟着换——底色不换，一排彩色块会盖过文章标题。
+ */
 .tag {
-  padding: var(--s1) var(--s3);
-  border: var(--rule-w) solid var(--tag-color, var(--border));
-  border-radius: var(--radius);
+  display: inline-flex;
+  align-items: center;
+  height: 1.625rem;
+  padding-inline: var(--s2);
+  border: 1px solid var(--tag-color, var(--line-strong));
+  border-radius: var(--corner-control);
   color: var(--tag-color, var(--fg-muted));
-  font-size: 0.8125rem;
-  text-decoration: none;
+  font-size: var(--fs-xs);
+  transition: background-color var(--t-fast) var(--ease-out);
 }
 
 .tag:hover {
-  border-color: var(--tag-color, var(--link));
-  color: var(--tag-color, var(--link));
+  background: var(--surface-active);
+  color: var(--tag-color, var(--fg));
 }
 
 /* 标签云：字号由服务端算好的 1–5 档权重决定 */
@@ -1111,58 +1791,28 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
-  align-items: baseline;
-}
-
-.cloud .tag[data-weight="1"] { font-size: 0.75rem; }
-.cloud .tag[data-weight="2"] { font-size: 0.875rem; }
-.cloud .tag[data-weight="3"] { font-size: 1rem; }
-.cloud .tag[data-weight="4"] { font-size: 1.125rem; }
-.cloud .tag[data-weight="5"] { font-size: 1.25rem; }
-
-/* ---------- 作者 ---------- */
-.article-author {
-  display: flex;
-  gap: var(--s4);
-  margin-top: var(--s12);
-  padding-top: var(--s6);
-  border-top: var(--rule-w) solid var(--border);
-}
-
-.avatar {
-  flex: none;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.avatar-lg {
-  width: 4.5rem;
-  height: 4.5rem;
-}
-
-.author-name {
+  align-items: center;
   margin: 0;
-  font-weight: 600;
 }
 
-.author-bio {
-  margin: var(--s1) 0 0;
-  color: var(--fg-muted);
-  font-size: 0.875rem;
-}
+.cloud .tag[data-weight="1"] { font-size: var(--fs-xs); }
+.cloud .tag[data-weight="2"] { font-size: var(--fs-sm); }
+.cloud .tag[data-weight="3"] { font-size: var(--fs-base); height: 1.875rem; }
+.cloud .tag[data-weight="4"] { font-size: var(--fs-md); height: 2rem; }
+.cloud .tag[data-weight="5"] { font-size: var(--fs-lg); height: 2.25rem; }
 
-/* ---------- 归档头 ---------- */
+/* ==================================================================
+   归档页头（分类 / 标签 / 作者 / 月份）
+   ================================================================== */
 .archive-header {
-  margin-bottom: var(--s12);
-  padding-bottom: var(--s6);
-  border-bottom: var(--rule-w) solid var(--border);
+  margin-bottom: var(--s4);
+  padding: var(--card-pad);
 }
 
+.has-seal,
 .author-header {
   display: flex;
-  gap: var(--s6);
+  gap: var(--s5);
   align-items: flex-start;
 }
 
@@ -1172,44 +1822,43 @@ button {
  */
 .archive-kind {
   margin: 0 0 var(--s1);
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
 }
 
 .archive-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.875rem;
+  font-size: var(--fs-2xl);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: var(--lh-tight);
 }
 
 .archive-desc {
-  margin: var(--s3) 0 0;
+  margin: var(--s2) 0 0;
   color: var(--fg-muted);
-  font-size: 0.9375rem;
+  font-size: var(--fs-sm);
 }
 
 .archive-count {
-  margin: var(--s3) 0 0;
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
-}
-
-.section-title {
-  margin: 0 0 var(--s4);
-  font-size: 0.9375rem;
-  font-weight: 600;
+  margin: var(--s2) 0 0;
   color: var(--fg-muted);
+  font-size: var(--fs-xs);
 }
 
-/* ---------- 相关文章与归档列表 ---------- */
+/* ==================================================================
+   相关文章、归档月份、404 的推荐列表
+   ================================================================== */
+/*
+ * 三处共用一套：一张卡片，每条一行，右端是日期或篇数。
+ * 这与首页文章列表是同一个「卡片 + 实体行」的单位，只是行更矮。
+ */
 .related,
 .archive-months,
-.notfound-suggest {
-  margin-top: var(--s16);
-  padding-top: var(--s6);
-  border-top: var(--rule-w) solid var(--border);
+.notfound-suggest,
+.tag-cloud {
+  margin-top: var(--s4);
+  padding: var(--card-pad);
 }
 
 .related-list,
@@ -1230,49 +1879,110 @@ button {
 
 .related-list li + li,
 .archive-months li + li {
-  border-top: var(--rule-w) solid var(--border);
+  border-top: 1px solid var(--line);
+}
+
+.related-list a,
+.archive-months a {
+  color: var(--fg);
+  font-size: var(--fs-base);
+}
+
+.related-list a:hover,
+.archive-months a:hover {
+  color: var(--seal);
 }
 
 .related-list time,
 .archive-months .count {
   flex: none;
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
 }
 
-/* ---------- 翻页 ---------- */
+/* ==================================================================
+   翻页
+   ================================================================== */
+/*
+ * 与 Console 的 Pagination 同一套：上一页 / 页码 / 下一页，
+ * 页码是等宽的方块按钮，当前页用主题色淡底标出。
+ */
 .pagination {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--s4);
-  margin-top: var(--s16);
-  padding-top: var(--s6);
-  border-top: var(--rule-w) solid var(--border);
-  font-size: 0.875rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
+
+.page-prev,
+.page-next {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding-inline: var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--corner-control);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  transition: background-color var(--t-fast) var(--ease-out);
+}
+
+.page-prev:hover,
+.page-next:hover {
+  background: var(--surface-hover);
+  color: var(--fg);
 }
 
 .page-numbers {
   display: flex;
-  gap: var(--s3);
+  align-items: center;
+  gap: var(--s1);
   margin: 0;
   padding: 0;
   list-style: none;
-  font-variant-numeric: tabular-nums;
+}
+
+.page-numbers :is(a, span) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  padding-inline: var(--s1);
+  border-radius: var(--corner-control);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+  transition: background-color var(--t-fast) var(--ease-out);
+}
+
+.page-numbers a:hover {
+  background: var(--surface-active);
+  color: var(--fg);
 }
 
 .page-current {
-  color: var(--fg);
+  background: var(--seal-soft);
+  color: var(--seal);
   font-weight: 600;
 }
 
-.page-gap,
-.is-disabled {
-  color: var(--fg-faint);
+.page-gap {
+  color: var(--fg-subtle);
 }
 
-/* ---------- 搜索 ---------- */
+/* 到头了的那一端：留在原位但明确不可点，不让页面的两端忽长忽短 */
+.is-disabled {
+  border-color: var(--line);
+  color: var(--fg-subtle);
+  cursor: not-allowed;
+}
+
+/* ==================================================================
+   搜索
+   ================================================================== */
 .search-form {
   display: flex;
   gap: var(--s2);
@@ -1282,45 +1992,19 @@ button {
 .search-form input {
   flex: 1;
   min-width: 0;
-  padding: var(--s2) var(--s3);
-  background: var(--bg);
-  border: var(--rule-w) solid var(--border);
-  border-radius: var(--radius);
 }
 
-.search-form input:focus-visible,
-.comment-form :is(input, textarea):focus-visible {
-  border-color: var(--link);
-}
-
-.search-form button,
-.comment-form-actions button {
-  /* 触控目标至少 44px 高 */
-  min-height: 44px;
-  padding-inline: var(--s6);
-  background: var(--fg);
-  color: var(--bg);
-  border: 0;
-  border-radius: var(--radius);
-  font-size: 0.9375rem;
-  transition: opacity 0.2s ease;
-}
-
-.search-form button:hover,
-.comment-form-actions button:hover {
-  opacity: 0.85;
-}
-
-/* ---------- 评论 ---------- */
+/* ==================================================================
+   评论
+   ================================================================== */
 .comments {
-  margin-top: var(--s16);
-  padding-top: var(--s6);
-  border-top: var(--rule-w) solid var(--border);
+  margin-top: var(--s4);
+  padding: var(--card-pad);
 }
 
 .comments-title {
-  margin: 0 0 var(--s6);
-  font-size: 1.125rem;
+  margin: 0 0 var(--s5);
+  font-size: var(--fs-xl);
   font-weight: 600;
 }
 
@@ -1336,46 +2020,43 @@ button {
 }
 
 .comment + .comment {
-  border-top: var(--rule-w) solid var(--border);
+  border-top: 1px solid var(--line);
 }
 
 .comment-replies {
-  margin-top: var(--s4);
-  padding-left: var(--s6);
-  border-left: var(--rule-w) solid var(--border);
+  margin-top: var(--s3);
+  padding-left: var(--s5);
+  border-left: 1px solid var(--line);
 }
 
 .comment-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--s3);
+  align-items: center;
+  gap: var(--s2);
   margin-bottom: var(--s2);
-  font-size: 0.875rem;
 }
 
 .comment-author {
-  font-weight: 600;
   color: var(--fg);
+  font-size: var(--fs-base);
+  font-weight: 600;
 }
 
-.badge {
-  padding: 0 var(--s2);
-  border: var(--rule-w) solid var(--link);
-  border-radius: var(--radius);
-  color: var(--link);
-  font-size: 0.6875rem;
-  font-weight: 400;
+a.comment-author:hover {
+  color: var(--seal);
 }
 
 .comment-date {
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
 }
 
 .comment-body {
-  font-size: 0.9375rem;
+  color: var(--fg);
+  font-size: var(--fs-base);
   line-height: 1.75;
+  overflow-wrap: anywhere;
 }
 
 .comment-body p {
@@ -1387,39 +2068,15 @@ button {
 }
 
 .comment-form {
-  margin-top: var(--s8);
-  padding-top: var(--s6);
-  border-top: var(--rule-w) solid var(--border);
+  margin-top: var(--s6);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line);
 }
 
+/* 标签始终可见，不用 placeholder 代替：填完字后 placeholder 就消失了。
+   行距归标签与说明自己的外边距管（见上方 .field-label / .field-hint） */
 .comment-form-row {
   margin: 0 0 var(--s4);
-  display: grid;
-  gap: var(--s1);
-}
-
-/* 标签始终可见，不用 placeholder 代替：填完字后 placeholder 就消失了 */
-.comment-form-row label {
-  font-size: 0.875rem;
-  color: var(--fg-muted);
-}
-
-.comment-form :is(input, textarea) {
-  padding: var(--s2) var(--s3);
-  background: var(--bg);
-  border: var(--rule-w) solid var(--border);
-  border-radius: var(--radius);
-  font-size: 0.9375rem;
-}
-
-.comment-form textarea {
-  resize: vertical;
-  line-height: 1.7;
-}
-
-.comment-form .hint {
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
 }
 
 /* 蜜罐：对人不可见，对读屏软件也不可见，只有机器人会填 */
@@ -1440,185 +2097,137 @@ button {
 
 .comment-status {
   color: var(--fg-muted);
-  font-size: 0.875rem;
+  font-size: var(--fs-sm);
 }
 
 .comment-status[data-state="error"] {
-  color: #b3261e;
+  color: var(--danger);
 }
 
-/* ---------- 印（插图系统，阶段 8） ---------- */
+/* ==================================================================
+   印 —— 本主题的插图系统
+   ================================================================== */
 /*
  * 一枚方印、一个字。空状态盖「待」，搜索无果盖「无」，404 盖「空」，
- * 归档页头盖名字的第一个字。字用显示字体渲染，颜色就是「印」本身。
- * 微微逆时针歪一点：盖章从来不是水平的。
+ * 归档页头盖名字的第一个字。
+ *
+ * 第二版的印是实心底、白字、逆时针歪 5°（「盖章从来不是水平的」）。
+ * 这一版把它摆正、换成主题色淡底 + 主题色的字：Console 里的图标块就是这个样子，
+ * 而一个歪着的方块在一页全是正交矩形的界面里会显得是渲染出了错。
  */
 .seal {
   display: block;
   flex: none;
-  width: 4rem;
-  height: 4rem;
-  transform: rotate(-5deg);
+  width: 3rem;
+  height: 3rem;
 }
 
 .seal rect {
-  fill: var(--seal-color, var(--link));
+  fill: var(--seal-soft-strong);
 }
 
 .seal text {
-  fill: var(--bg);
+  fill: var(--seal-color, var(--seal));
   font-family: var(--font-display);
-  font-size: 34px;
+  font-size: 32px;
   font-weight: 600;
 }
 
-.has-seal {
-  display: flex;
-  gap: var(--s6);
-  align-items: flex-start;
-}
-
-.has-seal .seal {
-  margin-top: var(--s1);
-}
-
+/* 空状态是行动的邀请，不是道歉：给一枚印、一句话、一个出口 */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--s4);
-  padding-block: var(--s12);
+  padding: var(--s16) var(--card-pad);
   text-align: center;
 }
 
-.empty-state .empty {
-  margin: 0;
-}
-
-/* ---------- 阅读进度 ---------- */
-/* 一条 2px 的印色线，贴在视口顶部。初始 scaleX(0)：没有 JS 时它就是不存在。 */
+/* ==================================================================
+   阅读进度
+   ================================================================== */
+/*
+ * 一条 2px 的主题色线，贴在视口顶部、压在吸顶页眉的上边框上。
+ * 初始 scaleX(0)：没有 JS 时它就是不存在。
+ */
 .reading-progress {
   position: fixed;
   inset: 0 0 auto 0;
+  z-index: calc(var(--z-sticky) + 1);
   height: 2px;
-  background: var(--link);
+  background: var(--seal);
   transform: scaleX(0);
   transform-origin: 0 50%;
-  z-index: 20;
   pointer-events: none;
 }
 
-/* ---------- 404 ---------- */
+/* ==================================================================
+   404
+   ================================================================== */
 .notfound-head {
   display: flex;
-  gap: var(--s6);
+  gap: var(--s5);
   align-items: flex-start;
+  padding: var(--card-pad);
 }
 
 .notfound-head .seal {
-  width: 5rem;
-  height: 5rem;
-  margin-top: var(--s2);
+  width: 3.5rem;
+  height: 3.5rem;
 }
 
 .notfound-code {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(3rem, 2rem + 6vw, 5rem);
+  font-size: clamp(2.5rem, 1.8rem + 3vw, 3.5rem);
   font-weight: 600;
   line-height: 1;
-  color: var(--fg-faint);
-  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
 }
 
 .notfound-text {
-  margin: var(--s4) 0 0;
+  margin: var(--s3) 0 0;
   color: var(--fg-muted);
 }
 
 .notfound-actions {
   display: flex;
-  gap: var(--s6);
-  margin-top: var(--s12);
-}
-
-/* ---------- 页脚 ---------- */
-.site-footer {
-  padding-block: var(--s8);
-  border-top: var(--rule-w) solid var(--border);
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
-}
-
-.site-footer .wrap {
-  display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s3) var(--s6);
-  max-width: calc(var(--measure) + var(--aside-w) + var(--aside-gap));
+  gap: var(--s3);
+  margin-top: var(--s4);
 }
 
-.site-footer p {
-  margin: 0;
-}
-
-.site-footer a {
-  color: var(--fg-faint);
-}
-
-.site-footer a:hover {
-  color: var(--link);
-}
-
-.footer-links {
-  display: flex;
-  gap: var(--s4);
-}
-
-/* ---------- 账户页与表单页（agent.md §11.5） ---------- */
+/* ==================================================================
+   账户页与表单页（登录 / 注册 / 找回密码 / 重置密码 / 账户）
+   ================================================================== */
 /*
- * 登录 / 注册 / 忘记密码 / 重置密码共用一套版面。设计立意：「墨」的隐喻是纸、墨、印，
- * 所以「登录」在这套语言里对应的动作是**在纸上落款**，不是在一张浮起的卡片里填表。
- * 因此没有卡片、没有阴影、没有渐变，也没有圆角容器。
+ * 五页共用一套版面：一张居中的卡片，宽 26rem。
  *
- * 表单块 20em 并在既有栏宽内**左对齐，不居中**：全站正文左对齐，
- * 只有登录页居中的话，它会成为整站唯一一个居中的页面。
+ * 第二版这里是「在纸上落款」——没有卡片、没有阴影、左对齐不居中，
+ * 输入框只有底部一条线。整套隐喻随主题一起作废：登录表单在 Console 里
+ * 是一张居中的卡片，前台就该是同一张。
  */
+.auth {
+  max-width: 26rem;
+  margin-inline: auto;
+}
+
 .auth-title {
-  margin: 0 0 var(--s6);
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 400;
-  letter-spacing: 0.01em;
+  margin: 0 0 var(--s4);
+  font-size: var(--fs-xl);
+  font-weight: 600;
 }
 
 .auth-panel {
-  max-width: 20em;
-  /* 左侧装订线：从标题下缘延伸到表单末尾，像一页合起来的纸的订口 */
-  padding-left: var(--s6);
-  border-left: var(--rule-w) solid color-mix(in srgb, var(--seal) 35%, transparent);
+  padding: var(--card-pad);
 }
 
+/* 站长写的注册说明。它是页面的一部分而不是一次失败，故不套提示条 */
 .auth-intro {
-  max-width: 20em;
-  margin: 0 0 var(--s6);
+  margin: 0 0 var(--s4);
   color: var(--fg-muted);
-  font-size: 0.9375rem;
-}
-
-/* 页面级提示条：--bg-sunk 底 + 左侧 2px 竖线，与既有 blockquote 同一种语言 */
-.notice {
-  margin: 0 0 var(--s6);
-  padding: var(--s3) var(--s4);
-  background: var(--bg-sunk);
-  border-left: 2px solid var(--seal);
-  color: var(--fg-muted);
-  font-size: 0.875rem;
-}
-
-.notice[data-kind="error"] {
-  border-left-color: var(--error);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
 }
 
 .auth-field {
@@ -1626,147 +2235,127 @@ button {
 }
 
 .auth-field + .auth-field {
-  margin-top: var(--s6);
+  margin-top: var(--s4);
 }
 
-.auth-field label {
+/* 输入框与「显示密码」共处的一层，供那个按钮定位 */
+.field-control {
+  position: relative;
   display: block;
-  margin-bottom: var(--s2);
-  font-family: var(--font-sans);
-  font-size: 0.875rem;
-  color: var(--fg-muted);
 }
 
-/* 标签与「显示 / 隐藏」同一行时，行距归容器管，标签自己不再留下边距 */
-.auth-field-label {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s4);
-  margin-bottom: var(--s2);
-}
-
-.auth-field-label label {
-  margin-bottom: 0;
+.field-control .field-input {
+  padding-right: 2.75rem;
 }
 
 /*
- * 输入框只有底部一条 1px 实线：这是「墨水落在纸上」，也是本次唯一的大胆之处，
- * 其余一切保持安静（agent.md §11.2 的「把胆量花在一处」）。
- * 故不加框、不加底色、不加圆角。聚焦时底线换成印色并加粗到 2px——
- * 这条底线本身就是焦点指示，故这里不叠加全站那圈 outline：
- * 一圈矩形描边会把「没有框的输入框」重新框起来，正好抵消掉这个设计。
+ * 密码可见切换。由 auth.js 注入（没有 JS 时不该出现一个点了没反应的按钮），
+ * 嵌在输入框右端——与 Console 搜索框里的清除键同一个位置、同一种做法。
  */
-.auth-form input {
-  display: block;
-  width: 100%;
-  /*
-   * 上下 --s3 而不是 --s2：这条线本身没有厚度，垂直方向的可点区域全靠内边距撑。
-   * 12 + 24（行高） + 12 ≈ 48px，够得上触屏的最小目标；--s2 只有 40px 出头，
-   * 在手机上要点两次才落进去的那种。
-   */
-  padding: var(--s3) 0;
-  line-height: 1.5;
-  background: transparent;
+.field-reveal {
+  position: absolute;
+  top: 50%;
+  right: var(--s1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
   border: 0;
-  border-bottom: var(--rule-w) solid var(--border);
-  border-radius: 0;
-  font-size: 1rem;
-  transition: border-color 120ms ease-out, border-bottom-width 120ms ease-out;
+  border-radius: var(--corner-control);
+  background: none;
+  color: var(--fg-muted);
+  transform: translateY(-50%);
+  transition: color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out);
 }
 
-.auth-form input:focus-visible {
-  outline: none;
-  border-bottom-width: 2px;
-  border-bottom-color: var(--seal);
+.field-reveal:hover {
+  background: var(--surface-active);
+  color: var(--fg);
 }
 
-.auth-form input[aria-invalid="true"] {
-  border-bottom-color: var(--error);
-}
-
-.auth-form input[aria-invalid="true"]:focus-visible {
-  border-bottom-color: var(--error);
-}
-
-.auth-hint {
-  display: block;
-  margin-top: var(--s1);
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-/* 字段错误：朱砂色文字 + 该输入框的朱砂底线，两处同时表达，不加图标 */
-.auth-error {
-  display: block;
-  margin-top: var(--s1);
-  color: var(--error);
-  font-size: 0.8125rem;
-  line-height: 1.5;
+.field-reveal svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .auth-actions {
-  margin-top: var(--s8);
+  margin: var(--s6) 0 0;
 }
 
-/* 次要链接一行，以 1px 分隔线与按钮隔开 */
+/*
+ * 提交键占满整行。Console 的浮层底栏是靠右排的，那是因为它那些弹窗普遍
+ * 「取消 + 确认」成对出现；这里只有一个动作，整行就是它的宽度。
+ */
+.auth-actions .btn {
+  width: 100%;
+}
+
+/* 支线出口（忘记密码 / 还没有账户 / 返回登录）：一条线之下的一行小字 */
 .auth-alt {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2) var(--s4);
-  margin: var(--s6) 0 0;
-  padding-top: var(--s6);
-  border-top: var(--rule-w) solid var(--border);
-  font-size: 0.875rem;
+  margin: var(--s5) 0 0;
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-sm);
 }
 
 /* ---------- 账户页 ---------- */
 .account-meta {
-  max-width: 20em;
-  margin-bottom: var(--s8);
-  color: var(--fg-faint);
-  font-size: 0.8125rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-bottom: var(--s4);
+  padding: var(--s5) var(--card-pad);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+
+.account-meta .aside-row {
+  gap: var(--s4);
+}
+
+.account-meta .aside-key {
+  min-width: 3em;
 }
 
 .account-section-title {
-  margin: 0 0 var(--s6);
-  font-family: var(--font-display);
-  font-size: 1.0625rem;
+  margin: 0 0 var(--s4);
+  font-size: var(--fs-lg);
   font-weight: 600;
 }
 
 .account-logout {
-  max-width: 20em;
-  margin-top: var(--s8);
-  padding-top: var(--s6);
-  border-top: var(--rule-w) solid var(--border);
+  margin-top: var(--s4);
 }
 
-/* ---------- 账户弹窗：页眉翻开的第二只角 ---------- */
-/* ---------- 账户弹窗（2026-09-14 第二版：居中） ---------- */
+/* ==================================================================
+   账户弹窗
+   ================================================================== */
 /*
- * 第一版贴在页眉右下角、借页眉那条分隔线当自己的上边框，像「把纸翻开一角」。
- * 想法成立，用起来不成立：它在宽屏上偏居右上，人的视线与光标都在页面中间；
- * 窄屏上又几乎撑满，那个「一角」的意思也就没了。换成居中。
+ * 与 Console 的浮层逐项对齐（console/src/components/ui/dialog.tsx）：
+ * 6px 圆角、1px 描边、面板底色、浮层阴影，结构是「标题栏 / 主体 / 动作区」。
  *
- * 骨架照 Console 的浮层（标题栏 / 主体，遮罩，居中，Esc 关闭），**配色不照**：
- * 那边用阴影表达「浮在内容之上」，这里不用——「无阴影」是这套主题的纪律
- * （agent.md §11.2），分层交给遮罩：背后的纸被墨罩暗，中间这张是亮的，
- * 一条 1px 的边就够把它和背景分开。
+ * 用原生 <dialog> 而不是自绘的一层 div：焦点被困在弹窗里、背景 inert、
+ * Esc 关闭、关闭后焦点还给触发它的链接——这几件事由浏览器提供，
+ * 自己实现每一个都容易漏掉一处。
  *
- * 隐喻仍是纸：一张摊在案上的笺，不是一块浮起来的卡片。故圆角仍是 2px、
- * 边框仍是 1px 实线、标题仍走衬线。
- */
-/*
  * `display` **只能写在 [open] 上**。
- *
  * 浏览器自带的 `dialog:not([open]) { display: none }` 来自 UA 样式表，
  * 而作者样式无条件赢过 UA 样式——在 `.auth-dialog` 上直接写 display: flex，
  * 等于把那条隐藏规则整个抹掉，于是没打开的弹窗常驻在页面左上角：
- * 一个空壳子摊在正文之上，点它也没有反应（背后没有 showModal，也就没有模态层）。
+ * 一个空壳子摊在正文之上，点它也没有反应。
  *
- * 这条踩过一次（2026-09-14 居中改版当天），所以有 TestBuiltinThemeDialogHidden
+ * 这条踩过一次（2026-09-14），所以有 TestBuiltinThemeDialogStaysHidden
  * 盯着：那条测试读的就是这份 CSS。
  */
 .auth-dialog[open] {
@@ -1775,40 +2364,35 @@ button {
 }
 
 .auth-dialog {
-  /* <dialog> 的默认 margin:auto 就是居中，只要给定宽高上限 */
-  width: min(26em, calc(100% - var(--s8)));
+  width: min(32rem, calc(100vw - var(--s8)));
   max-height: calc(100dvh - var(--s12));
   margin: auto;
   padding: 0;
   overflow: hidden;
-  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--corner-overlay);
+  background: var(--surface);
   color: var(--fg);
-  border: var(--rule-w) solid var(--border);
-  border-radius: var(--radius);
+  box-shadow: var(--elevation-overlay);
 }
 
-/* 墨色薄薄罩住纸面，而不是把页面涂黑 */
 .auth-dialog::backdrop {
   background: var(--scrim);
 }
 
 .auth-dialog[open] {
-  animation: auth-dialog-in 140ms ease-out;
+  animation: auth-dialog-in var(--t-normal) var(--ease-out);
 }
 
 .auth-dialog[open]::backdrop {
-  animation: auth-backdrop-in 140ms ease-out;
+  animation: auth-backdrop-in var(--t-normal) var(--ease-out);
 }
 
-/*
- * 入场：淡入 + 从 98% 放到 100%。
- * 与第一版那个「从上方落 4px」不同——那是配合它挂在页眉下沿的位置，
- * 居中之后没有哪个方向是它「来的方向」，只剩「出现」这一件事。
- */
+/* 与 Console 的 panel-in 同一条：淡入 + 极轻微放大 */
 @keyframes auth-dialog-in {
   from {
     opacity: 0;
-    scale: 0.98;
+    scale: 0.985;
   }
   to {
     opacity: 1;
@@ -1826,65 +2410,54 @@ button {
 }
 
 /*
- * 标题栏：标题在左，关闭在右，底下一条 1px 线。
+ * 标题栏：标题在左，关闭在右，底下一条线。
  * 标题是当前这一步的名字（登录 / 创建账户 / 重置密码），由 auth.js 从面板上取。
- *
- * 第一版在这里放的是三个并排的标签（登录 / 注册 / 忘记密码）。去掉了：
- * 那让「忘记密码」看起来与「登录」同级，而它是登录的支线——
- * 人是先想登录、发现想不起密码，才走到那一步的。三条支线现在回到面板底部，
- * 就是 .auth-alt 那一行（页面上本来就有，第一版把它藏了）。
  */
 .auth-dialog-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s4);
-  padding: var(--s4) var(--s4) var(--s4) var(--s6);
-  border-bottom: var(--rule-w) solid var(--border);
+  padding: var(--s3) var(--s3) var(--s3) var(--s5);
+  border-bottom: 1px solid var(--line);
 }
 
 .auth-dialog-title {
   margin: 0;
-  font-family: var(--font-display);
-  font-size: 1.25rem;
-  font-weight: 400;
-  letter-spacing: 0.01em;
+  font-size: var(--fs-xl);
+  font-weight: 600;
 }
 
-/*
- * 关闭键。可点区域 44×44（触屏的最小目标），视觉上只有一个 × 字。
- * 不画边框也不画底色：它在标题栏里是唯一一个可点的东西，不必再框起来。
- */
+/* 关闭键：Console 的 ghost 图标按钮，2rem 见方 */
 .auth-dialog-close {
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 44px;
-  height: 44px;
-  margin: calc(var(--s2) * -1) 0;
+  width: 2rem;
+  height: 2rem;
   padding: 0;
-  background: none;
   border: 0;
-  border-radius: var(--radius);
-  color: var(--fg-faint);
-  font-family: var(--font-sans);
-  font-size: 1.375rem;
-  line-height: 1;
-  cursor: pointer;
-  transition: color 120ms ease-out;
+  border-radius: var(--corner-control);
+  background: none;
+  color: var(--fg-muted);
+  transition: color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out);
 }
 
 .auth-dialog-close:hover {
+  background: var(--surface-active);
   color: var(--fg);
 }
 
-/*
- * 弹窗里的字段挨得比页面上紧一档：--s6 是为整页阅读的节奏定的，
- * 一张 26em 宽的表单用同样的行距会显得空，人要多滚一段才看得到按钮。
- */
-.auth-dialog .auth-field + .auth-field {
-  margin-top: var(--s4);
+.auth-dialog-close svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* 主体。表单长过视口时在这里滚，标题栏与关闭键留在原处 */
@@ -1892,42 +2465,38 @@ button {
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  padding: var(--s6);
+  padding: var(--s4) var(--s5);
 }
 
 /*
- * 弹窗里的面板：宽度交给弹窗，但**去掉那条装订线**。
- * 装订线在页面上是「这一块是从整页里裁下来的一条」的意思；
- * 弹窗本身已经是一张独立的纸，再画一条订口，等于说这张纸还是从别处撕下来的。
+ * 弹窗里的面板不再是卡片：弹窗本身已经是那张卡片，
+ * 里面再套一层描边与阴影就成了卡片里的卡片。
  */
 .auth-dialog .auth-panel {
-  max-width: none;
-  padding-left: 0;
-  border-left: 0;
-}
-
-.auth-dialog .auth-intro {
-  max-width: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
 
 /*
- * 提交那一行在弹窗里画成贴底的动作区：一条分隔线撑满弹窗宽度，按钮靠右。
+ * 提交那一行在弹窗里画成贴底的动作区：一条分隔线撑满弹窗宽度，按钮撑满整行。
  * DOM 没动——它仍是表单里的那个 <p>，只是这里让它看起来像 Console 浮层的底栏。
+ *
+ * 没有把按钮真搬进第三块底栏，是因为主体装的是服务端产出的整张表单，
+ * 提交按钮就在它里面；搬出去就得在两处维护同一张表单，
+ * 而漏改的那一次表现为「线上登录偶发失败」。
  */
 .auth-dialog .auth-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin: var(--s6) calc(var(--s6) * -1) 0;
-  padding: var(--s4) var(--s6) 0;
-  border-top: var(--rule-w) solid var(--border);
+  margin: var(--s5) calc(var(--s5) * -1) 0;
+  padding: var(--s3) var(--s5) 0;
+  border-top: 1px solid var(--line);
 }
 
-/*
- * 支线出口（「忘记密码」「还没有账户？注册」「返回登录」）。
- * 页面上它与按钮之间隔着一条线，弹窗里那条线已经由动作区画了，这里就不再画第二条。
- */
+/* 支线出口在弹窗里不再自带分隔线：上面那条动作区已经画过一条 */
 .auth-dialog .auth-alt {
-  margin-top: var(--s4);
+  margin-top: var(--s3);
   padding-top: 0;
   border-top: 0;
 }
@@ -1935,8 +2504,8 @@ button {
 /* 取页面面板的那一小段时间。留着空面板会像坏掉了 */
 .auth-dialog-loading {
   margin: 0;
-  color: var(--fg-faint);
-  font-size: 0.875rem;
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
 }
 
 /*
@@ -1948,52 +2517,10 @@ html.auth-open {
   overflow: hidden;
 }
 
-/*
- * 密码可见切换。由 auth.js 注入（没有 JS 时不该出现一个点了没反应的按钮），
- * 落在标签那一行的右端——与标签同一基线，不占额外的行。
- *
- * 是「显示 / 隐藏」两个字，不是一只眼睛图标：与关闭键同一条理由。
- */
-.auth-reveal {
-  flex: none;
-  padding: 0;
-  background: none;
-  border: 0;
-  color: var(--fg-faint);
-  font-family: var(--font-sans);
-  font-size: 0.8125rem;
-  cursor: pointer;
-  transition: color 120ms ease-out;
-}
-
-.auth-reveal:hover {
-  color: var(--link);
-}
-
-/*
- * 窄屏：表单块降为 100% 宽。
- * 20em 在 390px 上只比可用宽度小一点点，再窄一点（320px 的老设备）就会横向溢出，
- * 而横向滚动是这几个页面最不可接受的缺陷——表单一旦要左右拖动就没法填。
- */
-@media (max-width: 26rem) {
-  .auth-panel,
-  .auth-intro,
-  .account-meta,
-  .account-logout {
-    max-width: 100%;
-  }
-
-  /* 页面上的装订线在窄屏收窄；弹窗里本来就没有装订线 */
-  .auth-panel {
-    padding-left: var(--s4);
-  }
-
-  /*
-   * 弹窗在小屏上几乎贴边，内边距跟着收：26em 的上限在 390px 上已经用不到，
-   * 真正吃掉宽度的是左右各 --s6 的内边距。
-   */
+/* 窄屏：弹窗几乎贴边，内边距跟着收 */
+@media (max-width: 30rem) {
   .auth-dialog {
-    width: calc(100% - var(--s4));
+    width: calc(100vw - var(--s4));
   }
 
   .auth-dialog-head {
@@ -2005,83 +2532,36 @@ html.auth-open {
   }
 
   .auth-dialog .auth-actions {
-    margin-right: calc(var(--s4) * -1);
-    margin-left: calc(var(--s4) * -1);
-    padding-right: var(--s4);
-    padding-left: var(--s4);
+    margin-inline: calc(var(--s4) * -1);
+    padding-inline: var(--s4);
   }
 }
 
-/* ---------- 宽屏：元信息栏挂到正文左外侧 ---------- */
+/* ==================================================================
+   动效与打印
+   ================================================================== */
 /*
- * 断点取 (measure 36em ≈ 648px) + 栏宽 144px + 间距 32px + 两侧留白，
- * 约 1040px。低于它就没有足够空间在正文左侧再放一栏而不挤压正文。
- */
-@media (min-width: 65rem) {
-  .article.has-aside {
-    display: grid;
-    grid-template-columns: var(--aside-w) minmax(0, var(--measure));
-    justify-content: center;
-    column-gap: var(--aside-gap);
-  }
-
-  .article.has-aside > .wrap {
-    grid-column: 2;
-    max-width: var(--measure);
-    margin-inline: 0;
-    padding-inline: 0;
-  }
-
-  .article.has-aside > .article-aside {
-    grid-column: 1;
-    grid-row: 2;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    text-align: right;
-  }
-
-  .article.has-aside > .article-header {
-    grid-column: 1 / -1;
-    max-width: calc(var(--measure) + var(--aside-w) + var(--aside-gap));
-    margin-inline: auto;
-  }
-
-  .aside-row {
-    flex-direction: column;
-    gap: 0;
-    margin-bottom: var(--s4);
-  }
-
-  .aside-key {
-    min-width: 0;
-    color: var(--fg-faint);
-  }
-}
-
-/* ---------- 动效 ---------- */
-/*
- * 全站只有链接与按钮的状态过渡，没有入场动画、没有滚动触发。
- * 逐段淡入上移是 AI 生成页面的标志，而且对长文读者纯属干扰。
+ * 全站只有回应用户动作的那一类过渡。入场动画由 motion.js 另行负责，
+ * 并受主题设置里的「页面动效」总闸控制。
  */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
+    animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
 }
 
-/* ---------- 打印 ---------- */
 @media print {
   .site-header,
   .site-footer,
   .comments,
   .pagination,
   .related,
+  .reading-progress,
   .skip-link {
     display: none;
   }
@@ -2092,8 +2572,21 @@ html.auth-open {
     font-size: 11pt;
   }
 
+  /* 纸上不需要卡片：去掉描边、阴影与圆角，内容直接落在页面上 */
+  .article,
+  .post-list,
+  .archive-header,
+  .auth-panel,
+  .card {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding-inline: 0;
+  }
+
   .wrap {
     max-width: none;
+    padding-inline: 0;
   }
 
   /* 打印时把链接地址显式写出来，否则纸面上的链接等于失效 */

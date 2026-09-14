@@ -547,7 +547,7 @@ func TestBuiltinThemeAccountEntry(t *testing.T) {
 		}
 	})
 
-	t.Run("已登录显示印章头像且没有弹窗", func(t *testing.T) {
+	t.Run("已登录显示首字头像且没有弹窗", func(t *testing.T) {
 		t.Parallel()
 		out := render(func(c *Context) {
 			c.CurrentUser = &CurrentUserView{ID: 1, Username: "u", DisplayName: "张三"}
@@ -555,8 +555,8 @@ func TestBuiltinThemeAccountEntry(t *testing.T) {
 		if !strings.Contains(out, `class="site-avatar"`) {
 			t.Error("已登录应显示头像")
 		}
-		if !strings.Contains(out, `>张</text>`) {
-			t.Errorf("头像应是盖显示名第一个字的印章: %.400s", out)
+		if !strings.Contains(out, `<span class="avatar-fallback" aria-hidden="true">张</span>`) {
+			t.Errorf("没有头像图时应落显示名的第一个字: %.400s", out)
 		}
 		if strings.Contains(out, `id="site-auth"`) {
 			t.Error("已登录没有打开弹窗的入口，DOM 里不该留着它")
@@ -573,18 +573,18 @@ func TestBuiltinThemeAccountEntry(t *testing.T) {
 				ID: 1, Username: "u", DisplayName: "张三", AvatarURL: "/uploads/a.png",
 			}
 		})
-		// 只看头像那个 <a> 里面：整页别处（空状态、404 一类）本来就盖着别的印，
-		// 在整段 HTML 上找 <text 是在找页面里的印，不是这一枚。
+		// 只看头像那个 <a> 里面：整页别处（空状态、404 一类）本来就盖着印，
+		// 在整段 HTML 上找首字标记是在找页面里的别的东西，不是这一枚。
 		_, avatar, ok := strings.Cut(out, `class="site-avatar"`)
 		if !ok {
 			t.Fatalf("页眉里没有头像: %.400s", out)
 		}
 		avatar, _, _ = strings.Cut(avatar, "</a>")
 		if !strings.Contains(avatar, `src="/uploads/a.png"`) {
-			t.Errorf("用户上传了头像就该用图，而不是盖印章: %.300s", avatar)
+			t.Errorf("用户上传了头像就该用图，而不是落首字: %.300s", avatar)
 		}
-		if strings.Contains(avatar, "<text") {
-			t.Errorf("用了图就不该再渲染印章: %.300s", avatar)
+		if strings.Contains(avatar, "avatar-fallback") {
+			t.Errorf("用了图就不该再渲染首字: %.300s", avatar)
 		}
 	})
 

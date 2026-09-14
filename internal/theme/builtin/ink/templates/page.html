@@ -4,15 +4,17 @@
 {{ $post := .Post }}
 
 {{- /* 独立页面不显示日期与分类：关于页、联系页上的「三年前发表」只会让人误解。 */ -}}
-<article class="article page">
-  <header class="article-header wrap">
-    <h1 class="article-title">{{ $post.Title }}</h1>
-  </header>
+<div class="wrap">
+  <article class="article page">
+    <header class="article-header">
+      <h1 class="article-title">{{ $post.Title }}</h1>
+    </header>
 
-  <div class="prose wrap">{{ safeHTML $post.Content }}</div>
-</article>
+    <div class="prose">{{ safeHTML $post.Content }}</div>
+  </article>
 
-{{ if .Theme.Settings.content.showComments }}
-<div class="wrap">{{ template "partials/comments.html" . }}</div>
-{{ end }}
+  {{ if .Theme.Settings.content.showComments }}
+  {{ template "partials/comments.html" . }}
+  {{ end }}
+</div>
 {{ end }}
