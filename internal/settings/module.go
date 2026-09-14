@@ -105,6 +105,10 @@ func (m *Module) Navigation() app.Navigation {
 	groups := m.service.Groups()
 	items := make([]app.NavItem, 0, len(groups))
 	for i, group := range groups {
+		// 声明为 Hidden 的组有别的页面承载它的表单（见 app.SettingGroup.Hidden）。
+		if group.Hidden {
+			continue
+		}
 		items = append(items, app.NavItem{
 			Key:         "settings-" + group.Name,
 			Label:       group.Label,

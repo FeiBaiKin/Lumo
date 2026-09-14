@@ -91,6 +91,24 @@ func TestNavigationContract(t *testing.T) {
 		}
 	}
 
+	// 声明为 Hidden 的设置分组不产生菜单项。
+	//
+	// 漏跳过它不会有任何报错，只是在侧边栏里多出一项——也就是把「开放注册」
+	// 与「用户」重新拆回两个入口，正是当初要合并掉的那个问题。
+	// 故在这里按声明本身核对，而不是把分组名硬编码进来。
+	for _, group := range application.Settings() {
+		if !group.Hidden {
+			continue
+		}
+		want := "/settings/" + group.Name
+		for _, item := range nav.Items {
+			if item.Path == want {
+				t.Errorf("设置分组 %q 声明为 Hidden，侧边栏里却仍有 [%s]（%s）",
+					group.Name, item.Key, want)
+			}
+		}
+	}
+
 	// 菜单清单变了却没人检查时这条测试会静默空转。
 	if len(nav.Items) < 15 {
 		t.Errorf("只检查到 %d 个菜单项，期望至少 15 个——模块是不是漏声明了？", len(nav.Items))

@@ -61,6 +61,8 @@ import {
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
+import { RegistrationSettings } from "./registration-settings";
+
 /**
  * 用户管理（形态对齐 Halo 的用户列表）。
  *
@@ -187,6 +189,12 @@ export function UsersPage() {
       />
 
       <PageBody>
+        {/*
+          注册设置与用户列表同页。权限取 settings:manage 而不是本页的 users:manage：
+          这两个开关在服务端按设置权限拦，摆出一个必然 403 的表单只是让人白填一遍。
+        */}
+        {can("settings:manage") ? <RegistrationSettings /> : null}
+
         <Card className="overflow-hidden">
           <CardHeader>
             <ListToolbar

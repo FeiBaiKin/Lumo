@@ -57,6 +57,9 @@ func group() app.SettingGroup {
 		// 白名单只放这两项：主题据此决定页眉要不要显示「注册」入口。
 		// 其余字段（将来若有）不公开——Public 平面是匿名可读的。
 		Public: []string{keyAllowRegistration, keyNotice},
+		// 不进侧边栏：这两项说的是「谁能成为用户」，与「用户」是同一件事，
+		// 分成两个入口只会让站长在两者之间找。表单改由用户页承载，地址不变。
+		Hidden: true,
 	}
 }
 
