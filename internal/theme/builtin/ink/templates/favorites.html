@@ -1,0 +1,38 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+{{- /*
+「我的收藏」。只有本人看得到，未登录时路由层就跳去登录页了（见 theme/routes.go）。
+
+版式与分类、标签、作者三张归档页完全一样：一张页头卡片 + 一列文章。
+收藏页在读者眼里就是「我自己的一个归档」，没有理由另起一套版式。
+
+列表里刻意**不显示**「取消收藏」：这一页是用来找回文章的，
+不是用来管理收藏的。取消收藏在文章页上——那里能看见自己正要取消的是什么。
+*/ -}}
+<div class="wrap">
+  <header class="archive-header has-seal">
+    {{ template "partials/seal.html" "藏" }}
+    <div data-motion="title">
+      <p class="archive-kind">账户</p>
+      <h1 class="archive-title">我的收藏</h1>
+      <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+    </div>
+  </header>
+
+  {{ if .Posts }}
+    {{ template "partials/post-list.html" . }}
+  {{ else }}
+  {{- /*
+  自己写一遍空状态而不是交给 post-list.html：那里那句「还没有内容」说的是
+  「这个站点还没发文章」，而这一页的空是「你还没收藏过东西」，
+  给出的出口也不同——那里无路可去，这里该把人送回首页去读点什么。
+  */ -}}
+  <div class="empty-state">
+    {{ template "partials/seal.html" "藏" }}
+    <p class="empty">还没有收藏。读到想留着的文章时，点文末的「收藏」，它就会出现在这里。</p>
+    <p><a class="btn btn-secondary" href="/">去首页看看</a></p>
+  </div>
+  {{ end }}
+</div>
+{{ end }}

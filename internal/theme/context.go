@@ -20,6 +20,11 @@ const (
 	KindAuthor   = "author"
 	KindNotFound = "404"
 
+	// KindFavorites 是「我的收藏」页。它由本模块渲染而不是 account——
+	// 那一页上是一列文章，而按可见性取文章、补作者分类标签、算分页
+	// 全都在本包里（agent.md §3.2：account 不为内容提供任何接口）。
+	KindFavorites = "favorites"
+
 	// 以下五种由 account 模块注入（agent.md §11.5）。
 	KindLogin          = "login"
 	KindRegister       = "register"
@@ -95,6 +100,14 @@ type Context struct {
 	// 由 Renderer.NewContext 从 auth 的 principal 填充——根路由上没有鉴权中间件，
 	// 没有 auth.Authenticator.Optional 挂在前台，这个字段就恒为 nil。
 	CurrentUser *CurrentUserView
+
+	// CSRFToken 是本页可用的表单令牌，供**页面自带**的表单使用——
+	// 目前只有页眉账户菜单里的退出登录那一张。
+	//
+	// 只对已登录访客签发（匿名页因此仍然可以被共享缓存），由 Renderer.Render
+	// 在渲染前填入；没有接上签发钩子时为空串，模板据此不渲染那张表单。
+	// 表单页（登录、注册、账户等）请用 .Form.CSRFToken，那是同一枚令牌。
+	CSRFToken string
 
 	// Form 是表单页的状态：回填值、逐字段错误、提示与令牌。
 	//

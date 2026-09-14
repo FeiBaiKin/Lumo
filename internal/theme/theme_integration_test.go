@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/comment"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/content"
+	"github.com/FeiBaiKin/lumo/internal/favorite"
 	"github.com/FeiBaiKin/lumo/internal/mail"
 	"github.com/FeiBaiKin/lumo/internal/menu"
 	"github.com/FeiBaiKin/lumo/internal/migrate"
@@ -36,6 +38,7 @@ func newThemeStack(t *testing.T) (*testsupport.Stack, *theme.Module) {
 			{Name: taxonomy.Name, FS: taxonomy.New().Migrations()},
 			{Name: content.Name, FS: content.New().Migrations()},
 			{Name: comment.Name, FS: comment.New().Migrations()},
+			{Name: favorite.Name, FS: favorite.New().Migrations()},
 			{Name: menu.Name, FS: menu.New().Migrations()},
 			{Name: theme.Name, FS: theme.New().Migrations()},
 		},
@@ -49,7 +52,7 @@ func newThemeStack(t *testing.T) (*testsupport.Stack, *theme.Module) {
 		Config: cfg,
 		Modules: []app.Module{
 			settings.New(), mail.New(), taxonomy.New(), content.New(),
-			comment.New(), menu.New(), theme.New(),
+			comment.New(), favorite.New(), menu.New(), theme.New(),
 		},
 		AfterStart: func(root chi.Router, application *app.App) {
 			mod = theme.From(application)
@@ -452,7 +455,9 @@ func TestThemeAssetsServed(t *testing.T) {
 	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
 		t.Errorf("缺少 nosniff 头，实际 %q", got)
 	}
-	if !strings.Contains(rec.Body.String(), "--paper") {
+	// 认一个当前配色体系里确实存在的 token。第三版把纸墨印那套变量整个换掉了
+	// （--paper 已不存在），这条断言当时漏改，故这里改认页面底色。
+	if !strings.Contains(rec.Body.String(), "--chrome") {
 		t.Error("样式表内容不符")
 	}
 
@@ -610,8 +615,10 @@ func TestThemeSettingsRoundTrip(t *testing.T) {
 		}
 
 		// 新值应出现在渲染出的页面里。
+		// 栏宽注入的是**纯数字**（多少个汉字），由 theme.css 乘以正文字号得到真实宽度；
+		// 第三版改成这样之后这条断言还在找 "42em"，一并改掉。
 		_, page := get(t, stack, "/")
-		if !strings.Contains(page, "42em") {
+		if !strings.Contains(page, "--measure-ch: 42") {
 			t.Error("更新后的正文栏宽未反映到页面")
 		}
 		if !strings.Contains(page, "#800000") {
@@ -880,6 +887,147 @@ func TestThemeSwitchPersists(t *testing.T) {
 	// 切到不存在的主题应被拒。
 	if err := mod.Registry().Activate("nope"); err == nil {
 		t.Error("切换到不存在的主题应报错")
+	}
+}
+
+// TestFavoritesPage 验证「我的收藏」页：匿名跳登录、登录后只列出自己收藏的内容。
+//
+// 这一页的路由挂在 theme 上而不是 account 上（agent.md §3.2：account 不为内容提供接口），
+// 但地址在 /account 下——它是两段路径，与 /{slug} 的兜底完全不相交。
+func TestFavoritesPage(t *testing.T) {
+	stack, _ := newThemeStack(t)
+	ctx := context.Background()
+
+	editor := stack.Bearer(t, "fav-editor", "editor")
+	kept := seedPost(t, stack, editor, "被收藏的文章", "kept", "正文")
+	seedPost(t, stack, editor, "没被收藏的文章", "ignored", "正文")
+
+	user, err := stack.Users.CreateUser(ctx, &auth.CreateUserParams{
+		Username: "collector", Email: "collector@example.com",
+		Password: testsupport.Password, DisplayName: "收藏的人",
+		Roles: []string{"member"}, EmailVerified: true,
+	})
+	if err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+
+	t.Run("匿名跳登录并带回跳地址", func(t *testing.T) {
+		rec := stack.Do(t, &testsupport.Request{Method: http.MethodGet, Path: theme.PathFavorites})
+		if rec.Code != http.StatusFound {
+			t.Fatalf("状态码 = %d，期望 302——这一页只有本人看得到，正确的回答是「先登录」", rec.Code)
+		}
+		want := "/login?next=" + url.QueryEscape(theme.PathFavorites)
+		if got := rec.Header().Get("Location"); got != want {
+			t.Errorf("Location = %q，期望 %q", got, want)
+		}
+	})
+
+	cookies, _ := stack.Session(t, user.Username)
+
+	t.Run("还没收藏时是空状态", func(t *testing.T) {
+		rec := stack.Do(t, &testsupport.Request{
+			Method: http.MethodGet, Path: theme.PathFavorites, Cookies: cookies,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d", rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "我的收藏") {
+			t.Errorf("页面标题应是我的收藏: %.400s", body)
+		}
+		if !strings.Contains(body, "还没有收藏") {
+			t.Errorf("空状态该说的是「你还没收藏过」，而不是列表通用的「还没有内容」: %.400s", body)
+		}
+	})
+
+	t.Run("只列出自己收藏的那一篇", func(t *testing.T) {
+		store := favorite.NewStore(stack.DB.DB)
+		if _, err := store.Add(ctx, user.ID, kept); err != nil {
+			t.Fatalf("写入收藏失败: %v", err)
+		}
+
+		rec := stack.Do(t, &testsupport.Request{
+			Method: http.MethodGet, Path: theme.PathFavorites, Cookies: cookies,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d", rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, "被收藏的文章") {
+			t.Errorf("收藏页缺少已收藏的那一篇: %.600s", body)
+		}
+		if strings.Contains(body, "没被收藏的文章") {
+			t.Error("收藏页列出了没有收藏过的内容")
+		}
+	})
+
+	t.Run("别人的收藏与我无关", func(t *testing.T) {
+		other, err := stack.Users.CreateUser(ctx, &auth.CreateUserParams{
+			Username: "bystander", Email: "bystander@example.com",
+			Password: testsupport.Password, Roles: []string{"member"}, EmailVerified: true,
+		})
+		if err != nil {
+			t.Fatalf("创建用户失败: %v", err)
+		}
+		otherCookies, _ := stack.Session(t, other.Username)
+		rec := stack.Do(t, &testsupport.Request{
+			Method: http.MethodGet, Path: theme.PathFavorites, Cookies: otherCookies,
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("状态码 = %d", rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), "被收藏的文章") {
+			t.Error("收藏是私人清单，不该看到别人收了什么")
+		}
+	})
+}
+
+// TestFavoriteButtonOnPost 验证文章页的收藏按钮带着服务端算好的初态。
+//
+// 初态渲染在服务端，是为了按钮不在页面加载完之后闪一下——
+// 而这也意味着「收没收」这个判断在模板里走的是当前登录用户，不是别人。
+func TestFavoriteButtonOnPost(t *testing.T) {
+	stack, _ := newThemeStack(t)
+	ctx := context.Background()
+
+	editor := stack.Bearer(t, "btn-editor", "editor")
+	postID := seedPost(t, stack, editor, "带收藏按钮的文章", "with-favorite", "正文")
+
+	user, err := stack.Users.CreateUser(ctx, &auth.CreateUserParams{
+		Username: "clicker", Email: "clicker@example.com",
+		Password: testsupport.Password, Roles: []string{"member"}, EmailVerified: true,
+	})
+	if err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+	cookies, _ := stack.Session(t, user.Username)
+
+	// 匿名：给的是去登录的链接，收藏数是 0 不占位。
+	status, body := get(t, stack, "/posts/with-favorite")
+	if status != http.StatusOK {
+		t.Fatalf("文章页状态码 = %d", status)
+	}
+	if !strings.Contains(body, `data-auth-tab="login"`) {
+		t.Errorf("匿名访客点收藏应当去登录: %.600s", body)
+	}
+
+	store := favorite.NewStore(stack.DB.DB)
+	if _, err := store.Add(ctx, user.ID, postID); err != nil {
+		t.Fatalf("写入收藏失败: %v", err)
+	}
+
+	rec := stack.Do(t, &testsupport.Request{
+		Method: http.MethodGet, Path: "/posts/with-favorite", Cookies: cookies,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("文章页状态码 = %d", rec.Code)
+	}
+	body = rec.Body.String()
+	if !strings.Contains(body, `aria-pressed="true"`) || !strings.Contains(body, "已收藏") {
+		t.Errorf("已收藏的初态应当由服务端渲染: %.800s", body)
+	}
+	if !strings.Contains(body, "1 人收藏") {
+		t.Errorf("收藏数应当渲染在按钮旁边: %.800s", body)
 	}
 }
 

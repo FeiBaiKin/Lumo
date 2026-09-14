@@ -1,0 +1,31 @@
+{{- /*
+图标。全站只用 Lucide 一套（页眉的下拉箭头、弹窗的关闭键、密码框的眼睛都是它），
+为某一处另画一个图形是无谓的自创。
+
+调用时把图标名作为 dot 传入：{{ template "partials/icon.html" "bookmark" }}。
+
+做成 partial 而不是在每处内联：这几个图标出现在两三个文件里，
+抄一份就意味着改描边粗细要改两三处，而漏改的那一处只有截图比对才看得出来。
+外框、描边与尺寸在这里统一给死；填充留给 CSS——收藏按钮在「已收藏」时
+要把书签填实，而 CSS 的 fill 属性赢过这里的 fill 表现属性（见 theme.css 的 .is-on）。
+
+名字对不上时渲染一个空的 <svg>：图标少一个是版式问题，
+模板报错是整页 500，两者的严重程度差得远。
+*/ -}}
+<svg class="icon" viewBox="0 0 24 24" width="16" height="16" fill="none"
+     stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+     aria-hidden="true" focusable="false">
+  {{- if eq . "user" -}}
+  <circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>
+  {{- else if eq . "bookmark" -}}
+  <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+  {{- else if eq . "external" -}}
+  <path d="M15 3h6v6"/><path d="M10 14 21 3"/>
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h6"/>
+  {{- else if eq . "logout" -}}
+  <path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>
+  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+  {{- else if eq . "chevron-down" -}}
+  <path d="m6 9 6 6 6-6"/>
+  {{- end -}}
+</svg>

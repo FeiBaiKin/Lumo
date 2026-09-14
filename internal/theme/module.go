@@ -22,6 +22,7 @@ import (
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/favorite"
 	"github.com/FeiBaiKin/lumo/internal/search"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/workdir"
@@ -102,6 +103,10 @@ func (m *Module) Register(a *app.App) error {
 		// 装配了 search 模块就用全文索引，否则搜索页退回标题模糊匹配。
 		if searcher := search.From(a); searcher != nil {
 			m.store.UseSearcher(searcher)
+		}
+		// 装配了 favorite 模块才有收藏页与收藏按钮；没有它时前台不显示这个功能。
+		if favorites := favorite.From(a); favorites != nil {
+			m.store.UseFavorites(favorites)
 		}
 	}
 	m.renderer = NewRenderer(&RendererOptions{

@@ -13,14 +13,14 @@
 - **主题系统**：zip 上传即切换，`html/template` + Hugo 式 layout/partial 约定；必需模板只有四个，缺失整页回退内置主题
 - **内置主题「墨 Ink」**：为中文长文阅读设计；自托管思源宋体与 GSAP + Lenis 动效，无任何 CDN 依赖
 - **认证与权限**：会话 Cookie + CSRF、PAT（scope 只能收窄，空 scope 无权限）、argon2id、自定义角色与所有权（`_any`）规则、登录限流
-- **访客账户**：可选开放注册，邮箱验证 / 找回密码 / 账户页；全部原生表单提交，**关掉 JavaScript 也能用**
+- **访客账户**：可选开放注册，邮箱验证 / 找回密码 / 账户页、收藏与「我的收藏」；表单全部原生提交，**关掉 JavaScript 也能用**
 - **内容安全**：正文按权限净化（`content:unsafe_html` 默认仅管理员），评论一律转义后有限富化
 - **附件**：本地 / S3 兼容存储、WebP 多档缩略图、EXIF 方向纠正、扩展名白名单 + 内容嗅探双向印证
 - **全文搜索**：Go 侧二元组分词 + PostgreSQL `tsvector`，不依赖任何数据库扩展
 - **SEO**：`robots.txt` / `sitemap.xml` / `feed.xml` / `atom.xml` + canonical / OpenGraph / JSON-LD
 - **插件**：zip 包含清单与设置声明，后台安装 / 启停，目前是纯声明式、**不执行任何代码**（WASM 运行时在路线图上）
 - **REST API**：Console / Public / Extension 三平面，OpenAPI 3.1 由 Go 代码生成，Console 的 TS 类型自动生成
-- **模块化**：13 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
+- **模块化**：14 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
 
 **路线图**：2FA 与 OAuth 登录；让插件从声明式走向可执行（声明式页面 → 扩展点 → WASM 后端）。
 
@@ -182,7 +182,7 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 | 平面 | 路径 | 鉴权 |
 |---|---|---|
 | Console | `/api/v1/console/**` | 会话或 PAT，**默认强制认证** |
-| Public | `/api/v1/public/**` | 匿名可读已发布内容、发表评论 |
+| Public | `/api/v1/public/**` | 匿名可读已发布内容、发表评论；收藏需登录 |
 | Extension | `/apis/{group}/{version}/{资源段}` | 强制认证，为插件预留的自定义模型 CRUD |
 
 - 所有接口经 [huma](https://huma.rocks) 注册，OpenAPI 3.1 由代码生成：
@@ -283,7 +283,7 @@ internal/
   secret/          凭据加密保管（AES-256-GCM），口令类设置加密入库后接口不回传明文
   config/ database/ migrate/ logging/ httpx/ server/ workdir/ version/ slug/
   console/         SPA 的 go:embed 目标（dist/ 不进库）
-  media/ taxonomy/ content/ settings/ comment/ mail/ menu/ seo/   功能模块
+  media/ taxonomy/ content/ settings/ comment/ favorite/ mail/ menu/ seo/   功能模块
   plugin/          插件系统：声明式插件的包格式、生命周期与设置（无代码执行）
   pkgzip/          主题与插件共用的 zip 安全解压
   form/            声明式表单 DSL：设置分组的 Go 侧声明与 settings.yaml 反解

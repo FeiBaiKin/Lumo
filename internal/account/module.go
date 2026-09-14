@@ -172,6 +172,21 @@ const (
 	PathLogout = "/logout"
 )
 
+// EnsureFormCSRF 为本次响应准备一枚表单 CSRF 令牌，供主题页眉里的退出登录表单使用。
+//
+// 导出给 theme：页眉出现在**每一个**前台页面上，而签发令牌要写 Cookie，
+// 只有拿得到 ResponseWriter 的地方做得了。serve 在两个模块都装配完之后把它接上去
+// （见 cmd/lumo/serve.go 与 theme.Renderer.UseFormCSRF），
+// theme 因此不必反过来依赖 account——那会是一个导入环。
+//
+// 用 Ensure 而不是 Issue：换发新令牌会把访客在别的标签页里开着的表单作废。
+func (m *Module) EnsureFormCSRF(w http.ResponseWriter, r *http.Request) string {
+	if m.csrf == nil {
+		return ""
+	}
+	return m.csrf.Ensure(w, r)
+}
+
 // ReservedPaths 返回本模块保留的固定路径，供文档与将来的保留字校验使用。
 func ReservedPaths() []string {
 	return []string{

@@ -36,6 +36,7 @@ var requiredTemplates = []string{"index.html", "post.html", "page.html", "404.ht
 var optionalTemplates = []string{
 	"category.html", "tag.html", "archive.html", "search.html", "author.html",
 	"login.html", "register.html", "forgot-password.html", "reset-password.html", "account.html",
+	"favorites.html",
 }
 
 // RequiredTemplates 返回必需模板名，供接口与文档引用。

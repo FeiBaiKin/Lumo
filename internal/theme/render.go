@@ -15,6 +15,13 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/version"
 )
 
+// FormCSRFFunc 为本次响应准备一枚表单 CSRF 令牌并返回明文。
+//
+// 由 account 模块实现（它拥有前台表单的那套双提交），serve 在两个模块都装配完之后
+// 接上去。做成函数而不是让本包引 account：account 用本包的 Renderer 渲染账户页，
+// 反过来引就是一个导入环。
+type FormCSRFFunc func(w http.ResponseWriter, r *http.Request) string
+
 // Renderer 把路由上下文渲染成 HTML 响应。
 type Renderer struct {
 	registry *Registry
@@ -24,7 +31,12 @@ type Renderer struct {
 	logger   *slog.Logger
 	// assetsBase 是主题静态资源的访问前缀。
 	assetsBase string
+	// formCSRF 签发页眉表单要用的令牌；未接上时页眉不渲染那张表单。
+	formCSRF FormCSRFFunc
 }
+
+// UseFormCSRF 接上表单令牌的签发钩子。
+func (r *Renderer) UseFormCSRF(fn FormCSRFFunc) { r.formCSRF = fn }
 
 // RendererOptions 是构造 Renderer 的参数。
 type RendererOptions struct {
@@ -82,6 +94,8 @@ func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, status int, 
 	loaded := r.registry.Active()
 	engine := loaded.Engine()
 
+	r.fillCSRF(w, req, ctx)
+
 	var buf bytes.Buffer
 	// 缓冲也是上限：主题是第三方代码，一个写坏的模板（如对空切片无限递归）
 	// 会一直往缓冲里写直到内存耗尽。超出上限即视为模板有问题。
@@ -99,6 +113,30 @@ func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, status int, 
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
+}
+
+// fillCSRF 为已登录访客准备页眉表单要用的令牌。
+//
+// 必须在写出响应头之前调用：签发令牌要 Set-Cookie，而 Render 是先把整页渲染进缓冲、
+// 最后才写头，故放在渲染之前。
+//
+// 表单页（账户页、登录页等）自己已经签过一枚，那时沿用它而不是再签一枚：
+// 一次响应里签两次，只有后写进 Cookie 的那枚有效，而页面表单里的是先写的那枚——
+// 再签一次就等于把访客眼前那张表单当场作废。
+//
+// 匿名访客一律不签：令牌逐人不同，写进 HTML 就意味着匿名页不能再被共享缓存，
+// 而匿名访客的页眉上根本没有退出登录（见 partials/header.html）。
+func (r *Renderer) fillCSRF(w http.ResponseWriter, req *http.Request, ctx *Context) {
+	if ctx == nil || ctx.CurrentUser == nil || ctx.CSRFToken != "" {
+		return
+	}
+	if ctx.Form != nil && ctx.Form.CSRFToken != "" {
+		ctx.CSRFToken = ctx.Form.CSRFToken
+		return
+	}
+	if r.formCSRF != nil {
+		ctx.CSRFToken = r.formCSRF(w, req)
+	}
 }
 
 // renderError 处理渲染失败。

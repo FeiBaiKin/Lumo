@@ -1,11 +1,13 @@
 package theme
 
 import (
+	"context"
 	"io/fs"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/content"
 )
 
@@ -38,7 +40,7 @@ func TestBuiltinThemeLoads(t *testing.T) {
 	}
 }
 
-// TestBuiltinThemeProvidesEveryTemplate 验证内置主题提供全部模板（必需 4 + 可选 10）。
+// TestBuiltinThemeProvidesEveryTemplate 验证内置主题提供全部模板（必需 4 + 可选 11）。
 //
 // 可选模板对第三方主题是可选的，对内置主题不是——它是回退目标，
 // 缺哪个，装了不提供该模板的第三方主题时那个页面就没得渲染。
@@ -157,6 +159,13 @@ func TestBuiltinThemeRendersEveryPage(t *testing.T) {
 		{"account.html", func() *Context {
 			c := base(KindAccount)
 			c.Form = NewFormState()
+			c.CurrentUser = &CurrentUserView{ID: 1, Username: "u", DisplayName: "会员"}
+			return c
+		}},
+		// 收藏页。这里刻意不注入收藏实现：没装配收藏模块时它是一页空列表，
+		// 而「空列表也要渲染得出来」正是本用例要盯的。
+		{"favorites.html", func() *Context {
+			c := base(KindFavorites)
 			c.CurrentUser = &CurrentUserView{ID: 1, Username: "u", DisplayName: "会员"}
 			return c
 		}},
@@ -593,6 +602,267 @@ func TestBuiltinThemeAccountEntry(t *testing.T) {
 		out := render(func(c *Context) { c.Kind = KindLogin })
 		if strings.Contains(out, `class="site-account"`) || strings.Contains(out, `id="site-auth"`) {
 			t.Error("站在登录页上，页眉再放一个入口只是噪音，且会与页面里的表单撞 id")
+		}
+	})
+}
+
+// fakeFavorites 是收藏能力的假实现，供模板用例注入。
+//
+// 用假实现而不是连库：本组用例要验的是**模板按状态渲染成什么样**，
+// 而收藏是怎么存的由 internal/favorite 的集成测试覆盖。
+type fakeFavorites struct {
+	has   bool
+	count int
+}
+
+func (f fakeFavorites) FavoritePostIDs(context.Context, int64, int, int) (
+	ids []int64, total int, err error,
+) {
+	return nil, 0, nil
+}
+
+func (f fakeFavorites) HasFavorite(context.Context, int64, int64) (bool, error) {
+	return f.has, nil
+}
+
+func (f fakeFavorites) CountFavorites(context.Context, int64) (int, error) {
+	return f.count, nil
+}
+
+// viewerContext 返回一个带登录态的 context，供 FavoritesFinder.Has 取「当前是谁」。
+func viewerContext(t *testing.T, userID int64) context.Context {
+	t.Helper()
+	return auth.WithPrincipal(t.Context(), &auth.Principal{User: &auth.User{ID: userID}})
+}
+
+// TestBuiltinThemeAccountMenu 验证页眉账户菜单的四条分支各自按条件出现。
+//
+// 四条都是「看得见就必须点得到」的判断，错一条的表现都不是报错而是一个骗人的入口：
+// 没权限的人看到「管理后台」（点进去一屏 403）、没装配收藏的站点看到「我的收藏」
+// （点进去永远空着）、拿不到令牌却渲染了退出登录（点了必被 CSRF 挡下）。
+func TestBuiltinThemeAccountMenu(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
+	if err != nil {
+		t.Fatalf("内置主题加载失败: %v", err)
+	}
+	settings := loaded.settings.effectiveSettings(nil)
+
+	render := func(mutate func(*Context)) string {
+		t.Helper()
+		ctx := &Context{
+			Kind:  KindIndex,
+			Site:  SiteContext{Title: "站点", Language: "zh-CN", Now: time.Now()},
+			Theme: ThemeContext{Name: BuiltinName, AssetsBase: "/theme-assets/ink", Settings: settings},
+			Find: &Finder{
+				ctx:   viewerContext(t, 1),
+				store: &Store{},
+				cache: map[string]any{"menus:primary": []MenuItemView{}},
+			},
+			Public:      registerable(),
+			Posts:       []PostView{},
+			Params:      map[string]string{},
+			CurrentUser: &CurrentUserView{ID: 1, Username: "zhangsan", DisplayName: "张三"},
+		}
+		mutate(ctx)
+		var sb strings.Builder
+		if err := engine(loaded).Render(&sb, "index.html", ctx); err != nil {
+			t.Fatalf("渲染失败: %v", err)
+		}
+		return sb.String()
+	}
+
+	t.Run("菜单初始收起且触发器是普通链接", func(t *testing.T) {
+		t.Parallel()
+		out := render(func(*Context) {})
+		if !strings.Contains(out, `<div class="account-menu" id="site-account-menu" hidden>`) {
+			t.Errorf("菜单应当整块渲染好并带 hidden: %.500s", out)
+		}
+		// 没有 JS 时头像必须还是那个能点去账户页的链接，菜单里的每一项在那一页上都有。
+		if !strings.Contains(out, `<a class="site-avatar" href="/account" data-account-trigger`) {
+			t.Errorf("触发器应当是指向 /account 的链接: %.500s", out)
+		}
+		if !strings.Contains(out, "@zhangsan") {
+			t.Error("菜单顶部应当显示用户名")
+		}
+	})
+
+	t.Run("有权限才显示管理后台且新窗口打开", func(t *testing.T) {
+		t.Parallel()
+		out := render(func(c *Context) { c.CurrentUser.ConsoleAccess = true })
+		if !strings.Contains(out, `<a href="/console/" target="_blank" rel="noopener noreferrer">`) {
+			t.Errorf("有权限时应显示管理后台，且新窗口打开并带 noopener: %.600s", out)
+		}
+
+		out = render(func(*Context) {})
+		if strings.Contains(out, `href="/console/"`) {
+			t.Error("零权限账号不该看到一个点进去就是 403 的后台入口")
+		}
+	})
+
+	t.Run("拿不到表单令牌就不渲染退出登录", func(t *testing.T) {
+		t.Parallel()
+		out := render(func(c *Context) { c.CSRFToken = "tok" })
+		if !strings.Contains(out, `<form class="account-menu-logout" method="post" action="/logout">`) {
+			t.Errorf("有令牌时应渲染退出登录表单: %.600s", out)
+		}
+		if !strings.Contains(out, `name="_csrf" value="tok"`) {
+			t.Error("退出登录表单应带上令牌")
+		}
+
+		out = render(func(*Context) {})
+		if strings.Contains(out, `action="/logout"`) {
+			t.Error("没有令牌时那张表单必被 CSRF 挡下，不该渲染出来")
+		}
+	})
+
+	t.Run("装配了收藏才显示我的收藏", func(t *testing.T) {
+		t.Parallel()
+		out := render(func(c *Context) {
+			c.Find.store = &Store{favorites: fakeFavorites{}}
+		})
+		if !strings.Contains(out, `href="/account/favorites"`) {
+			t.Errorf("装配收藏后菜单里应有我的收藏: %.600s", out)
+		}
+
+		out = render(func(*Context) {})
+		if strings.Contains(out, `href="/account/favorites"`) {
+			t.Error("没装配收藏模块时不该给一个永远空着的入口")
+		}
+	})
+}
+
+// TestBuiltinThemeAccountMenuStaysHidden 盯住与 auth-dialog 同一类的坑：
+// 给 .account-menu 写了 display: flex，就必须再写一条 [hidden] 的 display: none。
+//
+// 作者样式无条件赢过 UA 那条 [hidden] { display: none }——少了它，
+// 每一个已登录访客的每一页都会在页眉底下挂着一块摊开的菜单，点头像也收不起来。
+// 读 CSS 而不是跑浏览器：这条规则的错法只有一种，而它在源码里看得见。
+func TestBuiltinThemeAccountMenuStaysHidden(t *testing.T) {
+	t.Parallel()
+
+	css := readThemeFile(t, "static/theme.css")
+	open := strings.Index(css, ".account-menu {")
+	hidden := strings.Index(css, ".account-menu[hidden]")
+	if open < 0 {
+		t.Fatal("theme.css 里没有 .account-menu 规则")
+	}
+	if hidden < 0 {
+		t.Fatal("theme.css 缺少 .account-menu[hidden] 的 display: none")
+	}
+	if hidden < open {
+		t.Error(".account-menu[hidden] 必须写在 display 那条之后，否则同特异性下后者获胜")
+	}
+	block := css[hidden:]
+	if end := strings.Index(block, "}"); end >= 0 {
+		block = block[:end]
+	}
+	if !strings.Contains(block, "display: none") {
+		t.Errorf(".account-menu[hidden] 里应当是 display: none: %q", block)
+	}
+}
+
+// TestBuiltinThemeFavoriteButton 验证文末收藏按钮的几种形态。
+//
+// 它们各自对应一种真实状态，错一种的表现都是「点了没反应」：
+// 未装配收藏模块时不该有按钮、匿名访客点了要去登录、已登录才是那个能按的开关。
+func TestBuiltinThemeFavoriteButton(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
+	if err != nil {
+		t.Fatalf("内置主题加载失败: %v", err)
+	}
+
+	render := func(store *Store, mutate func(*Context)) string {
+		t.Helper()
+		// 相关文章与评论都要连库，而本用例给的是一个没有 db 的 Store（收藏用假实现注入）。
+		// 从设置里关掉这两块，比给 Finder 逐个预置缓存键清楚——
+		// 它们由站长的开关控制本来就是模板的既有行为。
+		settings := loaded.settings.effectiveSettings(nil)
+		settings["content"]["showRelated"] = false
+		settings["content"]["showComments"] = false
+		ctx := &Context{
+			Kind:  KindPost,
+			Site:  SiteContext{Title: "站点", Language: "zh-CN", Now: time.Now()},
+			Theme: ThemeContext{Name: BuiltinName, AssetsBase: "/theme-assets/ink", Settings: settings},
+			// 菜单查询要连库，这里预置一份空菜单绕开它：本用例验的是文末那个按钮。
+			Find: &Finder{
+				ctx:   viewerContext(t, 1),
+				store: store,
+				cache: map[string]any{"menus:primary": []MenuItemView{}},
+			},
+			Path: "/posts/test",
+			Post: &PostView{
+				ID: 7, Type: "post", Title: "测试文章", Slug: "test",
+				URL: "/posts/test", Content: "<p>正文</p>", PublishedAt: time.Now(),
+			},
+			Posts:  []PostView{},
+			Params: map[string]string{},
+		}
+		mutate(ctx)
+		var sb strings.Builder
+		if err := engine(loaded).Render(&sb, "post.html", ctx); err != nil {
+			t.Fatalf("渲染失败: %v", err)
+		}
+		return sb.String()
+	}
+
+	t.Run("没装配收藏就整块不渲染", func(t *testing.T) {
+		t.Parallel()
+		out := render(&Store{}, func(*Context) {})
+		if strings.Contains(out, "article-actions") || strings.Contains(out, "favorite.js") {
+			t.Error("没装配收藏模块时，文末不该有一个点了必然报错的按钮")
+		}
+	})
+
+	t.Run("匿名给一个去登录的链接", func(t *testing.T) {
+		t.Parallel()
+		out := render(&Store{favorites: fakeFavorites{count: 3}}, func(*Context) {})
+		// 回跳地址由 html/template 在查询串上下文里百分号编码（/ → %2f），
+		// account 的 safeNext 读的是解码后的值，两边对得上。
+		if !strings.Contains(out, `href="/login?next=%2fposts%2ftest" data-auth-tab="login"`) {
+			t.Errorf("匿名访客点收藏应当去登录并带回跳地址: %.800s", out)
+		}
+		if strings.Contains(out, "data-favorite ") {
+			t.Error("匿名访客不该拿到那个切换按钮")
+		}
+		// 收藏数对所有人可见。
+		if !strings.Contains(out, "3 人收藏") {
+			t.Error("收藏数应当渲染在按钮旁边")
+		}
+	})
+
+	t.Run("已登录是带状态的开关按钮", func(t *testing.T) {
+		t.Parallel()
+		store := &Store{favorites: fakeFavorites{has: true, count: 1}}
+		out := render(store, func(c *Context) {
+			c.CurrentUser = &CurrentUserView{ID: 1, Username: "u", DisplayName: "张三"}
+		})
+		// hidden 是渐进增强的关键：切换要走接口，没有 JS 时不给按钮。
+		if !strings.Contains(out, `data-favorite data-post-id="7"`) {
+			t.Errorf("已登录应当渲染切换按钮: %.800s", out)
+		}
+		if !strings.Contains(out, `favorite-toggle" type="button" hidden`) {
+			t.Errorf("切换按钮必须带 hidden，由 favorite.js 放出来: %.800s", out)
+		}
+		if !strings.Contains(out, `aria-pressed="true"`) || !strings.Contains(out, "已收藏") {
+			t.Errorf("已收藏的初态应当渲染在服务端，而不是等脚本再问一次: %.800s", out)
+		}
+	})
+
+	t.Run("未收藏时收藏数为零不占位", func(t *testing.T) {
+		t.Parallel()
+		store := &Store{favorites: fakeFavorites{has: false, count: 0}}
+		out := render(store, func(c *Context) {
+			c.CurrentUser = &CurrentUserView{ID: 1, Username: "u", DisplayName: "张三"}
+		})
+		if !strings.Contains(out, `aria-pressed="false"`) {
+			t.Error("未收藏时 aria-pressed 应为 false")
+		}
+		if !strings.Contains(out, `data-favorite-count role="status" hidden`) {
+			t.Errorf("收藏数为零时不该占一行: %.800s", out)
 		}
 	})
 }

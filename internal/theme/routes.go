@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -43,6 +44,7 @@ func (f *Frontend) Mount(r chi.Router) {
 	r.Get(PathArchives+"{year}/{month}", f.archive)
 	r.Get(PathAuthors+"{username}", f.author)
 	r.Get(PathSearch, f.search)
+	r.Get(PathFavorites, f.favorites)
 	// 兜底：根路径下的单段路径视为独立页面。
 	r.Get("/{slug}", f.page)
 }
@@ -65,8 +67,14 @@ func pathParam(r *http.Request, name string) string {
 	return raw
 }
 
-func viewerID(r *http.Request) int64 {
-	principal, ok := auth.FromContext(r.Context())
+func viewerID(r *http.Request) int64 { return viewerIDFrom(r.Context()) }
+
+// viewerIDFrom 从上下文取当前登录用户的 ID；匿名为 0。
+//
+// 单独一个取 context 的版本是给 Finder 用的：模板里的取数入口只拿得到 context，
+// 而「当前是谁」这件事只有它能回答（见 FavoritesFinder.Has）。
+func viewerIDFrom(ctx context.Context) int64 {
+	principal, ok := auth.FromContext(ctx)
 	if !ok || principal == nil {
 		return 0
 	}
@@ -343,6 +351,45 @@ func (f *Frontend) search(w http.ResponseWriter, r *http.Request) {
 		pageCtx.Pagination = newPagination(page, size, total, PathSearch+"?q="+urlQueryEscape(query))
 	}
 	f.renderer.Render(w, r, http.StatusOK, "search.html", pageCtx)
+}
+
+// pathLogin 是账户模块的登录页地址。
+//
+// 这里写死而不是引 account 的常量：account 依赖本包（它用本包的 Renderer 渲染页面），
+// 反过来引就是一个导入环。两处同步靠 TestFavoritesRedirectsAnonymous 盯着。
+const pathLogin = "/login"
+
+// favorites 渲染「我的收藏」页。
+//
+// 这一页只有本人看得到，故未登录时跳登录页并带上回跳地址——而不是 404。
+// 与账户页（account 模块的 getAccount）同一种处置：一个需要登录才有内容的页面，
+// 对匿名访客的正确回答是「先登录」，不是「没有这个页面」。
+func (f *Frontend) favorites(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := viewerID(r)
+	if userID <= 0 {
+		http.Redirect(w, r, pathLogin+"?next="+urlQueryEscape(PathFavorites), http.StatusFound)
+		return
+	}
+
+	pageCtx, err := f.renderer.NewContext(ctx, r, KindFavorites)
+	if err != nil {
+		f.renderer.renderError(w, r, err, "favorites.html")
+		return
+	}
+
+	page := pageParam(r)
+	size := f.renderer.PageSize(ctx)
+	posts, total, err := f.store.FavoritePosts(ctx, userID, page, size)
+	if err != nil {
+		f.renderer.renderError(w, r, err, "favorites.html")
+		return
+	}
+
+	pageCtx.Title = "我的收藏"
+	pageCtx.Posts = posts
+	pageCtx.Pagination = newPagination(page, size, total, PathFavorites)
+	f.renderer.Render(w, r, http.StatusOK, "favorites.html", pageCtx)
 }
 
 // notFound 渲染 404 页面。

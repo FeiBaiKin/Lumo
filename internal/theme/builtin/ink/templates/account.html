@@ -28,6 +28,14 @@
       <div class="aside-row"><span class="aside-key">角色</span><span>{{ . }}</span></div>
       {{ end }}
       {{- /*
+      收藏入口。页眉的账户菜单里也有一条，但那一条要有 JavaScript 才点得开——
+      这一条是它在没有脚本时的去处，两处指向同一页。
+      站点没装配收藏模块时不显示：那时收藏页永远是空的。
+      */ -}}
+      {{ if .Find.Favorites.Enabled }}
+      <div class="aside-row"><span class="aside-key">收藏</span><a href="/account/favorites">我的收藏</a></div>
+      {{ end }}
+      {{- /*
       后台入口只对至少持有一条权限的账号显示。
       member 用户不该看到一个点进去就被拦的链接——那是把「你没权限」这件事
       做成了两处，而正确的一处是 Console 打开时自己说明。

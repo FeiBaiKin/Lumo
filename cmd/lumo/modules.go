@@ -6,6 +6,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/comment"
 	"github.com/FeiBaiKin/lumo/internal/content"
 	"github.com/FeiBaiKin/lumo/internal/extension"
+	"github.com/FeiBaiKin/lumo/internal/favorite"
 	"github.com/FeiBaiKin/lumo/internal/mail"
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/menu"
@@ -28,7 +29,9 @@ import (
 // 顺序即依赖：settings 与 mail 被其他模块经 App.Lookup 取用，须最先；
 // media 读 storage 设置分组，排在 settings 之后；
 // content 的迁移引用 taxonomy 的表，必须排在它之后；
-// comment 引用 content 的 posts 表；menu 与 seo 读取 content、taxonomy 与 users 的表；
+// comment 引用 content 的 posts 表；favorite 也引用它，且必须排在 theme 之前——
+// 主题在装配期就要取到收藏查询，用来渲染收藏页与文章页上的收藏按钮；
+// menu 与 seo 读取 content、taxonomy 与 users 的表；
 // extension 只碰核心的 extensions 表，不依赖任何模块；
 // search 给 content 的 posts 表加索引列，须排在 content 之后，也须在 theme 之前——
 // 前台搜索页要在装配期取到它；
@@ -42,6 +45,7 @@ func modules() []app.Module {
 		taxonomy.New(),
 		content.New(),
 		comment.New(),
+		favorite.New(),
 		menu.New(),
 		seo.New(),
 		extension.New(),

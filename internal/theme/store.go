@@ -25,6 +25,12 @@ const (
 	PathArchives   = "/archives/"
 	PathAuthors    = "/authors/"
 	PathSearch     = "/search"
+	// PathFavorites 是「我的收藏」页。
+	//
+	// 挂在 /account 下而不是做成顶层的 /favorites：顶层单段路径会遮蔽同名的独立页面
+	// （agent.md §3.2 的已知限制，account 的那几条固定路径就是这么来的），
+	// 而两段路径与 /{slug} 的兜底完全不相交，不必再往保留字清单里添一个词。
+	PathFavorites = "/account/favorites"
 )
 
 // 分类与标签在按词筛选时的区分。
@@ -39,8 +45,9 @@ const (
 // 草稿泄漏的可能——那是 CMS 最不能犯的错。私密内容对作者本人的可见性
 // 由路由层单独处理，不走这里。
 type Store struct {
-	db       *bun.DB
-	searcher Searcher
+	db        *bun.DB
+	searcher  Searcher
+	favorites Favoriter
 }
 
 // NewStore 构造 Store。
@@ -56,6 +63,57 @@ type Searcher interface {
 
 // UseSearcher 注入搜索实现；不注入时搜索页退回标题与摘要的模糊匹配。
 func (s *Store) UseSearcher(searcher Searcher) { s.searcher = searcher }
+
+// Favoriter 是收藏页与文章页收藏按钮需要的能力，由 internal/favorite 实现。
+//
+// 与 Searcher 同一种分工：收藏模块只回答「谁收了哪几篇」「这篇被收了多少次」，
+// 出的是 ID 与计数；列表上那一列文章由本包自己的查询补齐。
+// 主题因此不必知道收藏存在哪张表，收藏模块也不必知道前台怎么展示一篇文章。
+type Favoriter interface {
+	// FavoritePostIDs 按收藏时间倒序返回某人收藏的、当前仍对访客可见的内容 ID 与总数。
+	FavoritePostIDs(ctx context.Context, userID int64, limit, offset int) ([]int64, int, error)
+	// HasFavorite 报告某人是否收藏过某篇内容。
+	HasFavorite(ctx context.Context, userID, postID int64) (bool, error)
+	// CountFavorites 返回一篇内容被收藏的次数。
+	CountFavorites(ctx context.Context, postID int64) (int, error)
+}
+
+// UseFavorites 注入收藏实现。
+//
+// 不注入时收藏页是空的、文章页不显示收藏按钮（见 Finder.Favorites 与 routes.go）——
+// 收藏模块没装配就等于站点没有这个功能，而不是一个点了报错的按钮。
+func (s *Store) UseFavorites(favorites Favoriter) { s.favorites = favorites }
+
+// Favorites 返回已注入的收藏实现；未装配时为 nil。
+func (s *Store) Favorites() Favoriter {
+	if s == nil {
+		return nil
+	}
+	return s.favorites
+}
+
+// FavoritePosts 分页返回某人收藏的内容，按收藏时间倒序。
+//
+// 未装配收藏模块时返回空列表而不是错误：收藏页在那种装配下仍然打得开，
+// 只是永远是空的——这与搜索页在没有 search 模块时退回模糊匹配是同一条思路。
+func (s *Store) FavoritePosts(ctx context.Context, userID int64, page, size int) ([]PostView, int, error) {
+	if s.favorites == nil || userID <= 0 {
+		return []PostView{}, 0, nil
+	}
+	offset := max(0, (page-1)*size)
+	ids, total, err := s.favorites.FavoritePostIDs(ctx, userID, size, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(ids) == 0 {
+		return []PostView{}, total, nil
+	}
+	views, err := s.postsByIDs(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	return views, total, nil
+}
 
 // publicFilter 是所有前台查询共用的可见性条件。
 const publicFilter = `p.status = 'published' AND p.visibility = 'public'`

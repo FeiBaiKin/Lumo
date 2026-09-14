@@ -71,7 +71,10 @@
     已登录：一枚圆头像，落显示名的第一个字；用户上传过头像图就用图。
     第二版这里是一枚方印（主题的插图原件，刻意不用圆）。改成圆是跟着 Console 的规矩走：
     人用圆、物用方角。方印退回它真正该在的地方——空状态与归档页头的插图。
-    头像是普通链接，没有下拉：退出登录在账户页上，页眉只保留二级菜单那一处非模态弹出层。
+
+    头像点开一个账户菜单（个人中心 / 我的收藏 / 管理后台 / 退出登录），
+    形态与二级菜单的桌面下拉同源，也与 Console 侧栏底部的账号菜单同源。
+    在此之前头像是个直接跳 /account 的链接，退出登录只在账户页上有。
 
     关掉它只是不显示入口，/account 仍然可以直接用地址访问。
     */ -}}
@@ -99,7 +102,16 @@
     {{ $registerOpen := and (.Setting "account" "allowRegistration") (.Setting "mail" "enabled") (.Setting "site" "url") }}
     <div class="site-account">
       {{ with .CurrentUser }}
-      <a class="site-avatar" href="/account"
+      {{- /*
+      触发器是一个**普通链接**，指向账户页。
+
+      没有 JS 时它就是原来那个入口：点头像去 /account，那一页上有菜单里的每一项
+      （个人中心就是它自己、我的收藏、管理后台、退出登录），一件都不会丢。
+      account-menu.js 会把它就地换成一个 <button>——弹出一块面板的东西是按钮不是链接，
+      而「没有脚本时是链接、有脚本时是按钮」只能由脚本自己完成这次替换
+      （与 auth.js 注入「显示密码」按钮同一条理由：不响应的控件比没有这个控件更糟）。
+      */ -}}
+      <a class="site-avatar" href="/account" data-account-trigger
          aria-label="账户：{{ .DisplayName }}">
         {{- if .AvatarURL -}}
         <img src="{{ .AvatarURL }}" alt="" width="32" height="32">
@@ -109,6 +121,64 @@
         <span class="avatar-fallback" aria-hidden="true">{{ printf "%.1s" .DisplayName }}</span>
         {{- end -}}
       </a>
+
+      {{- /*
+      账户菜单。整块由服务端渲染好，初始 hidden，由 account-menu.js 放出来。
+
+      不走 auth.js 那种「打开时 fetch 一份回来」：那是因为登录表单里有一次性令牌、
+      有回填值与逐字段错误，抄一份进主题就会与服务端脱节。菜单里只有四个静态入口，
+      服务端渲染既没有多一次请求，也不会在慢网络下先闪一行「载入中」。
+
+      退出登录那一条要一枚表单令牌（$.CSRFToken，由 account 模块经 Renderer 签发）。
+      取不到时**整条不渲染**——一张必定被 CSRF 挡下的表单，比没有这个入口更让人费解。
+      那时退出登录仍在账户页上，点头像就能到。
+      */ -}}
+      <div class="account-menu" id="site-account-menu" hidden>
+        <div class="account-menu-head">
+          <p class="account-menu-name">{{ .DisplayName }}</p>
+          {{- /* 第二行是用户名而不是邮箱：CurrentUserView 刻意不带邮箱，
+                 页眉不该把访客的注册邮箱渲染进每一个页面（见 theme.CurrentUserView）。 */ -}}
+          <p class="account-menu-id">@{{ .Username }}</p>
+        </div>
+
+        <ul class="account-menu-list">
+          <li><a href="/account">{{ template "partials/icon.html" "user" }}个人中心</a></li>
+          {{- /* 站点没装配收藏模块时不显示这一项：点进去是一页永远空着的列表。 */ -}}
+          {{ if $.Find.Favorites.Enabled }}
+          <li><a href="/account/favorites">{{ template "partials/icon.html" "bookmark" }}我的收藏</a></li>
+          {{ end }}
+        </ul>
+
+        {{ if or .ConsoleAccess $.CSRFToken }}
+        <div class="account-menu-foot">
+          {{- /*
+          后台入口只对**至少持有一条权限**的账号显示，判据是 ConsoleAccess
+          （见 theme.CurrentUserView：问的是有效权限，不是角色名叫不叫管理员）。
+          member 这类零权限账号不该看到一个点进去就是一屏 403 的链接。
+
+          新窗口打开：从一篇文章跳去后台，读者原来读到哪就没了。
+          rel 上的 noopener 是必须的——没有它，被打开的页面能经 window.opener
+          把原页面导航到别处（反向钓鱼），这条与它是不是同源无关。
+          */ -}}
+          {{ if .ConsoleAccess }}
+          <a href="/console/" target="_blank" rel="noopener noreferrer">
+            {{ template "partials/icon.html" "external" }}管理后台
+          </a>
+          {{ end }}
+          {{- /*
+          退出登录是表单而不是链接：它是状态变更，GET 会被浏览器的预取器与
+          邮件客户端的安全扫描器当普通链接抓一遍，用户会莫名其妙地被登出
+          （与账户页上那张表单同一条理由，那里写得更详细）。
+          */ -}}
+          {{ with $.CSRFToken }}
+          <form class="account-menu-logout" method="post" action="/logout">
+            <input type="hidden" name="_csrf" value="{{ . }}">
+            <button type="submit">{{ template "partials/icon.html" "logout" }}退出登录</button>
+          </form>
+          {{ end }}
+        </div>
+        {{ end }}
+      </div>
       {{ else }}
       <a class="btn btn-ghost btn-sm" href="/login" data-auth-tab="login">登录</a>
       {{ if $registerOpen }}<a class="btn btn-primary btn-sm" href="/register" data-auth-tab="register">注册</a>{{ end }}

@@ -165,10 +165,18 @@ func runServe(args []string) error {
 	// 前台不经三平面，故登录态要靠 auth 的 Optional 中间件注入；
 	// account 必须先于 theme 挂载，否则它的固定路径（/login 等）会被
 	// theme 的 /{slug} 当成独立页面吞掉。
-	if accounts := account.From(application); accounts != nil {
+	accounts := account.From(application)
+	themes := theme.From(application)
+	// 页眉账户菜单里的退出登录是一张表单，令牌由 account 的双提交签发。
+	// 在这里接线而不是让 theme 去引 account：account 依赖 theme 渲染页面，
+	// 反向引用就是一个导入环，而装配点本来就是解这种环的地方。
+	if accounts != nil && themes != nil {
+		themes.Renderer().UseFormCSRF(accounts.EnsureFormCSRF)
+	}
+	if accounts != nil {
 		accounts.MountFrontend(root, core.Authenticator.Optional)
 	}
-	if themes := theme.From(application); themes != nil {
+	if themes != nil {
 		themes.MountFrontend(root, core.Authenticator.Optional)
 		logger.Info("访客前台已挂载", slog.String("theme", themes.Registry().ActiveName()))
 	}

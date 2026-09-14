@@ -1,0 +1,45 @@
+{{- /*
+文章页的收藏按钮。
+
+三种形态，各自对应一种真实状态：
+
+  已登录 —— 一个能按的开关按钮，按下即收藏、再按取消。它初始带 hidden，
+            由 favorite.js 放出来：切换走的是 Public 平面的 REST 接口，
+            没有 JS 时那个按钮点了不会有任何反应，而一个不响应的控件
+            比没有这个控件更糟（与评论表单同一条处置）。
+  未登录 —— 一个指向登录页的链接，带 data-auth-tab 让 auth.js 就地打开登录弹窗。
+            没有 JS 时它就是一个普通链接，登完回到本页（next 由 href 带上）。
+  站点未装配收藏模块 —— 整块不渲染，判断在 post.html 里。
+
+初态由服务端渲染（aria-pressed 与收藏数），不靠脚本再问一次接口：
+那会让按钮在页面加载后闪一下，而这个状态服务端本来就知道。
+*/ -}}
+{{ $post := .Post }}
+{{ $count := .Find.Favorites.Count $post.ID }}
+
+<div class="article-actions">
+  {{ if .CurrentUser }}
+  {{ $on := .Find.Favorites.Has $post.ID }}
+  <button class="btn btn-secondary favorite-toggle" type="button" hidden
+          data-favorite data-post-id="{{ $post.ID }}"
+          aria-pressed="{{ if $on }}true{{ else }}false{{ end }}">
+    {{ template "partials/icon.html" "bookmark" }}
+    {{- /*
+    标签随状态换字：aria-pressed 已经把「按下与否」告诉了读屏软件，
+    但眼睛看到的那两个字也得跟着变——只靠图标填不填实，是在要求用户记住约定。
+    */ -}}
+    <span data-favorite-label>{{ if $on }}已收藏{{ else }}收藏{{ end }}</span>
+  </button>
+  {{ else }}
+  <a class="btn btn-secondary favorite-toggle" href="/login?next={{ .Path }}" data-auth-tab="login">
+    {{ template "partials/icon.html" "bookmark" }}收藏
+  </a>
+  {{ end }}
+
+  {{- /*
+  收藏数。为零时整行不占位（hidden），由脚本在数字变化时开关。
+  role=status：数字是被用户自己的动作改掉的，读屏软件该念出来，但不该打断当前朗读。
+  */ -}}
+  <span class="favorite-count" data-favorite-count role="status"{{ if not $count }} hidden{{ end }}>{{ $count }} 人收藏</span>
+</div>
+<script src="{{ .Theme.AssetsBase }}/favorite.js" defer></script>

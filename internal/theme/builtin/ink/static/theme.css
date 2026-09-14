@@ -640,6 +640,17 @@ a:hover {
  * 前台的可点元素做到 44px 高（触屏的最小目标），Console 的 36px 是工作区密度。
  */
 
+/*
+ * Lucide 图标（partials/icon.html）的统一尺寸。
+ * 宽高写死，不靠 SVG 上的属性：全局那条 `svg { height: auto }` 会让它
+ * 在 flex 行里被容器拉高，一个 16px 的图标能长到跟按钮一样高。
+ */
+.icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -977,7 +988,9 @@ textarea.field-input,
 }
 
 /* ---------- 账户入口 ---------- */
+/* relative 是账户菜单的定位基准：菜单绝对定位在这块的右下角 */
 .site-account {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--s2);
@@ -990,9 +1003,152 @@ textarea.field-input,
  * 因为 Console 的规矩是「人用圆、物用方角」，而这里挂的是一个人。
  * 方印保留在它真正该在的地方：空状态与归档页头的插图。
  */
+/*
+ * 头像在模板里是 <a>，被 account-menu.js 换成 <button>（见那里的说明）。
+ * 两种标签共用这一条，故按钮的默认边框、内边距与底色都要清掉——
+ * 全局重置只统一了字体与颜色，没有碰这三样。
+ */
 .site-avatar {
   display: inline-flex;
+  padding: 0;
+  border: 0;
   border-radius: var(--corner-full);
+  background: none;
+}
+
+/*
+ * 账户菜单。骨架与二级菜单的桌面下拉、与 Console 的 DropdownMenu 逐项对齐：
+ * 6px 圆角、1px 描边、面板底色、浮层阴影。
+ *
+ * 右对齐（right: 0）而不是左对齐：它挂在页眉最右端的头像上，
+ * 左对齐会让面板整个探出视口右边。
+ */
+.account-menu {
+  position: absolute;
+  top: calc(100% + var(--s2));
+  right: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-direction: column;
+  width: 14rem;
+  /* 窄屏上不许超出页面左右留白：--gutter 两侧各一份 */
+  max-width: calc(100vw - var(--gutter) * 2);
+  padding: var(--s1);
+  border: 1px solid var(--line);
+  border-radius: var(--corner-overlay);
+  background: var(--surface);
+  box-shadow: var(--elevation-overlay);
+  animation: account-menu-in var(--t-fast) var(--ease-out);
+  transition: opacity var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out);
+}
+
+/*
+ * 这一条不能省，理由与 .site-nav-sub[hidden] 那条相同：
+ * 上面那条给了 display: flex，而作者样式赢过 UA 那条 [hidden] { display: none }，
+ * 少了它菜单会从页面加载起就一直摊在页眉底下，而且点头像也收不起来。
+ */
+.account-menu[hidden] {
+  display: none;
+}
+
+.account-menu.is-closing {
+  opacity: 0;
+  transform: translateY(-2px);
+}
+
+@keyframes account-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 顶部一行是「你是谁」：显示名一行，用户名一行。与 Console 账号菜单的 Label 同调 */
+.account-menu-head {
+  padding: var(--s2) var(--s3) var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.account-menu-name,
+.account-menu-id {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-name {
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.account-menu-id {
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
+}
+
+.account-menu-list {
+  margin: var(--s1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 菜单项：图标 + 文字一行。链接与退出登录那个按钮共用这一条 */
+.account-menu :is(a, button) {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  min-height: 2.25rem;
+  padding: 0 var(--s3);
+  border: 0;
+  border-radius: var(--corner-control);
+  background: none;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  text-align: start;
+  transition: background-color var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out);
+}
+
+.account-menu :is(a, button):hover {
+  background: var(--surface-active);
+  color: var(--fg);
+}
+
+.account-menu .icon {
+  flex: none;
+  color: var(--fg-muted);
+}
+
+.account-menu :is(a, button):hover .icon {
+  color: var(--fg);
+}
+
+/* 底栏：管理后台与退出登录。一条分隔线把「去别处」与「上面这些」分开 */
+.account-menu-foot {
+  margin-top: var(--s1);
+  padding-top: var(--s1);
+  border-top: 1px solid var(--line);
+}
+
+.account-menu-logout {
+  margin: 0;
+}
+
+/* 退出登录是这一列里唯一会改变状态的一项，故悬停时给它危险色 */
+.account-menu-logout button:hover {
+  color: var(--danger);
+}
+
+.account-menu-logout button:hover .icon {
+  color: var(--danger);
 }
 
 .site-avatar img,
@@ -1242,6 +1398,51 @@ textarea.field-input,
   flex-wrap: wrap;
   gap: var(--s2);
   margin: var(--s10) 0 0;
+}
+
+/*
+ * 文末的动作区：目前只有收藏一个按钮，右边跟一行收藏数。
+ *
+ * 不做成吸在屏幕边上的悬浮条：那是社交产品的做法，会一直挡着正文。
+ * 读完抬手就能够到的位置，对一个「读完之后才会做的动作」已经足够。
+ */
+.article-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  margin-top: var(--s8);
+}
+
+.favorite-toggle .icon {
+  color: var(--fg-muted);
+  transition: color var(--t-fast) var(--ease-out),
+    fill var(--t-fast) var(--ease-out);
+}
+
+/*
+ * 已收藏：书签填实、换成主题色，按钮本身落一层主题色的淡底。
+ * 只靠填不填实是不够的（那要求人记住约定），文字同时从「收藏」变成「已收藏」，
+ * 由 favorite.js 换（见那里的 render）。
+ *
+ * fill 写在 CSS 里而不是模板里：图标的 fill="none" 是表现属性，
+ * 而任何一条 CSS 规则都赢过它——两种状态因此只需要一份 SVG。
+ */
+.favorite-toggle[aria-pressed="true"] {
+  border-color: var(--seal);
+  background: var(--seal-soft);
+  color: var(--seal);
+}
+
+.favorite-toggle[aria-pressed="true"] .icon {
+  color: var(--seal);
+  fill: var(--seal);
+}
+
+.favorite-count {
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .article-author {

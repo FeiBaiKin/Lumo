@@ -70,6 +70,9 @@ func newAccountStack(t *testing.T) (*testsupport.Stack, *Module) {
 			}
 			mod.MountFrontend(root, core.Authenticator.Optional)
 			if themes := theme.From(application); themes != nil {
+				// 与 serve 一致：页眉账户菜单里的退出登录要一枚表单令牌，
+				// 而签发它的是本模块。少了这一行，主题页面上的那张表单整个不渲染。
+				themes.Renderer().UseFormCSRF(mod.EnsureFormCSRF)
 				themes.MountFrontend(root, core.Authenticator.Optional)
 			}
 		},
@@ -691,6 +694,92 @@ func TestLogoutEndToEnd(t *testing.T) {
 	if rec.Code != http.StatusFound {
 		t.Errorf("登出后账户页应跳登录，状态码 = %d", rec.Code)
 	}
+}
+
+// TestHeaderLogoutWorksOnThemePages 验证页眉账户菜单里的退出登录在**主题渲染的页面**上可用。
+//
+// 这条覆盖的是本模块与 theme 之间那根新接上的线：页眉出现在每一个前台页面上，
+// 而签发表单令牌要写 Cookie，只有拿得到 ResponseWriter 的地方做得了，
+// 故由 serve 把 EnsureFormCSRF 接到 theme 的 Renderer 上（见 newAccountStack）。
+// 少了那一行，主题页面上的退出登录整个不渲染；接错了则是渲染出来却必被 CSRF 挡下。
+//
+// 用 404 页而不是首页：本测试栈没装 content 模块，首页的文章查询无表可查。
+// 404 一样走主题渲染、一样带页眉，而 Finder 对查不到的菜单本就按空处理。
+func TestHeaderLogoutWorksOnThemePages(t *testing.T) {
+	stack, _ := newAccountStack(t)
+
+	if _, err := stack.Users.CreateUser(context.Background(), &auth.CreateUserParams{
+		Username: "reader", Email: "reader@example.com",
+		Password: testPassword, Roles: []string{perm.RoleMember}, EmailVerified: true,
+	}); err != nil {
+		t.Fatalf("创建用户失败: %v", err)
+	}
+	session, _ := stack.Session(t, "reader")
+
+	rec, jar, cookieToken := get(t, stack, "/no-such-page", session)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("状态码 = %d，期望 404（这一页的内容不重要，要的是它的页眉）", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `action="/logout"`) {
+		t.Fatalf("主题页面的页眉里应有退出登录表单: %.600s", body)
+	}
+
+	formToken := hiddenCSRF(t, body)
+	if formToken != cookieToken {
+		t.Fatalf("表单里的令牌 %q 与 Cookie 里的 %q 对不上，提交必被自己的 CSRF 挡下",
+			formToken, cookieToken)
+	}
+
+	// 沿用而不是换发：页眉在每一页上都渲染一次，每次都换新令牌的话，
+	// 用户在另一个标签页里开着的表单会在切回去提交时被判「表单已过期」。
+	second, _, _ := get(t, stack, "/no-such-page", jar)
+	if again := hiddenCSRF(t, second.Body.String()); again != formToken {
+		t.Errorf("再开一页换了新令牌（%q → %q），别处开着的表单会被作废", formToken, again)
+	}
+
+	res := postForm(t, stack, PathLogout, jar, url.Values{FormCSRFField: {formToken}})
+	if res.Code != http.StatusFound || res.Header().Get("Location") != "/" {
+		t.Fatalf("退出登录状态码 = %d，Location = %q：%s",
+			res.Code, res.Header().Get("Location"), res.Body.String())
+	}
+	if after, _, _ := get(t, stack, PathAccount, session); after.Code != http.StatusFound {
+		t.Errorf("退出后账户页应跳登录，状态码 = %d", after.Code)
+	}
+}
+
+// TestHeaderHasNoLogoutForAnonymous 验证匿名访客的页面上不签发表单令牌。
+//
+// 令牌逐人不同，写进 HTML 就意味着匿名页不能再被共享缓存——
+// 而匿名访客的页眉上根本没有退出登录，这枚令牌一点用处也没有。
+func TestHeaderHasNoLogoutForAnonymous(t *testing.T) {
+	stack, _ := newAccountStack(t)
+
+	rec, _, token := get(t, stack, "/no-such-page", nil)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("状态码 = %d，期望 404", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), `action="/logout"`) {
+		t.Error("匿名访客的页眉上不该有退出登录")
+	}
+	if token != "" {
+		t.Error("匿名页面不该下发表单令牌：它会让这些页面不可被共享缓存")
+	}
+}
+
+// hiddenCSRF 从渲染结果里取出隐藏字段里的表单令牌。
+func hiddenCSRF(t *testing.T, body string) string {
+	t.Helper()
+	const marker = `name="` + FormCSRFField + `" value="`
+	_, rest, ok := strings.Cut(body, marker)
+	if !ok {
+		t.Fatalf("页面里没有 %s 隐藏字段: %.600s", FormCSRFField, body)
+	}
+	value, _, ok := strings.Cut(rest, `"`)
+	if !ok {
+		t.Fatalf("隐藏字段没有闭合: %.200s", rest)
+	}
+	return value
 }
 
 // TestFormCSRFIsRequired 验证缺少或错误的表单令牌一律被挡下。

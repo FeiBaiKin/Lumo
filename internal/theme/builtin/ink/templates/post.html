@@ -69,6 +69,15 @@
     </p>
     {{ end }}
 
+    {{- /*
+    收藏按钮。站点没装配收藏模块时整块不渲染——那时点它必然报错。
+    位置在标签之后、作者卡片之前：读完正文抬手就能够到，
+    又不至于挤在正文与标签之间把那两者拆开。
+    */ -}}
+    {{ if .Find.Favorites.Enabled }}
+      {{ template "partials/favorite.html" . }}
+    {{ end }}
+
     {{ if $content.showAuthor }}
       {{ with $post.Author }}
       <section class="article-author">

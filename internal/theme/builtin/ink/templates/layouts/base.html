@@ -85,6 +85,14 @@
   <script defer src="{{ .Theme.AssetsBase }}/auth.js"></script>
 
   {{- /*
+  页眉的账户菜单。同样**不受** appearance.motion 管辖：它装的是个人中心、
+  我的收藏与退出登录，是功能不是装饰。
+  没有这段脚本时头像就是一个指向 /account 的普通链接，菜单里的每一项在那一页上都有。
+  只有已登录访客的页面上才有它要找的那个触发器，匿名页上它什么都不做。
+  */ -}}
+  <script defer src="{{ .Theme.AssetsBase }}/account-menu.js"></script>
+
+  {{- /*
   动效（阶段 8）：GSAP + ScrollTrigger + Lenis 全部自托管，defer 加载、不阻塞渲染。
   脚本自己检查 prefers-reduced-motion；这里的开关是站长的总闸。
   */}}

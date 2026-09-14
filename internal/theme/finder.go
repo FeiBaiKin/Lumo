@@ -253,6 +253,49 @@ func (c CommentsFinder) Tree(postID int64) []*CommentNode {
 	})
 }
 
+// ---------- favorites ----------
+
+// FavoritesFinder 是 favorites 命名空间。
+type FavoritesFinder struct{ f *Finder }
+
+// Favorites 返回 favorites 命名空间。
+func (f *Finder) Favorites() FavoritesFinder { return FavoritesFinder{f} }
+
+// Enabled 报告站点是否装配了收藏功能。
+//
+// 主题据此决定画不画收藏按钮：没装配收藏模块时，一个点了必然报错的按钮
+// 比没有这个按钮更糟。
+func (v FavoritesFinder) Enabled() bool {
+	return v.f != nil && v.f.store != nil && v.f.store.Favorites() != nil
+}
+
+// Count 返回一篇内容被收藏的次数。
+func (v FavoritesFinder) Count(postID int64) int {
+	if !v.Enabled() {
+		return 0
+	}
+	return cached(v.f, "favorites.count:"+itoa(int(postID)), func() (int, error) {
+		return v.f.store.Favorites().CountFavorites(v.f.ctx, postID)
+	})
+}
+
+// Has 报告**当前登录用户**是否收藏过这篇内容；匿名访客恒为 false。
+//
+// 用户 ID 从请求上下文里取而不是让模板传：模板里根本没有可信的用户 ID 可传，
+// 传进来的任何值都等于让主题替别人查收藏状态。
+func (v FavoritesFinder) Has(postID int64) bool {
+	if !v.Enabled() {
+		return false
+	}
+	userID := viewerIDFrom(v.f.ctx)
+	if userID <= 0 {
+		return false
+	}
+	return cached(v.f, "favorites.has:"+itoa(int(postID)), func() (bool, error) {
+		return v.f.store.Favorites().HasFavorite(v.f.ctx, userID, postID)
+	})
+}
+
 // ---------- 视图类型 ----------
 
 // TermView 是分类或标签在模板中的视图，附带文章数。

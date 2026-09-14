@@ -62,8 +62,34 @@ func (c *CSRF) Issue(w http.ResponseWriter) string {
 	if err != nil {
 		return ""
 	}
-	// HttpOnly：表单里已经有明文，前端 JS 不需要读它（与会话 CSRF 的 Cookie 相反，
-	// 那个必须能被 JS 读到才能放进请求头）。
+	c.set(w, token)
+	return token
+}
+
+// Ensure 返回本次请求可用的令牌：请求已带着一枚合法的就沿用，否则签发新的。
+//
+// 与 Issue 的差别只在「换不换值」，而这一条是为页眉里的退出登录表单加的：
+// 那张表单出现在**每一个**前台页面上，若每次渲染都换发新令牌，
+// 用户在另一个标签页里开着的注册表单会在切回去提交时被自己的 CSRF 挡下——
+// 那张表还好好地摆在眼前，提交却说「表单已过期」。
+//
+// 沿用旧值不削弱双提交：它赌的是攻击者读不到也写不了这个 Cookie，与令牌换不换无关。
+// 每次仍重设一遍 Cookie 是为了续期——人停在一个页面上超过 formCSRFTTL 之后，
+// 页面里那枚令牌还在，Cookie 却已经过期，退出登录会莫名其妙地失败一次。
+func (c *CSRF) Ensure(w http.ResponseWriter, r *http.Request) string {
+	cookie, err := r.Cookie(c.CookieName())
+	if err != nil || !validToken(cookie.Value) {
+		return c.Issue(w)
+	}
+	c.set(w, cookie.Value)
+	return cookie.Value
+}
+
+// set 写入令牌 Cookie。
+//
+// HttpOnly：表单里已经有明文，前端 JS 不需要读它（与会话 CSRF 的 Cookie 相反，
+// 那个必须能被 JS 读到才能放进请求头）。
+func (c *CSRF) set(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     c.CookieName(),
 		Value:    token,
@@ -73,7 +99,28 @@ func (c *CSRF) Issue(w http.ResponseWriter) string {
 		Secure:   c.secure,
 		SameSite: http.SameSiteLaxMode,
 	})
-	return token
+}
+
+// validToken 报告一个值是否长得像本模块签发的令牌（32 字节的 base64url）。
+//
+// Ensure 会把 Cookie 里的值原样渲染进表单，故先过一道形状检查：
+// 能写 Cookie 的攻击者本就绕得过双提交（见 CSRF 的已知弱点），
+// 这道检查挡的不是他，而是别处写坏的 Cookie 被当成令牌一路带进 HTML。
+func validToken(value string) bool {
+	// 32 字节随机数按 base64url 无填充编码后的长度。
+	const want = 43
+	if len(value) != want {
+		return false
+	}
+	for i := range len(value) {
+		ch := value[i]
+		switch {
+		case ch >= 'A' && ch <= 'Z', ch >= 'a' && ch <= 'z', ch >= '0' && ch <= '9', ch == '-', ch == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // Verify 比对 Cookie 值与表单字段值。

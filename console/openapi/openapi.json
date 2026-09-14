@@ -2696,6 +2696,25 @@
         ],
         "type": "object"
       },
+      "StateOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "这篇内容被收藏的次数",
+            "format": "int64",
+            "type": "integer"
+          },
+          "favorited": {
+            "description": "当前调用者是否已收藏；匿名调用恒为 false",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "favorited",
+          "count"
+        ],
+        "type": "object"
+      },
       "Stats": {
         "additionalProperties": false,
         "properties": {
@@ -11373,6 +11392,214 @@
         "summary": "发表评论",
         "tags": [
           "comments"
+        ]
+      }
+    },
+    "/api/v1/public/posts/{postId}/favorite": {
+      "delete": {
+        "description": "需要登录。未收藏过也不报错。",
+        "operationId": "favorite-remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "postId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "取消收藏",
+        "tags": [
+          "favorites"
+        ]
+      },
+      "get": {
+        "description": "返回这篇内容的收藏总数，以及当前调用者是否收藏过；匿名调用时后者恒为 false。",
+        "operationId": "favorite-state",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "postId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "获取收藏状态",
+        "tags": [
+          "favorites"
+        ]
+      },
+      "put": {
+        "description": "需要登录。重复收藏不报错，响应里的状态即为最终状态。",
+        "operationId": "favorite-add",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "postId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "收藏内容",
+        "tags": [
+          "favorites"
         ]
       }
     },
