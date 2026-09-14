@@ -79,11 +79,14 @@ var siteForm = form.New(
 // siteGroup 返回 site 分组的声明。
 func siteGroup() app.SettingGroup {
 	return app.SettingGroup{
-		Name:        GroupSite,
-		Label:       "站点",
+		Name: GroupSite,
+		// 「站点信息」而不是「站点」：设置页把六个分组并排铺开，
+		// 一行「站点」夹在「附件存储」「邮件发送」中间读不出是什么，
+		// 而这一组装的正是站名、地址、语言这些站点自身的信息。
+		Label:       "站点信息",
 		Description: "站点的基本信息与前台行为",
 		Order:       0,
-		Icon:        "settings",
+		Icon:        Icon,
 		Form:        siteForm,
 		Public:      []string{"title", "subtitle", "description", "url", "language", "logoUrl", "faviconUrl"},
 		Check:       checkSite,

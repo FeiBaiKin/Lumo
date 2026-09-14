@@ -21,6 +21,15 @@ var migrationFS embed.FS
 // Name 是模块名，也是迁移版本表后缀与 App.Provide 的键。
 const Name = "settings"
 
+// Path 是设置页在 Console 内的路径，也是本模块接口在 Console 平面下的前缀。
+//
+// 页面与接口共用这一段是刻意的：`/settings/<分组>` 既是接口地址，也是
+// 「展开那一块」的页面地址，两者写成两个常量迟早会漂开。
+const Path = "/" + Name
+
+// Icon 是设置在侧边栏与页内的图标名（见 console/src/lib/icons.ts）。
+const Icon = "settings"
+
 // Module 是设置模块。
 type Module struct {
 	app     *app.App
@@ -113,7 +122,15 @@ func From(a *app.App) *Service {
 	return svc
 }
 
-// Navigation 实现 app.NavigationProvider：设置页的侧边栏入口由分组列表推导。
+// Navigation 实现 app.NavigationProvider：侧边栏一个入口，分组做命令面板的直达项。
+//
+// 侧边栏只有「站点设置」一条：所有分组现在铺在同一页上（见 console 的 settings 页），
+// 再给每个分组画一条侧栏菜单，等于让站长先选一个分组才能开始配置，
+// 而他要改的两项很可能分属两组。
+//
+// 分组仍各自下发一条 Hidden 的菜单项。Hidden 的项不进侧边栏，但仍进命令面板与标题映射
+// （见 app.NavItem.Hidden）：Ctrl+K 里搜「邮件」应当能直接跳到邮件那一块，
+// 而这正是把入口收成一个之后唯一会丢掉的东西。
 //
 // 用推导而不是逐个手写：设置分组可能来自模块，也可能来自主题或插件，
 // 手写一份清单就必然有漏。此前 comment 分组在后端存在而在侧边栏没有入口，
@@ -123,21 +140,30 @@ func (m *Module) Navigation() app.Navigation {
 		return app.Navigation{}
 	}
 	groups := m.service.Groups()
-	items := make([]app.NavItem, 0, len(groups))
+	items := make([]app.NavItem, 0, len(groups)+1)
+	items = append(items, app.NavItem{
+		Key:         Name,
+		Label:       "站点设置",
+		Path:        Path,
+		Icon:        Icon,
+		Group:       app.NavGroupSettings,
+		Order:       0,
+		Permission:  perm.SettingsManage.String(),
+		Description: "站点、存储、邮件、评论、注册与 SEO 的全部配置",
+		Keywords:    "settings shezhi peizhi zhandian",
+		End:         true,
+	})
 	for i, group := range groups {
-		// 声明为 Hidden 的组有别的页面承载它的表单（见 app.SettingGroup.Hidden）。
-		if group.Hidden {
-			continue
-		}
 		items = append(items, app.NavItem{
 			Key:         "settings-" + group.Name,
 			Label:       group.Label,
-			Path:        "/settings/" + group.Name,
+			Path:        Path + "/" + group.Name,
 			Icon:        group.Icon,
 			Group:       app.NavGroupSettings,
-			Order:       i,
+			Order:       i + 1,
 			Permission:  perm.SettingsManage.String(),
 			Description: group.Description,
+			Hidden:      true,
 		})
 	}
 	return app.Navigation{Items: items}

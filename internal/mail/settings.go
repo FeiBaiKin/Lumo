@@ -102,6 +102,7 @@ func group() app.SettingGroup {
 		Description: "SMTP 发信配置。口令加密存放、不回传，留空即不改动。",
 		Order:       30,
 		Icon:        "mail",
+		Toggle:      "enabled",
 		Form:        mailForm,
 		// 只公开「开着没有」，不公开主机、端口与账号：主题据此决定要不要给
 		// 「注册」入口，而注册必须先能发验证邮件（见 internal/account 的 registrationOpen）。

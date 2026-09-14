@@ -1944,6 +1944,8 @@ export interface components {
                 [key: string]: unknown;
             };
             description: string;
+            /** @description 图标名，取值见 console/src/lib/icons.ts */
+            icon: string;
             label: string;
             name: string;
             /** Format: int64 */
@@ -1956,6 +1958,8 @@ export interface components {
             };
             /** @description 确实已设置口令的字段名；口令本身不回传 */
             secretSet: string[] | null;
+            /** @description 本组主开关的字段名；为空表示没有主开关 */
+            toggle: string;
             /** @description 当前有效值：缺省值被已保存值覆盖，口令字段恒为空串 */
             values: {
                 [key: string]: unknown;

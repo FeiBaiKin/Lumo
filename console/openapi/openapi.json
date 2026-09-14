@@ -785,6 +785,10 @@
           "description": {
             "type": "string"
           },
+          "icon": {
+            "description": "图标名，取值见 console/src/lib/icons.ts",
+            "type": "string"
+          },
           "label": {
             "type": "string"
           },
@@ -820,6 +824,10 @@
               "null"
             ]
           },
+          "toggle": {
+            "description": "本组主开关的字段名；为空表示没有主开关",
+            "type": "string"
+          },
           "values": {
             "additionalProperties": {},
             "description": "当前有效值：缺省值被已保存值覆盖，口令字段恒为空串",
@@ -831,6 +839,8 @@
           "label",
           "description",
           "order",
+          "icon",
+          "toggle",
           "public",
           "schema",
           "defaults",

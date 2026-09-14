@@ -87,13 +87,6 @@ export function SchemaForm({
   secretSet,
   className,
 }: SchemaFormProps) {
-  /*
-   * 分段与字段一起算，但**不用 useMemo 缓存可见性**：
-   * 可见性随表单值变化，缓存它反而要给每个分区都带上 form 依赖。
-   * 分段本身只随 Schema 变，值得缓一下。
-   */
-  const sections = useMemo(() => sectionsOf(schema), [schema]);
-
   const [form, setForm] = useState<FormValues>(() =>
     initialValues(schema, values),
   );
@@ -168,41 +161,6 @@ export function SchemaForm({
       current[top] ? current : { ...current, [top]: true },
     );
   }, []);
-
-  const renderGroup: RenderGroup = useCallback(
-    ({
-      basePath,
-      schema: groupSchema,
-      values: groupValues,
-      disabled: groupDisabled,
-      onChange,
-    }) => (
-      <div className="@container flex flex-col gap-4">
-        {Object.entries(groupSchema.properties ?? {})
-          .filter(([, field]) => isVisible(field["x-show-if"], groupValues))
-          .map(([key, field]) => {
-            const path = `${basePath}.${key}`;
-            return (
-              <SchemaField
-                key={path}
-                path={path}
-                schema={field}
-                value={groupValues[key]}
-                error={errors[path]}
-                disabled={groupDisabled}
-                onChange={(next) => {
-                  onChange({ ...groupValues, [key]: next });
-                }}
-                onBlur={() => markTouched(path)}
-                scope={groupValues}
-                renderGroup={renderGroup}
-              />
-            );
-          })}
-      </div>
-    ),
-    [errors, markTouched],
-  );
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -282,63 +240,14 @@ export function SchemaForm({
         </Alert>
       ) : null}
 
-      {/*
-        分段渲染。字段之间一条细线，段与段之间留出更大的间距并给出标题——
-        设置项多起来以后，一长条没有分隔的表单会让人找不到东西（agent.md §5）。
-        没有 x-sections 的老 Schema 只会得到一段无标题的，外观与改动前一致。
-      */}
-      <div className="flex flex-col gap-8">
-        {sections.map((section) => {
-          // 条件不成立的字段此刻不该出现。它的值仍然留着：
-          // 站长把驱动从 s3 切回 local 再切回来，填过的地址应当还在。
-          const visibleFields = section.fields.filter(([, field]) =>
-            isVisible(field["x-show-if"], form),
-          );
-          if (visibleFields.length === 0) {
-            return null;
-          }
-          return (
-            <section
-              key={section.title || "__default__"}
-              className="flex flex-col gap-2"
-            >
-              {section.title ? (
-                /*
-                 * 分段标题要比它下面的字段标签**大一档**，再加一条细线把它与字段分开。
-                 * 两者同为 text-sm 时，分段读起来像是第一个字段的一部分——
-                 * 层级反了，而字段一多就看不出这一段从哪开始。
-                 */
-                <header className="flex flex-col gap-0.5 border-line border-b pb-2">
-                  <h3 className="text-base font-medium text-ink">
-                    {section.title}
-                  </h3>
-                  {section.description ? (
-                    <p className="text-xs text-ink-muted">
-                      {section.description}
-                    </p>
-                  ) : null}
-                </header>
-              ) : null}
-              <div className="@container divide-y divide-line">
-                {visibleFields.map(([key, field]) => (
-                  <FieldRow
-                    key={key}
-                    path={key}
-                    schema={field}
-                    value={form[key]}
-                    error={errors[key]}
-                    disabled={disabled || pending}
-                    onChange={(value) => setValue(key, value)}
-                    onBlur={() => markTouched(key)}
-                    scope={form}
-                    renderGroup={renderGroup}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+      <SchemaFormFields
+        schema={schema}
+        values={form}
+        errors={errors}
+        disabled={disabled || pending}
+        onChange={setValue}
+        onBlur={markTouched}
+      />
 
       <div className="flex flex-wrap items-center gap-3 border-line border-t pt-4">
         <Button
@@ -375,6 +284,154 @@ export function SchemaForm({
       {formNode}
     </SecretSetContext.Provider>
   );
+}
+
+export type SchemaFormFieldsProps = {
+  schema: GroupSchema;
+  /** 受控值。 */
+  values: FormValues;
+  /** 要显示的错误，键为字段路径。由调用方决定「什么时候该显示」。 */
+  errors: FieldErrors;
+  onChange: (path: string, value: unknown) => void;
+  onBlur: (path: string) => void;
+  disabled?: boolean;
+  /**
+   * 不在这里渲染的顶层字段。
+   *
+   * 用于把某个字段提到别处画（如设置页把主开关提到区块标题栏上）——
+   * 不排除的话同一个开关会在页面上出现两个，而它们还都是活的。
+   */
+  omit?: readonly string[] | undefined;
+  /** 没有任何字段可见时显示的内容（条件依赖把整组字段都藏起来时）。 */
+  empty?: React.ReactNode | undefined;
+  className?: string | undefined;
+};
+
+/**
+ * 表单引擎的渲染内核：只画字段，不管值、不管校验、不带按钮。
+ *
+ * 与 SchemaForm 分开，是因为「一页上有六个分组、共用一个保存按钮」的设置页
+ * 需要自己持有全部分组的值与脏状态。让它复用 SchemaForm 就得往里加
+ * 「不要按钮」「不要守卫」「值交给外面」三个开关，而那样的组件已经不是同一个东西了。
+ *
+ * 单个表单的常规用法仍然走 SchemaForm：它在这个内核外面补齐状态、校验、
+ * 错误摘要与提交，行为与拆分前完全一致。
+ */
+export function SchemaFormFields({
+  schema,
+  values,
+  errors,
+  onChange,
+  onBlur,
+  disabled = false,
+  omit,
+  empty,
+  className,
+}: SchemaFormFieldsProps) {
+  /*
+   * 分段与字段一起算，但**不用 useMemo 缓存可见性**：
+   * 可见性随表单值变化，缓存它反而要给每个分区都带上 values 依赖。
+   * 分段本身只随 Schema 变，值得缓一下。
+   */
+  const sections = useMemo(() => sectionsOf(schema), [schema]);
+
+  const renderGroup: RenderGroup = useCallback(
+    ({
+      basePath,
+      schema: groupSchema,
+      values: groupValues,
+      disabled: groupDisabled,
+      onChange: onGroupChange,
+    }) => (
+      <div className="@container flex flex-col gap-4">
+        {Object.entries(groupSchema.properties ?? {})
+          .filter(([, field]) => isVisible(field["x-show-if"], groupValues))
+          .map(([key, field]) => {
+            const path = `${basePath}.${key}`;
+            return (
+              <SchemaField
+                key={path}
+                path={path}
+                schema={field}
+                value={groupValues[key]}
+                error={errors[path]}
+                disabled={groupDisabled}
+                onChange={(next) => {
+                  onGroupChange({ ...groupValues, [key]: next });
+                }}
+                onBlur={() => onBlur(path)}
+                scope={groupValues}
+                renderGroup={renderGroup}
+              />
+            );
+          })}
+      </div>
+    ),
+    [errors, onBlur],
+  );
+
+  /*
+    分段渲染。字段之间一条细线，段与段之间留出更大的间距并给出标题——
+    设置项多起来以后，一长条没有分隔的表单会让人找不到东西（agent.md §5）。
+    没有 x-sections 的老 Schema 只会得到一段无标题的，外观与改动前一致。
+  */
+  const rendered = sections
+    .map((section) => {
+      // 条件不成立的字段此刻不该出现。它的值仍然留着：
+      // 站长把驱动从 s3 切回 local 再切回来，填过的地址应当还在。
+      const visibleFields = section.fields.filter(
+        ([key, field]) =>
+          !omit?.includes(key) && isVisible(field["x-show-if"], values),
+      );
+      if (visibleFields.length === 0) {
+        return null;
+      }
+      return (
+        <section
+          key={section.title || "__default__"}
+          className="flex flex-col gap-2"
+        >
+          {section.title ? (
+            /*
+             * 分段标题要比它下面的字段标签**大一档**，再加一条细线把它与字段分开。
+             * 两者同为 text-sm 时，分段读起来像是第一个字段的一部分——
+             * 层级反了，而字段一多就看不出这一段从哪开始。
+             */
+            <header className="flex flex-col gap-0.5 border-line border-b pb-2">
+              <h3 className="text-base font-medium text-ink">
+                {section.title}
+              </h3>
+              {section.description ? (
+                <p className="text-xs text-ink-muted">{section.description}</p>
+              ) : null}
+            </header>
+          ) : null}
+          <div className="@container divide-y divide-line">
+            {visibleFields.map(([key, field]) => (
+              <FieldRow
+                key={key}
+                path={key}
+                schema={field}
+                value={values[key]}
+                error={errors[key]}
+                disabled={disabled}
+                onChange={(value) => onChange(key, value)}
+                onBlur={() => onBlur(key)}
+                scope={values}
+                renderGroup={renderGroup}
+              />
+            ))}
+          </div>
+        </section>
+      );
+    })
+    .filter(Boolean);
+
+  if (rendered.length === 0 && empty) {
+    return <>{empty}</>;
+  }
+
+  return <div className={cn("flex flex-col gap-8", className)}>{rendered}</div>;
 }
 
 /** 每个字段占一行，行与行之间由父级的分隔线隔开。 */

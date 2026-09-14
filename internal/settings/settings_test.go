@@ -113,6 +113,17 @@ func TestRegisterGroupsRejectsBadDeclarations(t *testing.T) {
 				form.Int("n").Label("数量").Default("one"),
 			))},
 		},
+		{
+			// 主开关写错名字的表现是「设置页那一块的标题栏上少个开关」——
+			// 界面上没有任何提示，故必须在注册时失败。
+			"主开关不在表单里",
+			app.SettingGroup{Name: "x", Toggle: "enabled", Form: tinyForm("a")},
+		},
+		{
+			// 非布尔字段当不了开关：界面要么画不出来，要么画出一个存不回去的开关。
+			"主开关不是布尔字段",
+			app.SettingGroup{Name: "x", Toggle: "a", Form: tinyForm("a")},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -121,6 +132,26 @@ func TestRegisterGroupsRejectsBadDeclarations(t *testing.T) {
 				t.Fatal("应拒绝非法声明")
 			}
 		})
+	}
+}
+
+func TestToggleDeclarationAccepted(t *testing.T) {
+	t.Parallel()
+
+	g := app.SettingGroup{Name: "x", Toggle: "on", Form: form.New(form.NewSection("s",
+		form.Bool("on").Label("开").Default(false),
+	))}
+	s := NewService(nil)
+	if err := s.RegisterGroups([]app.SettingGroup{g}); err != nil {
+		t.Fatalf("布尔主开关应被接受: %v", err)
+	}
+	got, ok := s.Group("x")
+	if !ok {
+		t.Fatal("分组未登记")
+	}
+	// 接口要把它带给前端，否则声明了也没人用得上。
+	if got.Toggle != "on" {
+		t.Errorf("Toggle = %q，应为 on", got.Toggle)
 	}
 }
 

@@ -73,6 +73,7 @@ func settingsGroup() app.SettingGroup {
 		Description: "评论的开放范围、审核策略与反垃圾规则",
 		Order:       40,
 		Icon:        "message-square",
+		Toggle:      "enabled",
 		Form:        commentForm,
 		// 前台要据此决定是否渲染评论框、是否显示邮箱字段、以及本地先做一次长度校验。
 		Public: []string{"enabled", "allowAnonymous", "requireEmail", "requireApproval", "maxLength"},

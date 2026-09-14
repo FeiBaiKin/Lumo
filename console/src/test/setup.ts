@@ -36,6 +36,17 @@ if (!globalThis.ResizeObserver) {
   } as unknown as typeof ResizeObserver;
 }
 
+/**
+ * jsdom 不实现 `scrollIntoView`。
+ *
+ * 页面在「跳到出错的字段」「展开某个设置区块」之后都会滚过去，
+ * 而缺了它抛出的是 TypeError，表现为一条与滚动毫无关系的测试失败。
+ * 给一个空实现即可：滚动位置本来也不是 jsdom 里能断言的东西。
+ */
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = function scrollIntoView() {};
+}
+
 /** 让每个用例从干净的存储开始，避免主题选择在用例之间串味。 */
 afterEach(() => {
   localStorage.clear();

@@ -91,22 +91,32 @@ func TestNavigationContract(t *testing.T) {
 		}
 	}
 
-	// 声明为 Hidden 的设置分组不产生菜单项。
+	// 设置分组不各占一条侧边栏菜单：它们全都铺在 /settings 这一页上。
 	//
-	// 漏跳过它不会有任何报错，只是在侧边栏里多出一项——也就是把「开放注册」
-	// 与「用户」重新拆回两个入口，正是当初要合并掉的那个问题。
-	// 故在这里按声明本身核对，而不是把分组名硬编码进来。
+	// 分组仍各下发一条 Hidden 的菜单项（命令面板与标题映射要用）。漏写 Hidden
+	// 不会有任何报错，只会让侧边栏重新长出一串与页内区块一一重复的入口——
+	// 也就是「同一个动作画两遍」，正是这次合并要去掉的东西。
+	// 故按声明本身核对，而不是把分组名硬编码进来。
 	for _, group := range application.Settings() {
-		if !group.Hidden {
-			continue
-		}
 		want := "/settings/" + group.Name
 		for _, item := range nav.Items {
-			if item.Path == want {
-				t.Errorf("设置分组 %q 声明为 Hidden，侧边栏里却仍有 [%s]（%s）",
+			if item.Path == want && !item.Hidden {
+				t.Errorf("设置分组 %q 在侧边栏里仍有独立入口 [%s]（%s）；"+
+					"它应当只作为 /settings 页里的一个区块，菜单项须标为 Hidden",
 					group.Name, item.Key, want)
 			}
 		}
+	}
+
+	// 收成一个入口之后，那一个入口就必须在。它要是没了，设置页从侧边栏再也进不去。
+	var settingsEntry bool
+	for _, item := range nav.Items {
+		if item.Path == "/settings" && !item.Hidden {
+			settingsEntry = true
+		}
+	}
+	if !settingsEntry {
+		t.Error("侧边栏里没有指向 /settings 的可见入口，设置页无从进入")
 	}
 
 	// 菜单清单变了却没人检查时这条测试会静默空转。

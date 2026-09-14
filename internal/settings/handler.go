@@ -30,7 +30,7 @@ func (h *Handler) Register(console, public huma.API) {
 	huma.Register(console, huma.Operation{
 		OperationID: "settings-list-groups",
 		Method:      http.MethodGet,
-		Path:        "/settings",
+		Path:        Path,
 		Summary:     "列出全部设置分组",
 		Description: "每个分组携带表单 Schema、缺省值与当前有效值，Console 据此渲染通用表单。",
 		Tags:        tagSettings,
@@ -59,7 +59,7 @@ func (h *Handler) Register(console, public huma.API) {
 	huma.Register(public, huma.Operation{
 		OperationID: "settings-public",
 		Method:      http.MethodGet,
-		Path:        "/settings",
+		Path:        Path,
 		Summary:     "公开的站点设置",
 		Description: "只包含各分组中标记为公开的字段，供主题与登录页使用。",
 		Tags:        tagSettings,
@@ -72,6 +72,8 @@ type groupView struct {
 	Label       string         `json:"label"`
 	Description string         `json:"description"`
 	Order       int            `json:"order"`
+	Icon        string         `json:"icon" doc:"图标名，取值见 console/src/lib/icons.ts"`
+	Toggle      string         `json:"toggle" doc:"本组主开关的字段名；为空表示没有主开关"`
 	Public      []string       `json:"public" doc:"可经 Public 平面读取的字段"`
 	Schema      map[string]any `json:"schema" doc:"JSON Schema 2020-12 子集 + x-widget"`
 	Defaults    map[string]any `json:"defaults"`
@@ -122,6 +124,8 @@ func (h *Handler) view(ctx context.Context, g *Group) (groupView, error) {
 		Label:       g.Label,
 		Description: g.Description,
 		Order:       g.Order,
+		Icon:        g.Icon,
+		Toggle:      g.Toggle,
 		Public:      public,
 		Schema:      g.SchemaDoc(),
 		Defaults:    g.DefaultValues(),

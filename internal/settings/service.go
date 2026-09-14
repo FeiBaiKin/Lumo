@@ -199,7 +199,29 @@ func compileGroup(decl *app.SettingGroup) (*Group, error) {
 	if err := g.validate(defaults); err != nil {
 		return nil, fmt.Errorf("settings: 分组 %q 的 Defaults 未通过自身 Schema: %w", decl.Name, err)
 	}
+	if err := checkToggle(g); err != nil {
+		return nil, err
+	}
 	return g, nil
+}
+
+// checkToggle 核对主开关声明：字段要在表单里，且必须是布尔。
+//
+// 拦在注册这一刻，是因为写错的代价在界面上不可见——设置页只会少画一个开关，
+// 既不报错也不留痕，而声明它的人正是为了让那个开关出现才写了这一行。
+func checkToggle(g *Group) error {
+	if g.Toggle == "" {
+		return nil
+	}
+	props, _ := g.doc["properties"].(map[string]any)
+	field, ok := props[g.Toggle].(map[string]any)
+	if !ok {
+		return fmt.Errorf("settings: 分组 %q 的主开关 %q 不在表单声明里", g.Name, g.Toggle)
+	}
+	if field["type"] != "boolean" {
+		return fmt.Errorf("settings: 分组 %q 的主开关 %q 不是布尔字段", g.Name, g.Toggle)
+	}
+	return nil
 }
 
 // validate 用 Schema 与 Check 校验有效值。

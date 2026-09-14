@@ -121,7 +121,7 @@ export const APP_ROUTES = [
   { path: "profile", element: ProfilePage },
 
   // ---- 设置 ----
-  { path: "settings", element: () => <SettingsPage defaultGroup="site" /> },
+  { path: "settings", element: SettingsPage },
   { path: "settings/:group", element: SettingsPage },
 
   // ---- 系统 ----
