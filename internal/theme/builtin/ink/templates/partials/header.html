@@ -115,21 +115,30 @@
     {{- /*
     账户弹窗。只有匿名访客有入口，故只在匿名时渲染；已登录用户的 DOM 里不必留着它。
 
-    <dialog> 而不是自绘的一层 div：焦点被困在弹窗里、背景 inert、Esc 关闭
-    这三件事由浏览器提供，自己实现每一个都容易漏掉一处。
-    不用 aria-label 之外的语义——三个标签是导航（<a>），不是 tabs 模式，
-    真正的 tablist 要配 roving tabindex 与方向键，那是给应用界面准备的，一个登录框用不上。
+    <dialog> 而不是自绘的一层 div：焦点被困在弹窗里、背景 inert、Esc 关闭、
+    关闭后焦点还给触发它的链接——这几件事由浏览器提供，自己实现每一个都容易漏掉一处。
+
+    结构照 Console 的浮层：标题栏（标题 + 关闭）/ 主体。**没有第三块底栏**：
+    主体装的是服务端产出的整张表单，提交按钮就在它里面，把按钮搬进底栏
+    就得在两处维护同一张表单，而漏改的那一次表现为「线上登录偶发失败」。
+    按钮那一行在弹窗里由 CSS 画成贴底的动作区，形上是底栏，DOM 上没动过。
+
+    标题由 auth.js 从面板的 data-auth-title 填入，初值给「登录」——
+    页眉上点得最多的就是它，而空标题在弹窗打开的那一瞬间会闪一下。
 
     内容为空是**刻意的**：面板由 auth.js 取对应页面里的那一块放进来，
     弹窗里因此没有第二份表单。用户上传过头像就看不见这里，没 JS 时它永远不显示。
     */ -}}
     {{ if not .CurrentUser }}
-    <dialog class="auth-dialog" id="site-auth" aria-label="登录、注册与找回密码">
-      <nav class="auth-dialog-tabs" aria-label="账户">
-        <a href="/login" data-auth-tab="login">登录</a>
-        {{ if $registerOpen }}<a href="/register" data-auth-tab="register">注册</a>{{ end }}
-        <a href="/forgot-password" data-auth-tab="forgot">忘记密码</a>
-      </nav>
+    <dialog class="auth-dialog" id="site-auth" aria-labelledby="site-auth-title">
+      <div class="auth-dialog-head">
+        <h2 class="auth-dialog-title" id="site-auth-title" data-auth-title>登录</h2>
+        {{- /*
+        关闭键是一个 × 字符，不是图标：这套语言里只有线与字（见 agent.md §11.2），
+        一个描边图标会引入第三种材质。可点区域 44px，视觉上只有那个字。
+        */ -}}
+        <button type="button" class="auth-dialog-close" data-auth-close aria-label="关闭">&#215;</button>
+      </div>
       <div class="auth-dialog-body" data-auth-body></div>
     </dialog>
     {{ end }}

@@ -223,6 +223,82 @@ func TestBuiltinThemeAccountPagesTolerateEmptyContext(t *testing.T) {
 	}
 }
 
+// TestBuiltinThemeAuthPanelFeedsDialog 验证账户弹窗要从面板里取的三样东西。
+//
+// 弹窗自己不写表单，它取的是这几页里的那块 `.auth-panel`（见 static/auth.js）。
+// 标题、支线出口、提交按钮的忙碌文案因此都得**长在面板之内**——
+// 挪到面板外面，页面看起来分毫不差，弹窗里却会少掉对应的那一块，
+// 而且不会有任何报错：标题顶着上一次的值，出口整个消失，按钮按下去没有动静。
+func TestBuiltinThemeAuthPanelFeedsDialog(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
+	if err != nil {
+		t.Fatalf("内置主题加载失败: %v", err)
+	}
+	eng := engine(loaded)
+
+	cases := []struct {
+		template string
+		kind     string
+		title    string
+		// 面板底部该有的支线出口。登录那页两条，其余各一条。
+		exits []string
+		busy  string
+	}{
+		{"login.html", KindLogin, "登录", []string{`href="/forgot-password"`, `href="/register"`}, "正在登录"},
+		{"register.html", KindRegister, "创建账户", []string{`href="/login"`}, "正在创建"},
+		{"forgot-password.html", KindForgotPassword, "重置密码", []string{`href="/login"`}, "正在发送"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.template, func(t *testing.T) {
+			t.Parallel()
+			ctx := &Context{
+				Kind:   tc.kind,
+				Site:   SiteContext{Title: "站点", Language: "zh-CN", Now: time.Now()},
+				Theme:  ThemeContext{Name: BuiltinName, AssetsBase: "/theme-assets/ink"},
+				Find:   newFinder(t.Context(), nil, ""),
+				Form:   NewFormState(),
+				Public: registerable(),
+				Params: map[string]string{"registrationOpen": "1"},
+			}
+			var sb strings.Builder
+			if err := eng.Render(&sb, tc.template, ctx); err != nil {
+				t.Fatalf("渲染失败: %v", err)
+			}
+			out := sb.String()
+
+			panel := panelOf(t, out)
+			if want := `data-auth-title="` + tc.title + `"`; !strings.Contains(panel, want) {
+				t.Errorf("面板缺少 %s，弹窗会顶着上一次的标题", want)
+			}
+			for _, exit := range tc.exits {
+				if !strings.Contains(panel, exit) {
+					t.Errorf("面板里没有支线出口 %s", exit)
+				}
+			}
+			if want := `data-busy="` + tc.busy + `"`; !strings.Contains(panel, want) {
+				t.Errorf("提交按钮缺少 %s，弹窗里按下去不会有任何反馈", want)
+			}
+		})
+	}
+}
+
+// panelOf 截出 data-auth-panel 那一块，断言因此只看弹窗真正会取走的部分。
+func panelOf(t *testing.T, html string) string {
+	t.Helper()
+	start := strings.Index(html, "data-auth-panel")
+	if start < 0 {
+		t.Fatal("页面里没有 data-auth-panel，弹窗取不到任何东西")
+	}
+	// 面板一直延伸到 </section>：这几页的面板是 section 里的最后一块
+	end := strings.Index(html[start:], "</section>")
+	if end < 0 {
+		t.Fatal("找不到面板的结尾")
+	}
+	return html[start : start+end]
+}
+
 // TestBuiltinThemeNavIsProgressive 验证二级菜单的结构契约。
 //
 // 三条：一级项有子项时是**按钮**而不是链接（用户要求点击展开、不跳转）；
@@ -372,12 +448,20 @@ func TestBuiltinThemeAccountEntry(t *testing.T) {
 			`data-auth-tab="login"`,
 			`data-auth-tab="register"`,
 			`<dialog class="auth-dialog" id="site-auth"`,
-			`data-auth-tab="forgot"`,
+			// 标题与关闭键是弹窗自己的两件家具，脚本按这两个标记找它们；
+			// 少了标题它会一直顶着初值，少了关闭键就只剩 Esc 这一条出路。
+			`data-auth-title`,
+			`data-auth-close`,
 			`data-auth-body`,
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("匿名页眉缺少 %s", want)
 			}
+		}
+		// 弹窗靠 aria-labelledby 指向自己的标题；对不上就是一个无名的对话框
+		if !strings.Contains(out, `aria-labelledby="site-auth-title"`) ||
+			!strings.Contains(out, `id="site-auth-title"`) {
+			t.Error("弹窗的 aria-labelledby 与标题 id 没有对上")
 		}
 	})
 
@@ -416,9 +500,9 @@ func TestBuiltinThemeAccountEntry(t *testing.T) {
 				if got != tc.want {
 					t.Errorf("有注册入口 = %v，期望 %v", got, tc.want)
 				}
-				// 忘记密码与这三条都无关，任何组合下都该在
-				if !strings.Contains(out, `data-auth-tab="forgot"`) {
-					t.Error("忘记密码与注册无关，应当一直在")
+				// 登录入口与这三条都无关，任何组合下都该在
+				if !strings.Contains(out, `data-auth-tab="login"`) {
+					t.Error("登录入口与注册开关无关，应当一直在")
 				}
 			})
 		}

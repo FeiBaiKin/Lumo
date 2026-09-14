@@ -60,8 +60,12 @@
   /*
    * 模态弹窗背后的那一层。用墨而不是纯黑：纸被墨罩住一层，而不是被涂黑，
    * 这与「三个颜色各自对应一种真实物质」是同一条纪律——第四个色号不许出现。
+   *
+   * 浓度从 22% 提到 38%（2026-09-14，弹窗改居中时）：贴在页眉下沿的旧弹窗
+   * 靠位置与那条页眉线就能和页面分开；居中之后它四面都是正文，
+   * 22% 的罩太薄——背景照样能读，人的视线不知道该落在哪一层。
    */
-  --scrim: color-mix(in srgb, var(--ink) 22%, transparent);
+  --scrim: color-mix(in srgb, var(--ink) 38%, transparent);
 
   /*
    * 中文字体分层（agent.md §11.1）：
@@ -1633,6 +1637,19 @@ button {
   color: var(--fg-muted);
 }
 
+/* 标签与「显示 / 隐藏」同一行时，行距归容器管，标签自己不再留下边距 */
+.auth-field-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s4);
+  margin-bottom: var(--s2);
+}
+
+.auth-field-label label {
+  margin-bottom: 0;
+}
+
 /*
  * 输入框只有底部一条 1px 实线：这是「墨水落在纸上」，也是本次唯一的大胆之处，
  * 其余一切保持安静（agent.md §11.2 的「把胆量花在一处」）。
@@ -1643,7 +1660,13 @@ button {
 .auth-form input {
   display: block;
   width: 100%;
-  padding: var(--s2) 0;
+  /*
+   * 上下 --s3 而不是 --s2：这条线本身没有厚度，垂直方向的可点区域全靠内边距撑。
+   * 12 + 24（行高） + 12 ≈ 48px，够得上触屏的最小目标；--s2 只有 40px 出头，
+   * 在手机上要点两次才落进去的那种。
+   */
+  padding: var(--s3) 0;
+  line-height: 1.5;
   background: transparent;
   border: 0;
   border-bottom: var(--rule-w) solid var(--border);
@@ -1721,36 +1744,33 @@ button {
 }
 
 /* ---------- 账户弹窗：页眉翻开的第二只角 ---------- */
+/* ---------- 账户弹窗（2026-09-14 第二版：居中） ---------- */
 /*
- * 几何与二级菜单同源：顶边正好落在页眉那条分隔线上（那条线充当它的上边框），
- * 右下圆角 2px，无阴影。宽度 20em —— 与账户页那块表单同宽，
- * 因为它就是同一块纸被翻到了页眉右下角，不是另做的一张浮起的卡片。
+ * 第一版贴在页眉右下角、借页眉那条分隔线当自己的上边框，像「把纸翻开一角」。
+ * 想法成立，用起来不成立：它在宽屏上偏居右上，人的视线与光标都在页面中间；
+ * 窄屏上又几乎撑满，那个「一角」的意思也就没了。换成居中。
  *
- * --auth-top 与 --auth-gutter 由 auth.js 在打开时按页眉与正文栏的**实测**位置写入。
- * 「对齐页眉底线」这件事只能量：页眉高度取决于站名是否换行、导航有几项，
- * 写死一个数值在窄屏或长站名上就会错位。两个变量都有兜底值，脚本没跑到也能显示。
+ * 骨架照 Console 的浮层（标题栏 / 主体，遮罩，居中，Esc 关闭），**配色不照**：
+ * 那边用阴影表达「浮在内容之上」，这里不用——「无阴影」是这套主题的纪律
+ * （agent.md §11.2），分层交给遮罩：背后的纸被墨罩暗，中间这张是亮的，
+ * 一条 1px 的边就够把它和背景分开。
+ *
+ * 隐喻仍是纸：一张摊在案上的笺，不是一块浮起来的卡片。故圆角仍是 2px、
+ * 边框仍是 1px 实线、标题仍走衬线。
  */
 .auth-dialog {
-  --auth-top: var(--s16);
-  --auth-gutter: var(--s6);
-
-  position: fixed;
-  inset: var(--auth-top) var(--auth-gutter) auto auto;
-  /*
-   * 上限用 --s6 乘二而不是 --auth-gutter：宽屏时 gutter 是「视口到正文栏的距离」，
-   * 可能有好几百像素，两边各减一个会算出负宽度。窄屏上正文栏的左右留白正好就是 --s6。
-   */
-  width: min(calc(20em + var(--s6) * 2), calc(100% - var(--s6) * 2));
-  max-height: calc(100% - var(--auth-top) - var(--s4));
-  margin: 0;
-  padding: var(--s6);
-  overflow: auto;
+  /* <dialog> 的默认 margin:auto 就是居中，只要给定宽高上限 */
+  width: min(26em, calc(100% - var(--s8)));
+  max-height: calc(100dvh - var(--s12));
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--fg);
-  /* 顶边不画：借用页眉那条既有分隔线，与二级菜单同一条理由 */
   border: var(--rule-w) solid var(--border);
-  border-top: 0;
-  border-radius: 0 0 var(--radius) var(--radius);
+  border-radius: var(--radius);
 }
 
 /* 墨色薄薄罩住纸面，而不是把页面涂黑 */
@@ -1759,72 +1779,181 @@ button {
 }
 
 .auth-dialog[open] {
-  animation: auth-dialog-in 120ms ease-out;
+  animation: auth-dialog-in 140ms ease-out;
 }
 
+.auth-dialog[open]::backdrop {
+  animation: auth-backdrop-in 140ms ease-out;
+}
+
+/*
+ * 入场：淡入 + 从 98% 放到 100%。
+ * 与第一版那个「从上方落 4px」不同——那是配合它挂在页眉下沿的位置，
+ * 居中之后没有哪个方向是它「来的方向」，只剩「出现」这一件事。
+ */
 @keyframes auth-dialog-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    scale: 0.98;
   }
   to {
     opacity: 1;
-    transform: none;
+    scale: 1;
+  }
+}
+
+@keyframes auth-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
 /*
- * 三个标签替换独立页上的 <h1>：登录页是「标题 + 表单块」，
- * 弹窗里就是「标签 + 同一块表单」。
+ * 标题栏：标题在左，关闭在右，底下一条 1px 线。
+ * 标题是当前这一步的名字（登录 / 创建账户 / 重置密码），由 auth.js 从面板上取。
  *
- * 左内边距 --s6 是为了与下面表单的字段对齐——面板自带 --s6 的装订线内边距，
- * 标签落在装订线右侧，与「标题在面板之上」的独立页版式正好对得上。
- *
- * 它们是 <a href="/login">，不是按钮：没有 JS 时点下去就是去那个页面，
- * 弹出层只是把这一步拦下来换成了原地换内容。激活态靠 aria-current，
- * 只改颜色不加下划线——输入框那条底线是这几个页面唯一的大胆之处，不给它找对手。
+ * 第一版在这里放的是三个并排的标签（登录 / 注册 / 忘记密码）。去掉了：
+ * 那让「忘记密码」看起来与「登录」同级，而它是登录的支线——
+ * 人是先想登录、发现想不起密码，才走到那一步的。三条支线现在回到面板底部，
+ * 就是 .auth-alt 那一行（页面上本来就有，第一版把它藏了）。
  */
-.auth-dialog-tabs {
+.auth-dialog-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--s2) var(--s6);
-  margin-bottom: var(--s6);
-  padding-left: var(--s6);
-  font-size: 0.9375rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s4) var(--s4) var(--s4) var(--s6);
+  border-bottom: var(--rule-w) solid var(--border);
 }
 
-.auth-dialog-tabs a {
+.auth-dialog-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+/*
+ * 关闭键。可点区域 44×44（触屏的最小目标），视觉上只有一个 × 字。
+ * 不画边框也不画底色：它在标题栏里是唯一一个可点的东西，不必再框起来。
+ */
+.auth-dialog-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: calc(var(--s2) * -1) 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--radius);
   color: var(--fg-faint);
-  text-decoration: none;
+  font-family: var(--font-sans);
+  font-size: 1.375rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 120ms ease-out;
 }
 
-.auth-dialog-tabs a:hover {
-  color: var(--fg-muted);
-}
-
-.auth-dialog-tabs a[aria-current="true"] {
+.auth-dialog-close:hover {
   color: var(--fg);
 }
 
-/* 弹窗里的面板宽度交给弹窗，装订线保留 */
+/*
+ * 弹窗里的字段挨得比页面上紧一档：--s6 是为整页阅读的节奏定的，
+ * 一张 26em 宽的表单用同样的行距会显得空，人要多滚一段才看得到按钮。
+ */
+.auth-dialog .auth-field + .auth-field {
+  margin-top: var(--s4);
+}
+
+/* 主体。表单长过视口时在这里滚，标题栏与关闭键留在原处 */
+.auth-dialog-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s6);
+}
+
+/*
+ * 弹窗里的面板：宽度交给弹窗，但**去掉那条装订线**。
+ * 装订线在页面上是「这一块是从整页里裁下来的一条」的意思；
+ * 弹窗本身已经是一张独立的纸，再画一条订口，等于说这张纸还是从别处撕下来的。
+ */
 .auth-dialog .auth-panel {
+  max-width: none;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.auth-dialog .auth-intro {
   max-width: none;
 }
 
 /*
- * 页面上的那行出口链接（「忘记密码」「还没有账户？注册」「返回登录」）
- * 在弹窗里是重复的：上面的标签栏就是它们。藏掉的是重复，不是功能。
+ * 提交那一行在弹窗里画成贴底的动作区：一条分隔线撑满弹窗宽度，按钮靠右。
+ * DOM 没动——它仍是表单里的那个 <p>，只是这里让它看起来像 Console 浮层的底栏。
+ */
+.auth-dialog .auth-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: var(--s6) calc(var(--s6) * -1) 0;
+  padding: var(--s4) var(--s6) 0;
+  border-top: var(--rule-w) solid var(--border);
+}
+
+/*
+ * 支线出口（「忘记密码」「还没有账户？注册」「返回登录」）。
+ * 页面上它与按钮之间隔着一条线，弹窗里那条线已经由动作区画了，这里就不再画第二条。
  */
 .auth-dialog .auth-alt {
-  display: none;
+  margin-top: var(--s4);
+  padding-top: 0;
+  border-top: 0;
 }
 
 /* 取页面面板的那一小段时间。留着空面板会像坏掉了 */
 .auth-dialog-loading {
   margin: 0;
-  padding-left: var(--s6);
   color: var(--fg-faint);
   font-size: 0.875rem;
+}
+
+/*
+ * 打开弹窗时锁住背后的滚动。
+ * <dialog> 只做到「背景不可交互」，滚轮照样能把背后的文章滚走——
+ * 人在填表单，身后的页面自己动起来，是这一层最容易被忽略的破绽。
+ */
+html.auth-open {
+  overflow: hidden;
+}
+
+/*
+ * 密码可见切换。由 auth.js 注入（没有 JS 时不该出现一个点了没反应的按钮），
+ * 落在标签那一行的右端——与标签同一基线，不占额外的行。
+ *
+ * 是「显示 / 隐藏」两个字，不是一只眼睛图标：与关闭键同一条理由。
+ */
+.auth-reveal {
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--fg-faint);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: color 120ms ease-out;
+}
+
+.auth-reveal:hover {
+  color: var(--link);
 }
 
 /*
@@ -1840,9 +1969,31 @@ button {
     max-width: 100%;
   }
 
-  .auth-panel,
-  .auth-dialog-tabs,
-  .auth-dialog-loading {
+  /* 页面上的装订线在窄屏收窄；弹窗里本来就没有装订线 */
+  .auth-panel {
+    padding-left: var(--s4);
+  }
+
+  /*
+   * 弹窗在小屏上几乎贴边，内边距跟着收：26em 的上限在 390px 上已经用不到，
+   * 真正吃掉宽度的是左右各 --s6 的内边距。
+   */
+  .auth-dialog {
+    width: calc(100% - var(--s4));
+  }
+
+  .auth-dialog-head {
+    padding-left: var(--s4);
+  }
+
+  .auth-dialog-body {
+    padding: var(--s4);
+  }
+
+  .auth-dialog .auth-actions {
+    margin-right: calc(var(--s4) * -1);
+    margin-left: calc(var(--s4) * -1);
+    padding-right: var(--s4);
     padding-left: var(--s4);
   }
 }

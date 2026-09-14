@@ -11,14 +11,16 @@
   <section class="auth">
     <h1 class="auth-title">创建账户</h1>
 
-    {{- /*
-    站长写的注册说明（公开设置项 account.registrationNotice）。
-    它是页面的一部分而不是一次失败，故不套提示条，只是一段安静的说明文字。
-    */ -}}
-    {{ with .Setting "account" "registrationNotice" }}<p class="auth-intro">{{ . }}</p>{{ end }}
-
     {{ with .Form }}
-    <div class="auth-panel" data-auth-panel>
+    <div class="auth-panel" data-auth-panel data-auth-title="创建账户">
+      {{- /*
+      站长写的注册说明（公开设置项 account.registrationNotice）。它是页面的一部分
+      而不是一次失败，故不套提示条，只是一段安静的说明文字。
+
+      放在面板**之内**：弹窗取的就是这块面板，说明留在外面的话，
+      从页眉点「注册」的人永远读不到它——而那恰恰是站长写下它时想让人读到的场合。
+      */ -}}
+      {{ with $.Setting "account" "registrationNotice" }}<p class="auth-intro">{{ . }}</p>{{ end }}
       {{ template "partials/notice.html" $ }}
 
       {{- /*
@@ -51,7 +53,7 @@
         </p>
 
         <p class="auth-actions comment-form-actions">
-          <button type="submit">创建账户</button>
+          <button type="submit" data-busy="正在创建">创建账户</button>
         </p>
       </form>
 

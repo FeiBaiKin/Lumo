@@ -23,6 +23,29 @@
   if (window.Lenis) {
     var lenis = new window.Lenis({ autoRaf: true, lerp: 0.12, anchors: true });
     lenis.on("scroll", window.ScrollTrigger.update);
+
+    /*
+     * 弹窗打开时停掉平滑滚动。
+     *
+     * 账户弹窗（auth.js）打开时会给 <html> 挂上 auth-open，CSS 那边是
+     * overflow: hidden——但那管不住 Lenis：它自己监听滚轮、自己调 scrollTo，
+     * overflow 对程序化滚动不起作用。人在填登录表单，身后的文章却跟着滚轮走，
+     * 是这一层最容易被忽略的破绽。
+     *
+     * 由动效这边去观察那个类，而不是让 auth.js 来调 Lenis：
+     * 登录是功能，不该依赖动效层存在与否（这也是 auth.js 一直不进本文件的理由）。
+     * 反过来，动效层知道「有一个约定的锁滚动类名」是合理的。
+     */
+    new MutationObserver(function () {
+      if (document.documentElement.classList.contains("auth-open")) {
+        lenis.stop();
+      } else {
+        lenis.start();
+      }
+    }).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
   }
 
   // 1. 入场编排。y 位移只有 8–14px：读起来是淡入，不是滑入。

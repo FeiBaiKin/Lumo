@@ -1,5 +1,5 @@
 /*
- * 墨 Ink 的账户弹窗：页眉的「登录 / 注册」把对应页面上的表单取过来就地打开。
+ * 墨 Ink 的账户弹窗：页眉的「登录 / 注册」把对应页面上的表单取过来，在屏幕中央打开。
  *
  * 不依赖任何库，也**不进 motion.js**：登录是功能不是装饰（与 nav.js / code.js 同一条理由）。
  *
@@ -25,6 +25,59 @@
     forgot: "/forgot-password",
   };
 
+  /* 打开弹窗时锁住背后的滚动。<dialog> 只做到「背景不可交互」，
+   * 滚轮照样能把背后的文章滚走——人在填表单，身后的页面自己动起来。 */
+  function lockScroll(on) {
+    document.documentElement.classList.toggle("auth-open", on);
+  }
+
+  /*
+   * 给密码框加「显示 / 隐藏」。
+   *
+   * 由脚本注入而不是写在模板里：没有 JS 时那个按钮点了不会有任何反应，
+   * 而一个不响应的控件比没有这个控件更糟。
+   *
+   * 是两个字，不是一只眼睛图标——这套语言里只有线与字（agent.md §11.2），
+   * 一个描边图标会引入第三种材质。也不用 aria-pressed：按钮上的字本身就在说
+   * 下一步会发生什么，两者同时给，读屏会念出「隐藏 已按下」这种绕口的东西。
+   *
+   * 独立页面与弹窗共用这一段：两处的表单本来就是同一张。
+   */
+  function enhancePasswords(root) {
+    if (!root || !root.querySelectorAll) {
+      return;
+    }
+    var inputs = root.querySelectorAll('input[type="password"]');
+    Array.prototype.forEach.call(inputs, function (input) {
+      var field = input.closest ? input.closest(".auth-field") : null;
+      var label = field && field.querySelector("label");
+      if (!field || !label || field.querySelector(".auth-reveal")) {
+        return;
+      }
+      /* 用 <span> 而不是 <div> 包这一行：字段外层是 <p>，
+       * 里面出现块级元素在 HTML 解析规则下会把那个 <p> 就地截断。
+       * 这里是往已有 DOM 里插，不会重新解析，但留着一处不合法的结构
+       * 迟早会在某个把它序列化再解析的地方（比如本文件里的 DOMParser）咬回来。 */
+      var row = document.createElement("span");
+      row.className = "auth-field-label";
+      label.parentNode.insertBefore(row, label);
+      row.appendChild(label);
+
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "auth-reveal";
+      button.textContent = "显示";
+      button.addEventListener("click", function () {
+        var reveal = input.type === "password";
+        input.type = reveal ? "text" : "password";
+        button.textContent = reveal ? "隐藏" : "显示";
+        // 焦点还给输入框：切换是为了继续打字，不是为了停在按钮上
+        input.focus();
+      });
+      row.appendChild(button);
+    });
+  }
+
   /* 取登录面板的地址。带上 next：用户是在读某一篇文章时点的「登录」，
    * 登完把他扔回首页，等于把他正在读的东西弄丢了。
    * 服务端会用 safeNext 过一遍（只收站内单斜杠开头的路径），这里不重复那套判断。 */
@@ -38,6 +91,10 @@
   }
 
   function init() {
+    /* 独立的登录 / 注册 / 重置页上没有弹窗，但一样有密码框。
+     * 放在 dialog 的判断之前，这几页才不会少掉这个按钮。 */
+    enhancePasswords(document);
+
     var dialog = document.getElementById("site-auth");
     if (!dialog || typeof dialog.showModal !== "function") {
       return;
@@ -47,36 +104,8 @@
       return;
     }
 
-    var tabs = Array.prototype.slice.call(
-      dialog.querySelectorAll("[data-auth-tab]"),
-    );
-
-    /* 「顶边落在页眉那条分隔线上、右边缘对齐正文栏」只能量出来：
-     * 页眉高度取决于站名会不会换行、导航有几项，写死一个数值在某些宽度上就会错位。
-     * 固定定位的参照物是视口，所以这里用相对视口的坐标，并按可视宽度减掉滚动条。 */
-    function place() {
-      var header = document.querySelector(".site-header");
-      if (!header) {
-        return;
-      }
-      var wrap = header.querySelector(".wrap") || header;
-      var viewport = document.documentElement.clientWidth;
-      // 页眉被滚出视口时贴着顶边，而不是跑到屏幕外
-      var top = Math.max(header.getBoundingClientRect().bottom, 0);
-      var gutter = Math.max(viewport - wrap.getBoundingClientRect().right, 0);
-      dialog.style.setProperty("--auth-top", top + "px");
-      dialog.style.setProperty("--auth-gutter", gutter + "px");
-    }
-
-    function markActive(name) {
-      tabs.forEach(function (link) {
-        if (link.dataset.authTab === name) {
-          link.setAttribute("aria-current", "true");
-        } else {
-          link.removeAttribute("aria-current");
-        }
-      });
-    }
+    var titleNode = dialog.querySelector("[data-auth-title]");
+    var closeButton = dialog.querySelector("[data-auth-close]");
 
     /* 把一份完整页面里的那块面板取出来放进弹窗。
      * 结构对不上时返回 false，调用方退回整页跳转——主题被第三方改过、
@@ -87,7 +116,15 @@
       if (!panel) {
         return false;
       }
-      body.replaceChildren(document.importNode(panel, true));
+      var node = document.importNode(panel, true);
+      body.replaceChildren(node);
+      /* 标题取自面板自己声明的 data-auth-title（「登录」「创建账户」「重置密码」）。
+       * 不从页面的 <h1> 里猜：那依赖 h1 在文档里的位置，
+       * 而第三方主题完全可以把它挪走，挪走之后弹窗就会顶着上一次的标题。 */
+      if (titleNode && node.dataset.authTitle) {
+        titleNode.textContent = node.dataset.authTitle;
+      }
+      enhancePasswords(node);
       focusFirstField();
       return true;
     }
@@ -111,10 +148,9 @@
       if (!url) {
         return;
       }
-      markActive(name);
       if (!dialog.open) {
-        place();
         dialog.showModal();
+        lockScroll(true);
       }
       loading();
 
@@ -170,8 +206,25 @@
      * 而弹窗的全部意义就是他不用离开。 */
     function submit(form) {
       var button = form.querySelector("button[type=submit], button:not([type])");
+      var idle = "";
+      /* 提交要有反馈：只把按钮变灰，人不知道是「点上了」还是「点漏了」。
+       * 文案由模板在 data-busy 上给（「正在登录」「正在创建」），
+       * 这里不去拼「…中」——那会把「发送重置链接」拼成「发送重置链接中」。 */
       if (button) {
         button.disabled = true;
+        if (button.dataset.busy) {
+          idle = button.textContent;
+          button.textContent = button.dataset.busy;
+        }
+      }
+
+      function restore() {
+        if (button) {
+          button.disabled = false;
+          if (idle) {
+            button.textContent = idle;
+          }
+        }
       }
 
       fetch(form.getAttribute("action") || window.location.pathname, {
@@ -195,6 +248,9 @@
         })
         .then(function (html) {
           if (html === null) {
+            // 不是 HTML（也没有跳转）：这一趟什么都没发生，按钮得还回去，
+            // 否则它会一直停在「正在登录」上，而其实早就结束了。
+            restore();
             return;
           }
           // 提交失败：换上新面板，错误与回填值都在里面，光标落到第一个出错字段上。
@@ -209,9 +265,10 @@
         });
     }
 
-    /* 一个委托监听管住所有入口：页眉的「登录 / 注册」、弹窗自己的标签栏，
-     * 以及面板里那几个出口链接（「忘记密码」「还没有账户？注册」）。
-     * 它们全都是真的 <a href>，所以没有 JS 时各自都能独立工作。 */
+    /* 一个委托监听管住所有入口：页眉的「登录 / 注册」，以及面板底部那几个
+     * 支线出口（「忘记密码」「还没有账户？注册」「返回登录」）。
+     * 它们全都是真的 <a href>，所以没有 JS 时各自都能独立工作；
+     * 在弹窗里点它们则是原地换一张表单，人不必离开当前这一页。 */
     document.addEventListener("click", function (event) {
       var link = event.target.closest ? event.target.closest("a[href]") : null;
       if (!link) {
@@ -236,7 +293,7 @@
         if (!inDialog) {
           return;
         }
-        // 面板里的出口链接：按它指向的路由换成对应的标签
+        // 面板底部的支线出口：按它指向的路由换成对应的那张表单
         name = nameOf(link.getAttribute("href"));
         if (!name) {
           return;
@@ -263,17 +320,26 @@
       submit(event.target);
     });
 
-    /* 关闭就把内容丢掉：面板里的令牌是一次性的，留着它，
-     * 下次打开用的还是上一次那枚——服务端已经换了新令牌，提交必被挡下。 */
-    dialog.addEventListener("close", function () {
-      body.replaceChildren();
-      markActive("");
+    if (closeButton) {
+      closeButton.addEventListener("click", function () {
+        dialog.close();
+      });
+    }
+
+    /* 点遮罩关闭。<dialog> 自己不做这件事：它的 ::backdrop 不是子元素，
+     * 落在弹窗外的点击，target 就是 dialog 本身。 */
+    dialog.addEventListener("click", function (event) {
+      if (event.target === dialog) {
+        dialog.close();
+      }
     });
 
-    window.addEventListener("resize", function () {
-      if (dialog.open) {
-        place();
-      }
+    /* 关闭就把内容丢掉：面板里的令牌是一次性的，留着它，
+     * 下次打开用的还是上一次那枚——服务端已经换了新令牌，提交必被挡下。
+     * Esc 关闭走的也是这条（浏览器在 Esc 上派发 close）。 */
+    dialog.addEventListener("close", function () {
+      body.replaceChildren();
+      lockScroll(false);
     });
   }
 
