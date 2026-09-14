@@ -223,6 +223,45 @@ func TestBuiltinThemeAccountPagesTolerateEmptyContext(t *testing.T) {
 	}
 }
 
+// TestBuiltinThemeDialogStaysHidden 盯住一条踩过的坑：弹窗的 display 只能写在 [open] 上。
+//
+// `dialog:not([open]) { display: none }` 来自 UA 样式表，而作者样式无条件赢过它。
+// 在 .auth-dialog 上直接写一个 display，那条隐藏规则就整个失效——表现是**未登录的访客
+// 每一页都顶着一个空弹窗**，点它还没有反应（没经过 showModal，也就没有模态层）。
+//
+// 读 CSS 而不是跑浏览器：这条规则的错法只有一种，而它在源码里是看得见的。
+func TestBuiltinThemeDialogStaysHidden(t *testing.T) {
+	t.Parallel()
+
+	css, err := fs.ReadFile(builtinThemeFS(t), "static/theme.css")
+	if err != nil {
+		t.Fatalf("读取主题样式失败: %v", err)
+	}
+
+	// 逐条取出以 .auth-dialog 开头的规则块，检查裸选择器里有没有 display
+	for block := range strings.SplitSeq(string(css), "}") {
+		i := strings.LastIndex(block, ".auth-dialog")
+		if i < 0 {
+			continue
+		}
+		head, body, ok := strings.Cut(block[i:], "{")
+		if !ok {
+			continue
+		}
+		selector := strings.TrimSpace(head)
+		// 只看 .auth-dialog 这一个选择器本身；带 [open]、::backdrop
+		// 或后代选择器的都不在这条规则的约束范围内
+		if selector != ".auth-dialog" {
+			continue
+		}
+		if strings.Contains(body, "display:") || strings.Contains(body, "display :") {
+			t.Error(".auth-dialog 的裸选择器上写了 display，" +
+				"它会盖掉 UA 样式里的 dialog:not([open]){display:none}，" +
+				"未登录的访客每一页都会看到一个空弹窗。请写到 .auth-dialog[open] 上")
+		}
+	}
+}
+
 // TestBuiltinThemeAuthPanelFeedsDialog 验证账户弹窗要从面板里取的三样东西。
 //
 // 弹窗自己不写表单，它取的是这几页里的那块 `.auth-panel`（见 static/auth.js）。

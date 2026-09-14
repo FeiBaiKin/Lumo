@@ -1758,6 +1758,22 @@ button {
  * 隐喻仍是纸：一张摊在案上的笺，不是一块浮起来的卡片。故圆角仍是 2px、
  * 边框仍是 1px 实线、标题仍走衬线。
  */
+/*
+ * `display` **只能写在 [open] 上**。
+ *
+ * 浏览器自带的 `dialog:not([open]) { display: none }` 来自 UA 样式表，
+ * 而作者样式无条件赢过 UA 样式——在 `.auth-dialog` 上直接写 display: flex，
+ * 等于把那条隐藏规则整个抹掉，于是没打开的弹窗常驻在页面左上角：
+ * 一个空壳子摊在正文之上，点它也没有反应（背后没有 showModal，也就没有模态层）。
+ *
+ * 这条踩过一次（2026-09-14 居中改版当天），所以有 TestBuiltinThemeDialogHidden
+ * 盯着：那条测试读的就是这份 CSS。
+ */
+.auth-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
 .auth-dialog {
   /* <dialog> 的默认 margin:auto 就是居中，只要给定宽高上限 */
   width: min(26em, calc(100% - var(--s8)));
@@ -1765,8 +1781,6 @@ button {
   margin: auto;
   padding: 0;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
   background: var(--bg);
   color: var(--fg);
   border: var(--rule-w) solid var(--border);
