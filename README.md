@@ -3,8 +3,8 @@
 用 Go 编写的现代化开源 CMS，单一静态二进制：后台是 `go:embed` 进二进制的 React SPA，
 访客前台由服务端模板渲染主题。产品形态对标 [Halo](https://www.halo.run/)，目标是形成主题与插件生态。
 
-> **开发中** — 九个开发阶段全部完成，外部安全审查修复与插件系统期 1 已落地；
-> **尚未正式发版，未经生产环境检验**。进度与剩余工作见 [STATUS.md](./STATUS.md)。
+> **开发中**：功能已齐备，但**尚未正式发版、未经生产环境检验**。欢迎试用与反馈，
+> 上生产请自行评估风险。
 
 ## 特性
 
@@ -13,15 +13,16 @@
 - **主题系统**：zip 上传即切换，`html/template` + Hugo 式 layout/partial 约定；必需模板只有四个，缺失整页回退内置主题
 - **内置主题「墨 Ink」**：为中文长文阅读设计；自托管思源宋体与 GSAP + Lenis 动效，无任何 CDN 依赖
 - **认证与权限**：会话 Cookie + CSRF、PAT（scope 只能收窄，空 scope 无权限）、argon2id、自定义角色与所有权（`_any`）规则、登录限流
+- **访客账户**：可选开放注册，邮箱验证 / 找回密码 / 账户页；全部原生表单提交，**关掉 JavaScript 也能用**
 - **内容安全**：正文按权限净化（`content:unsafe_html` 默认仅管理员），评论一律转义后有限富化
 - **附件**：本地 / S3 兼容存储、WebP 多档缩略图、EXIF 方向纠正、扩展名白名单 + 内容嗅探双向印证
 - **全文搜索**：Go 侧二元组分词 + PostgreSQL `tsvector`，不依赖任何数据库扩展
 - **SEO**：`robots.txt` / `sitemap.xml` / `feed.xml` / `atom.xml` + canonical / OpenGraph / JSON-LD
-- **插件（期 1，纯声明式）**：zip 包含清单与设置声明，后台管理，无代码执行（wazero 运行时规划在期 4）
+- **插件**：zip 包含清单与设置声明，后台安装 / 启停，目前是纯声明式、**不执行任何代码**（WASM 运行时在路线图上）
 - **REST API**：Console / Public / Extension 三平面，OpenAPI 3.1 由 Go 代码生成，Console 的 TS 类型自动生成
-- **模块化**：11 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
+- **模块化**：13 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
 
-v1.1 规划：官网自建、2FA 与 OAuth、插件期 2–4（声明式页面 → 扩展点 → wazero 后端）。
+**路线图**：2FA 与 OAuth 登录；让插件从声明式走向可执行（声明式页面 → 扩展点 → WASM 后端）。
 
 ## 环境要求
 
@@ -163,13 +164,15 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 └── screenshot.png      # 可选
 ```
 
-**必需模板只有四个**：`index.html`、`post.html`、`page.html`、`404.html`；分类 / 标签 / 归档 /
-搜索 / 作者五个可选模板缺省时**整页回退**到内置主题「墨 Ink」，不会报错或渲染空白。
+**必需模板只有四个**：`index.html`、`post.html`、`page.html`、`404.html`。另有十个可选模板
+（分类 / 标签 / 归档 / 搜索 / 作者，以及登录 / 注册 / 找回密码 / 重置密码 / 账户页），
+缺省时**整页回退**到内置主题「墨 Ink」，不会报错或渲染空白。
 模板可用数据：路由上下文（`.Site` / `.Post` / `.Posts` / `.Pagination` / `.Theme.Settings` 等）
 与只读 Finder 函数（`{{ .Find.Posts.Recent 5 }}`、`.Find.Categories.Tree`、`.Find.Menus.Get "primary"` 等）。
 
 前台路由约定：文章 `/posts/<slug>`、独立页面 `/<slug>`、分类 `/categories/<slug>`、
-标签 `/tags/<slug>`、归档 `/archives/<年>[/<月>]`、作者 `/authors/<用户名>`、搜索 `/search?q=`。
+标签 `/tags/<slug>`、归档 `/archives/<年>[/<月>]`、作者 `/authors/<用户名>`、搜索 `/search?q=`；
+账户相关为 `/login`、`/register`、`/forgot-password`、`/reset-password`、`/account`。
 模板改动在后台点「重新加载」即可生效；开发时设 `LUMO_THEME_DEV=true` 自动重载、静态资源不缓存。
 
 ## REST API
@@ -276,10 +279,12 @@ internal/
   app/             Module 契约、App 注册器、核心权限声明
   api/             huma 三平面装配、错误桥接、分页约定
   auth/            用户、角色、会话、令牌；认证与管理端点
+  account/         访客侧账户：注册 / 邮箱验证 / 找回密码 / 账户页（原生表单，不依赖 JS）
+  secret/          凭据加密保管（AES-256-GCM），口令类设置加密入库后接口不回传明文
   config/ database/ migrate/ logging/ httpx/ server/ workdir/ version/ slug/
   console/         SPA 的 go:embed 目标（dist/ 不进库）
   media/ taxonomy/ content/ settings/ comment/ mail/ menu/ seo/   功能模块
-  plugin/          插件系统期 1：声明式插件的包格式、生命周期与设置
+  plugin/          插件系统：声明式插件的包格式、生命周期与设置（无代码执行）
   pkgzip/          主题与插件共用的 zip 安全解压
   form/            声明式表单 DSL：设置分组的 Go 侧声明与 settings.yaml 反解
   extension/       Extension 平面的通用 CRUD，给插件预留的自定义模型
