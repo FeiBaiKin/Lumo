@@ -73,6 +73,12 @@
   <script defer src="{{ .Theme.AssetsBase }}/nav.js"></script>
 
   {{- /*
+  账户弹窗。同样是**不受** appearance.motion 管辖的一段：登录是功能不是装饰。
+  没有这段脚本时，页眉的「登录」「注册」就是两个普通链接，走的是页面上那套表单。
+  */ -}}
+  <script defer src="{{ .Theme.AssetsBase }}/auth.js"></script>
+
+  {{- /*
   动效（阶段 8）：GSAP + ScrollTrigger + Lenis 全部自托管，defer 加载、不阻塞渲染。
   脚本自己检查 prefers-reduced-motion；这里的开关是站长的总闸。
   */}}

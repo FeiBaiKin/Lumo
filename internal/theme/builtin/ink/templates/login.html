@@ -18,7 +18,7 @@
     渲染成一块空白，而不是在 nil 指针上取字段把整页打崩。
     */ -}}
     {{ with .Form }}
-    <div class="auth-panel">
+    <div class="auth-panel" data-auth-panel>
       {{ template "partials/notice.html" $ }}
       <form class="auth-form" method="post" action="/login">
         <input type="hidden" name="_csrf" value="{{ .CSRFToken }}">

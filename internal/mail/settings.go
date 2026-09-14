@@ -92,7 +92,11 @@ func group() app.SettingGroup {
 		Order:       30,
 		Icon:        "mail",
 		Form:        mailForm,
-		Check:       check,
+		// 只公开「开着没有」，不公开主机、端口与账号：主题据此决定要不要给
+		// 「注册」入口，而注册必须先能发验证邮件（见 internal/account 的 registrationOpen）。
+		// 让入口跟着这条走，才不会出现「入口看得见、点进去是一张暂未开放的页」。
+		Public: []string{"enabled"},
+		Check:  check,
 	}
 }
 

@@ -65,22 +65,74 @@
     {{ end }}
 
     {{- /*
-    账户入口。匿名是「登录」（开放注册时再加「注册」），已登录是显示名文字。
-    用文字而不是头像圆圈：本主题没有圆形元素，一个凭空出现的圆形头像
-    会成为整页唯一一个圆角到极致的东西。
+    账户入口（agent.md §11.5）。
 
-    不做下拉菜单：页眉已经有一处点击展开（二级菜单），第二处会让两个下拉互相抢焦点。
+    匿名：「登录」「注册」两个入口，点了打开账户弹窗（没有 JS 时就是去那个页面）。
+    已登录：一枚方印，盖显示名的第一个字；用户上传过头像图就用图。
+    用印而不是圆形头像——本主题一个圆形元素都没有，而印是既有插图系统的原件。
+    头像是普通链接，没有下拉：退出登录在账户页上，页眉只保留二级菜单那一处非模态弹出层。
+
     关掉它只是不显示入口，/account 仍然可以直接用地址访问。
     */ -}}
-    {{ if .Theme.Settings.layout.showAccountEntry }}
+    {{- /*
+    账户页自身不显示账户入口：站在登录页上，页眉再放一个「登录」只是噪音。
+    更重要的是技术上的理由——弹窗取的就是这些页面里的表单，而那份表单带着
+    一组固定的 input id（auth-login 等）。原地再插一份进弹窗，同一个 id 在文档里
+    就有两个，label for 会指到弹窗里那个，页面上那张表的标签因此全部失准。
+    入口不出现，弹窗就不可能在这些页面上被打开，这个冲突也就不存在。
+    */ -}}
+    {{ $authPage := or (eq .Kind "login") (eq .Kind "register") (eq .Kind "forgot-password") (eq .Kind "reset-password") }}
+    {{ if and .Theme.Settings.layout.showAccountEntry (not $authPage) }}
+    {{- /*
+    「注册」入口的三条判据，与账户模块的 registrationOpen 是同一条规则：
+    开关打开、能发信、站点配了对外地址。
+
+    为什么必须一致：只按开关判断的话，站长打开开关就会看到一个点进去是
+    「暂未开放」404 的入口——看得见却进不去，比没有入口更让人费解，
+    而且找不出原因（拦下它的那两条都不在控制台上）。
+
+    主题只能读公开设置，所以这条规则在这里重写了一遍。两处同步**不靠人记**：
+    internal/theme/builtin_test.go 的 TestBuiltinThemeAccountEntry 按行为核对，
+    三种取值组合各断言一次。
+    */ -}}
+    {{ $registerOpen := and (.Setting "account" "allowRegistration") (.Setting "mail" "enabled") (.Setting "site" "url") }}
     <div class="site-account">
       {{ with .CurrentUser }}
-      <a class="site-account-name" href="/account">{{ .DisplayName }}</a>
+      <a class="site-avatar" href="/account"
+         aria-label="账户：{{ .DisplayName }}">
+        {{- if .AvatarURL -}}
+        <img src="{{ .AvatarURL }}" alt="" width="28" height="28">
+        {{- else -}}
+        {{ template "partials/seal.html" (printf "%.1s" .DisplayName) }}
+        {{- end -}}
+      </a>
       {{ else }}
-      <a href="/login">登录</a>
-      {{ if .Setting "account" "allowRegistration" }}<a href="/register">注册</a>{{ end }}
+      <a href="/login" data-auth-tab="login">登录</a>
+      {{ if $registerOpen }}<a href="/register" data-auth-tab="register">注册</a>{{ end }}
       {{ end }}
     </div>
+
+    {{- /*
+    账户弹窗。只有匿名访客有入口，故只在匿名时渲染；已登录用户的 DOM 里不必留着它。
+
+    <dialog> 而不是自绘的一层 div：焦点被困在弹窗里、背景 inert、Esc 关闭
+    这三件事由浏览器提供，自己实现每一个都容易漏掉一处。
+    不用 aria-label 之外的语义——三个标签是导航（<a>），不是 tabs 模式，
+    真正的 tablist 要配 roving tabindex 与方向键，那是给应用界面准备的，一个登录框用不上。
+
+    内容为空是**刻意的**：面板由 auth.js 取对应页面里的那一块放进来，
+    弹窗里因此没有第二份表单。用户上传过头像就看不见这里，没 JS 时它永远不显示。
+    */ -}}
+    {{ if not .CurrentUser }}
+    <dialog class="auth-dialog" id="site-auth" aria-label="登录、注册与找回密码">
+      <nav class="auth-dialog-tabs" aria-label="账户">
+        <a href="/login" data-auth-tab="login">登录</a>
+        {{ if $registerOpen }}<a href="/register" data-auth-tab="register">注册</a>{{ end }}
+        <a href="/forgot-password" data-auth-tab="forgot">忘记密码</a>
+      </nav>
+      <div class="auth-dialog-body" data-auth-body></div>
+    </dialog>
+    {{ end }}
     {{ end }}
   </div>
 </header>

@@ -18,7 +18,7 @@
     {{ with .Setting "account" "registrationNotice" }}<p class="auth-intro">{{ . }}</p>{{ end }}
 
     {{ with .Form }}
-    <div class="auth-panel">
+    <div class="auth-panel" data-auth-panel>
       {{ template "partials/notice.html" $ }}
 
       {{- /*

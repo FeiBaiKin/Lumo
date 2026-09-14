@@ -300,6 +300,180 @@ func TestBuiltinThemeNavIsProgressive(t *testing.T) {
 	}
 }
 
+// registerable 返回一份「注册三条判据都成立」的公开设置。
+func registerable() map[string]map[string]any {
+	return map[string]map[string]any{
+		"account": {"allowRegistration": true},
+		"mail":    {"enabled": true},
+		"site":    {"url": "https://example.com"},
+	}
+}
+
+// withPublic 复制一份公开设置并改掉其中一项。
+//
+// 复制而不是就地改：用例是并行跑的，共用一张 map 会互相改到对方的输入，
+// 那种失败只在特定调度顺序下出现，最难查。
+func withPublic(base map[string]map[string]any, group, key string, value any) map[string]map[string]any {
+	out := make(map[string]map[string]any, len(base))
+	for name, fields := range base {
+		copied := make(map[string]any, len(fields))
+		for k, v := range fields {
+			copied[k] = v
+		}
+		out[name] = copied
+	}
+	out[group][key] = value
+	return out
+}
+
+// TestBuiltinThemeAccountEntry 验证页眉账户入口的三种形态。
+//
+// 这三条互为边界，一起改才不容易漏：匿名要能看到「登录」并打开弹窗、
+// 已登录要看到头像而不是别人也能看到的按钮、账户页自己不能再出一个入口。
+// 最后一条不是洁癖——弹窗取的就是那些页面里的表单，那份表单带着一组固定的
+// input id，页眉若在这些页面上再插一份进弹窗，同一个 id 在文档里就有两个，
+// label for 会指错，整张表的标签全部失准。
+func TestBuiltinThemeAccountEntry(t *testing.T) {
+	t.Parallel()
+
+	loaded, err := loadFS(BuiltinName, builtinThemeFS(t), "", true)
+	if err != nil {
+		t.Fatalf("内置主题加载失败: %v", err)
+	}
+
+	settings := loaded.settings.effectiveSettings(nil)
+	render := func(mutate func(*Context)) string {
+		t.Helper()
+		ctx := &Context{
+			Kind:  KindIndex,
+			Site:  SiteContext{Title: "站点", Language: "zh-CN", Now: time.Now()},
+			Theme: ThemeContext{Name: BuiltinName, AssetsBase: "/theme-assets/ink", Settings: settings},
+			Find: &Finder{
+				ctx:   t.Context(),
+				store: &Store{},
+				cache: map[string]any{"menus:primary": []MenuItemView{}},
+			},
+			Public: registerable(),
+			Posts:  []PostView{},
+			Params: map[string]string{},
+		}
+		mutate(ctx)
+		var sb strings.Builder
+		if err := engine(loaded).Render(&sb, "index.html", ctx); err != nil {
+			t.Fatalf("渲染失败: %v", err)
+		}
+		return sb.String()
+	}
+
+	t.Run("匿名显示登录注册并带弹窗", func(t *testing.T) {
+		t.Parallel()
+		out := render(func(*Context) {})
+		for _, want := range []string{
+			`data-auth-tab="login"`,
+			`data-auth-tab="register"`,
+			`<dialog class="auth-dialog" id="site-auth"`,
+			`data-auth-tab="forgot"`,
+			`data-auth-body`,
+		} {
+			if !strings.Contains(out, want) {
+				t.Errorf("匿名页眉缺少 %s", want)
+			}
+		}
+	})
+
+	// 「注册」入口的三条判据在模板里重写了一遍（主题只能读公开设置），
+	// 与账户模块的 registrationOpen 是同一条规则。这里按行为逐条核对，
+	// 因为两处分叉的表现恰好是最难看的一种：入口看得见，点进去是一张「暂未开放」。
+	t.Run("注册入口要三条都成立", func(t *testing.T) {
+		t.Parallel()
+		cases := []struct {
+			name   string
+			public map[string]map[string]any
+			want   bool
+		}{
+			{"三条都成立", registerable(), true},
+			{
+				"开关没开",
+				withPublic(registerable(), "account", "allowRegistration", false),
+				false,
+			},
+			{
+				"发不出信",
+				withPublic(registerable(), "mail", "enabled", false),
+				false,
+			},
+			{
+				"站点没配对外地址",
+				withPublic(registerable(), "site", "url", ""),
+				false,
+			},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+				out := render(func(c *Context) { c.Public = tc.public })
+				got := strings.Contains(out, `data-auth-tab="register"`)
+				if got != tc.want {
+					t.Errorf("有注册入口 = %v，期望 %v", got, tc.want)
+				}
+				// 忘记密码与这三条都无关，任何组合下都该在
+				if !strings.Contains(out, `data-auth-tab="forgot"`) {
+					t.Error("忘记密码与注册无关，应当一直在")
+				}
+			})
+		}
+	})
+
+	t.Run("已登录显示印章头像且没有弹窗", func(t *testing.T) {
+		t.Parallel()
+		out := render(func(c *Context) {
+			c.CurrentUser = &CurrentUserView{ID: 1, Username: "u", DisplayName: "张三"}
+		})
+		if !strings.Contains(out, `class="site-avatar"`) {
+			t.Error("已登录应显示头像")
+		}
+		if !strings.Contains(out, `>张</text>`) {
+			t.Errorf("头像应是盖显示名第一个字的印章: %.400s", out)
+		}
+		if strings.Contains(out, `id="site-auth"`) {
+			t.Error("已登录没有打开弹窗的入口，DOM 里不该留着它")
+		}
+		if strings.Contains(out, `data-auth-tab="login"`) {
+			t.Error("已登录不该再有「登录」入口")
+		}
+	})
+
+	t.Run("填了头像地址就用图", func(t *testing.T) {
+		t.Parallel()
+		out := render(func(c *Context) {
+			c.CurrentUser = &CurrentUserView{
+				ID: 1, Username: "u", DisplayName: "张三", AvatarURL: "/uploads/a.png",
+			}
+		})
+		// 只看头像那个 <a> 里面：整页别处（空状态、404 一类）本来就盖着别的印，
+		// 在整段 HTML 上找 <text 是在找页面里的印，不是这一枚。
+		_, avatar, ok := strings.Cut(out, `class="site-avatar"`)
+		if !ok {
+			t.Fatalf("页眉里没有头像: %.400s", out)
+		}
+		avatar, _, _ = strings.Cut(avatar, "</a>")
+		if !strings.Contains(avatar, `src="/uploads/a.png"`) {
+			t.Errorf("用户上传了头像就该用图，而不是盖印章: %.300s", avatar)
+		}
+		if strings.Contains(avatar, "<text") {
+			t.Errorf("用了图就不该再渲染印章: %.300s", avatar)
+		}
+	})
+
+	t.Run("账户页自己不再出账户入口", func(t *testing.T) {
+		t.Parallel()
+		out := render(func(c *Context) { c.Kind = KindLogin })
+		if strings.Contains(out, `class="site-account"`) || strings.Contains(out, `id="site-auth"`) {
+			t.Error("站在登录页上，页眉再放一个入口只是噪音，且会与页面里的表单撞 id")
+		}
+	})
+}
+
 // TestBuiltinThemeEscapesContent 验证正文之外的字段都经过转义。
 //
 // 只有 safeHTML 标注的正文与评论 HTML 才允许原样输出，其余一律转义——
