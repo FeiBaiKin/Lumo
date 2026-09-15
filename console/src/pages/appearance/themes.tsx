@@ -163,8 +163,8 @@ export function ThemesPage() {
         ) : null}
 
         {query.isLoading ? (
-          <Card className="flex flex-col md:flex-row" aria-busy="true">
-            <div className="divide-y divide-line border-line border-b md:w-72 md:shrink-0 md:border-r md:border-b-0">
+          <Card className="flex flex-col xl:flex-row" aria-busy="true">
+            <div className="divide-y divide-line border-line border-b xl:w-72 xl:shrink-0 xl:border-r xl:border-b-0">
               <EntitySkeleton />
               <EntitySkeleton />
             </div>
@@ -189,8 +189,14 @@ export function ThemesPage() {
             />
           </Card>
         ) : (
-          <Card className="flex flex-col overflow-hidden md:flex-row">
-            <div className="border-line border-b md:w-72 md:shrink-0 md:border-r md:border-b-0">
+          /*
+            两栏只在窗口够宽时出现（`xl`，不是 `md`）：左列表固定占 288px，
+            侧栏还占 256px，窗口 1024 时右侧设置面板只剩 404px —— 七个分组标签
+            排不下、表单控件也全被压扁。实测面板要到 1280 才有 660px 可用，
+            故断点定在这里，更窄时列表折到上方、面板吃满整行。
+          */
+          <Card className="flex flex-col overflow-hidden xl:flex-row">
+            <div className="border-line border-b xl:w-72 xl:shrink-0 xl:border-r xl:border-b-0">
               <EntityList>
                 {themes.map((theme) => {
                   const selected = theme.name === current.name;
