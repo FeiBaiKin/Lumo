@@ -50,7 +50,26 @@ func (m *Module) Register(a *app.App) error {
 		Logger:    m.logger,
 		MaxUpload: cfg.Server.MaxUploadSize,
 	})
+	// 供其他模块经 app.Lookup 取用：前台个人中心要传头像与封面，
+	// 它需要的是同一条上传管线（类型嗅探、缩略图、本地或 S3），
+	// 而不是自己再写一份缩略图生成——那两份迟早会在某个格式上不一致。
+	a.Provide(Name, m.service)
 	return nil
+}
+
+// From 取回上传服务；media 模块未装配时返回 nil。
+//
+// 调用方须能在 nil 时退化（不提供上传入口即可），以便单独测试其他模块。
+func From(a *app.App) *Service {
+	if a == nil {
+		return nil
+	}
+	v, ok := a.Lookup(Name)
+	if !ok {
+		return nil
+	}
+	svc, _ := v.(*Service)
+	return svc
 }
 
 // Migrations 实现 app.Migrator。

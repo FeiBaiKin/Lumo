@@ -21,6 +21,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/mail"
+	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/theme"
 )
@@ -59,11 +60,14 @@ type Module struct {
 	core     *auth.Core
 	settings *settings.Service
 	mail     *mail.Service
-	store    *Store
-	tokens   *TokenStore
-	limiter  *Limiter
-	csrf     *CSRF
-	logger   *slog.Logger
+	// media 非 nil 时个人中心才提供头像与封面的上传：前台不另写一条上传管线，
+	// 复用附件模块那套（类型嗅探、缩略图、本地或 S3 由存储设置决定）。
+	media   *media.Service
+	store   *Store
+	tokens  *TokenStore
+	limiter *Limiter
+	csrf    *CSRF
+	logger  *slog.Logger
 	// renderer 非 nil 表示可以渲染页面，路由才装得上。
 	// migrate 命令走的是同一条注册链但没有认证栈，那时这里是 nil。
 	renderer *theme.Renderer
@@ -83,6 +87,9 @@ func (m *Module) Register(a *app.App) error {
 	m.logger = a.Logger().With(slog.String("module", Name))
 	m.settings = settings.From(a)
 	m.mail = mail.From(a)
+	// media 排在 account 之前装配（见 cmd/lumo/modules.go），此时它的上传服务已登记。
+	// 取不到就没有上传入口，页面照常渲染（见 renderAccount）。
+	m.media = media.From(a)
 
 	// 主题模块排在 account 之前装配（见 cmd/lumo/modules.go），此时它的 Renderer
 	// 已经构造完毕。取不到就没有页面可渲染，只装配迁移与设置声明。
@@ -150,6 +157,7 @@ func (m *Module) MountFrontend(r chi.Router, optional func(http.Handler) http.Ha
 		g.Get(PathResetPassword, m.getResetPassword)
 		g.Post(PathResetPassword, m.postResetPassword)
 		g.Get(PathAccount, m.getAccount)
+		g.Post(PathAccountProfile, m.postAccountProfile)
 		g.Post(PathAccountPassword, m.postAccountPassword)
 		g.Post(PathLogout, m.postLogout)
 	})
@@ -166,6 +174,8 @@ const (
 	PathForgotPassword = "/forgot-password"
 	PathResetPassword  = "/reset-password"
 	PathAccount        = "/account"
+	// PathAccountProfile 是个人中心里改资料（昵称、简介、头像、封面）的提交地址。
+	PathAccountProfile = "/account/profile"
 	// PathAccountPassword 是账户页里改密码表单的提交地址。
 	PathAccountPassword = "/account/password"
 	// PathLogout 是登出表单的提交地址。

@@ -3,11 +3,14 @@ package account
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/mail"
 	"net/url"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/auth/password"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
+	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/theme"
 )
@@ -703,7 +707,13 @@ func (m *Module) getAccount(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, PathLogin+"?next="+PathAccount, http.StatusFound)
 		return
 	}
-	m.renderAccount(w, r, http.StatusOK, theme.NewFormState(), principal.User, notice{})
+	// 保存成功走的是重定向（PRG），提示只能借查询串带回来。
+	// 与登录页的 ?changed=1 同一手法，只是这里的话短，直接写在调用处。
+	n := notice{}
+	if r.URL.Query().Get("saved") == "1" {
+		n = okNotice("资料已保存")
+	}
+	m.renderAccount(w, r, http.StatusOK, theme.NewFormState(), principal.User, n)
 }
 
 // renderAccount 渲染账户页。
@@ -712,9 +722,21 @@ func (m *Module) getAccount(w http.ResponseWriter, r *http.Request) {
 // 刻意只放全站都该看到的字段）。它们经 Context.Params 传给模板——那正是
 // 「路由未消费的额外参数」这个槽位的用途。日期在这里就格式化好，
 // 模板不必知道时区与格式串，也就不会各写各的。
+//
+// 个人资料的四项（昵称、简介、头像、封面）同样走 Params：它们只在**这一页**上出现，
+// 塞进 CurrentUserView 等于让每个页面的上下文都背上它们。
 func (m *Module) renderAccount(w http.ResponseWriter, r *http.Request, status int,
 	form *theme.FormState, user *auth.User, n notice) {
 	n.apply(form)
+
+	// 资料表单的初值：GET 时是库里的现值；POST 失败时调用方已经把刚填的值放进
+	// form.Values 了，那时不能覆盖——否则用户填错一次，回来看到的还是旧昵称。
+	if _, ok := form.Values["displayName"]; !ok {
+		form.Values["displayName"] = user.Name()
+	}
+	if _, ok := form.Values["bio"]; !ok {
+		form.Values["bio"] = user.Bio
+	}
 
 	pageCtx, err := m.renderer.NewContext(r.Context(), r, theme.KindAccount)
 	if err != nil {
@@ -728,6 +750,14 @@ func (m *Module) renderAccount(w http.ResponseWriter, r *http.Request, status in
 	pageCtx.Params["email"] = user.Email
 	pageCtx.Params["joinedAt"] = m.chineseDate(r.Context(), user.CreatedAt)
 	pageCtx.Params["roles"] = roleLabels(user)
+	pageCtx.Params["username"] = user.Username
+	pageCtx.Params["avatar"] = user.AvatarURL
+	pageCtx.Params["banner"] = user.BannerURL
+	// 媒体模块没装配时不渲染上传控件：一个选了文件却传不上去的表单，
+	// 比没有这个入口更让人费解（与页眉「注册」入口的三条判据同一条理由）。
+	if m.media != nil {
+		pageCtx.Params["uploads"] = "1"
+	}
 	m.renderer.Render(w, r, status, "account.html", pageCtx)
 }
 
@@ -817,6 +847,224 @@ func (m *Module) postAccountPassword(w http.ResponseWriter, r *http.Request) {
 // renderAccountPasswordFailure 是改密码失败的简写入口。
 func (m *Module) renderAccountPasswordFailure(w http.ResponseWriter, r *http.Request, status int, n notice, user *auth.User) {
 	m.renderAccount(w, r, status, theme.NewFormState(), user, n)
+}
+
+// ---------- 个人资料 ----------
+
+/*
+ * 个人中心能改什么，是这一版最需要说清的一件事。
+ *
+ * 能改：昵称、简介、头像、封面。四样都是**这个人在这个站上的公开形象**。
+ * 不能改：用户名（改它等于换一个身份，而站内的 @ 提及与外链都指着它）、
+ * 邮箱（它是账号凭证，改邮箱要走验证信，不是一张表单能办的事）、角色（前台管不着）。
+ * 后两项在页面上以只读形式呈现，不做成灰掉的输入框——灰掉的输入框暗示「本来能改，只是现在不行」。
+ */
+const (
+	// profileNameMax 与后台创建用户时的限制同源。按**字符数**算，不按字节：
+	// 中文昵称按字节算会在第 10 个字上被判超长。
+	profileNameMax = 32
+	profileBioMax  = 200
+	// maxProfileImage 是头像与封面的单文件上限，比附件默认上限严。
+	// 头像最终显示在 32px 的方印里、封面也就一千来像素宽，几十兆的原图没有意义。
+	maxProfileImage = 4 << 20
+	// 上传要写文件、要生成缩略图，比改密码更重。给一个宽松但存在的上限。
+	profilePerUserLimit = 20
+	profileWindow       = time.Hour
+)
+
+// errNotProfileImage 表示传上来的不是一张能当头像用的位图。
+var errNotProfileImage = errors.New("不是可用的图片格式")
+
+// postAccountProfile 保存个人资料。
+//
+// 一个 multipart 表单管四件事（昵称、简介、头像、封面）。合成一张表而不是两张：
+// 站长改资料时往往是「换个头像顺便改个昵称」，拆成两个入口就要提交两次、
+// 而两次提交之间还会出现「头像换了但昵称没换」的中间状态。
+//
+// 表单里没出现的文件字段 = 不动那张图；勾了「删除」才清空。
+// 「没选文件」与「要删掉」在浏览器里是两件不同的事，但都表现为没有文件，
+// 所以删除必须由显式的一个复选框表达（见模板）。
+func (m *Module) postAccountProfile(w http.ResponseWriter, r *http.Request) {
+	principal, ok := auth.FromContext(r.Context())
+	if !ok || principal.User == nil {
+		http.Redirect(w, r, PathLogin+"?next="+PathAccount, http.StatusFound)
+		return
+	}
+	user := principal.User
+
+	if !m.limiter.Allow("profile:"+strconv.FormatInt(user.ID, 10), profilePerUserLimit, profileWindow) {
+		m.renderAccount(w, r, http.StatusTooManyRequests, theme.NewFormState(), user, errNotice(noticeTooFrequent))
+		return
+	}
+
+	// 上限给到 maxProfileImage：更大的请求在解析阶段就被切断，
+	// 免得把一个 200MB 的请求先落到临时文件再告诉用户「太大了」。
+	if err := r.ParseMultipartForm(maxProfileImage); err != nil {
+		m.renderAccount(w, r, http.StatusBadRequest, theme.NewFormState(), user, errNotice("请求格式不正确"))
+		return
+	}
+	if !m.csrf.Verify(r, r.FormValue(FormCSRFField)) {
+		m.renderAccount(w, r, http.StatusBadRequest, theme.NewFormState(), user, errNotice(noticeFormExpired))
+		return
+	}
+
+	values := map[string]string{
+		"displayName": strings.TrimSpace(r.FormValue("displayName")),
+		"bio":         strings.TrimSpace(r.FormValue("bio")),
+	}
+	form := theme.NewFormState()
+	form.Values = values
+
+	if problem := validateProfile(values); problem != "" {
+		m.renderAccount(w, r, http.StatusBadRequest, form, user, errNotice(problem))
+		return
+	}
+
+	avatar, banner, err := m.profileImages(r, user.ID)
+	if err != nil {
+		m.logger.Warn("个人资料图片上传失败", slog.Int64("user", user.ID), slog.Any("error", err))
+		// 原因挂在提示条上而不是字段错误里：这两张图的错误没有对应的输入框
+		// （file 字段本身不会「填错」），落在没人渲染的 Errors 键上等于没提示。
+		m.renderAccount(w, r, http.StatusBadRequest, form, user,
+			errNotice("图片没能保存："+uploadReason(err)))
+		return
+	}
+
+	if err := m.store.UpdateProfile(r.Context(), user.ID, values["displayName"], values["bio"]); err != nil {
+		m.logger.Error("更新个人资料失败", slog.Any("error", err))
+		m.renderAccount(w, r, http.StatusInternalServerError, form, user, errNotice("保存失败，请稍后重试"))
+		return
+	}
+	if avatar.set {
+		if err := m.store.UpdateAvatar(r.Context(), user.ID, avatar.url); err != nil {
+			m.logger.Error("更新头像失败", slog.Any("error", err))
+			m.renderAccount(w, r, http.StatusInternalServerError, form, user, errNotice("保存失败，请稍后重试"))
+			return
+		}
+	}
+	if banner.set {
+		if err := m.store.UpdateBanner(r.Context(), user.ID, banner.url); err != nil {
+			m.logger.Error("更新封面失败", slog.Any("error", err))
+			m.renderAccount(w, r, http.StatusInternalServerError, form, user, errNotice("保存失败，请稍后重试"))
+			return
+		}
+	}
+
+	/* 保存成功重定向（PRG）。
+
+	   与改密码不同，这里**不换发会话、也不清 Cookie**：昵称与头像不是凭证。
+	   重定向之后页面重新从库里读一遍，用户看到的就是刚落库的样子——
+	   原地渲染的成功态反而要自己拼一遍「保存后长什么样」，那是两份会走样的真相。 */
+	http.Redirect(w, r, PathAccount+"?saved=1", http.StatusFound)
+}
+
+// imageChange 描述一张图这次要不要动、动成什么。
+type imageChange struct {
+	// set 为真才写库：没选文件又没勾删除时，这次提交与那张图无关。
+	set bool
+	url string
+}
+
+// profileImages 处理表单里的头像与封面。
+//
+// 顺序上先传文件再写库：文件传不上去就不该留下一个指向空地址的 URL。
+// 旧图不删——它还在附件库里，删掉会让「我的附件」里凭空少一条，
+// 而用户完全可能只是换回上一张。
+func (m *Module) profileImages(r *http.Request, userID int64) (avatar, banner imageChange, err error) {
+	avatar, err = m.profileImage(r, userID, "avatar", "removeAvatar")
+	if err != nil {
+		return avatar, banner, err
+	}
+	banner, err = m.profileImage(r, userID, "banner", "removeBanner")
+	return avatar, banner, err
+}
+
+// profileImageExts 是头像与封面允许的扩展名。
+//
+// 比附件那张白名单**窄**：那边收文档、音频、压缩包，这里要的只是一张能当头像显示的位图。
+// 尤其是 SVG——它是 XML 文档，媒体模块自己就把它排除在图片处理之外；拿它当头像，
+// 等于把一个可执行文档挂到每个页面的页眉上。
+//
+// 扩展名只挡第一道；内容对不对由媒体模块嗅探（扩展名与嗅探结果必须彼此印证）。
+var profileImageExts = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".gif": true,
+	".webp": true, ".bmp": true, ".ico": true,
+}
+
+// profileImage 处理其中一张图。
+func (m *Module) profileImage(r *http.Request, userID int64, field, removeField string) (imageChange, error) {
+	if r.FormValue(removeField) != "" {
+		return imageChange{set: true, url: ""}, nil
+	}
+
+	file, header, err := r.FormFile(field)
+	if errors.Is(err, http.ErrMissingFile) {
+		// 没选文件（input 是空的）：这次提交不动这张图。
+		return imageChange{}, nil
+	}
+	if err != nil {
+		return imageChange{}, err
+	}
+	defer func() { _ = file.Close() }()
+
+	if header.Size > maxProfileImage {
+		return imageChange{}, fmt.Errorf("%w：超过 %d MB", media.ErrTooLarge, maxProfileImage>>20)
+	}
+	if ext := strings.ToLower(filepath.Ext(header.Filename)); !profileImageExts[ext] {
+		return imageChange{}, fmt.Errorf("%w: %s", errNotProfileImage, ext)
+	}
+	// 媒体模块没装配时前台不提供上传入口（见 renderAccount 的 Params），
+	// 真到了这里说明配置不对，给一句人话而不是一个 nil 解引用。
+	if m.media == nil {
+		return imageChange{}, errors.New("media 模块未装配")
+	}
+
+	item, err := m.media.Upload(r.Context(), &media.UploadParams{
+		OriginalName: header.Filename,
+		Size:         header.Size,
+		Content:      file,
+		UploaderID:   userID,
+		Title:        "个人资料图片",
+		Alt:          "用户上传的图片",
+	})
+	if err != nil {
+		return imageChange{}, err
+	}
+	return imageChange{set: true, url: item.URL}, nil
+}
+
+// validateProfile 校验昵称与简介，返回一句给用户看的话（空串表示通过）。
+func validateProfile(values map[string]string) string {
+	name := []rune(values["displayName"])
+	if len(name) == 0 {
+		return "昵称不能为空"
+	}
+	if len(name) > profileNameMax {
+		return fmt.Sprintf("昵称最多 %d 个字", profileNameMax)
+	}
+	if len([]rune(values["bio"])) > profileBioMax {
+		return fmt.Sprintf("简介最多 %d 个字", profileBioMax)
+	}
+	return ""
+}
+
+// uploadReason 把上传失败的原因翻成一句能读的话。
+//
+// 只区分用户能自己解决的两类（太大、格式不支持），其余归到「请稍后重试」：
+// 把底层错误原样吐给用户，既帮不上忙，也把服务端的实现细节说了出去。
+func uploadReason(err error) string {
+	if errors.Is(err, media.ErrTooLarge) {
+		return fmt.Sprintf("图片不能超过 %d MB", maxProfileImage>>20)
+	}
+	if errors.Is(err, errNotProfileImage) {
+		return "只支持 JPEG / PNG / GIF / WebP / BMP / ICO 这几种图片"
+	}
+	// 类型不支持是个结构体错误（带着扩展名），只能 errors.As。
+	var unsupported *media.ErrUnsupportedType
+	if errors.As(err, &unsupported) {
+		return "只支持 JPEG / PNG / GIF / WebP / BMP / ICO 这几种图片"
+	}
+	return "请稍后重试"
 }
 
 // ---------- 登出 ----------

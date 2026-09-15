@@ -94,3 +94,49 @@ func (s *Store) MarkEmailVerified(ctx context.Context, userID int64) error {
 	}
 	return nil
 }
+
+// UpdateProfile 更新昵称与简介。
+//
+// 只写这两列：本函数是被「前台自己改自己的资料」调用的，邮箱与角色不在其中，
+// 而一条只 Set 两列的 UPDATE 让这件事在代码里也是显然的——
+// 用后台那个「整份资料一起写」的入口，将来多一列就会顺手多给前台一列。
+func (s *Store) UpdateProfile(ctx context.Context, userID int64, displayName, bio string) error {
+	_, err := s.db.NewUpdate().
+		Model((*userRow)(nil)).
+		Set("display_name = ?", displayName).
+		Set("bio = ?", bio).
+		Set("updated_at = now()").
+		Where("id = ?", userID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("更新资料: %w", err)
+	}
+	return nil
+}
+
+// UpdateAvatar 改头像地址（空串表示改回首字印面）。
+func (s *Store) UpdateAvatar(ctx context.Context, userID int64, url string) error {
+	return s.updateImage(ctx, userID, "avatar_url", url, "更新头像")
+}
+
+// UpdateBanner 改封面地址（空串表示不显示封面）。
+func (s *Store) UpdateBanner(ctx context.Context, userID int64, url string) error {
+	return s.updateImage(ctx, userID, "banner_url", url, "更新封面")
+}
+
+// updateImage 是两张图的共同实现。
+//
+// column 由调用方给出，且只可能是上面两个常量之一——它拼进 SQL 而不是走占位符，
+// 所以这里不能对外暴露成公开方法：把列名变成参数就是把注入点放到签名上。
+func (s *Store) updateImage(ctx context.Context, userID int64, column, url, action string) error {
+	_, err := s.db.NewUpdate().
+		Model((*userRow)(nil)).
+		Set(column+" = ?", url).
+		Set("updated_at = now()").
+		Where("id = ?", userID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+	return nil
+}

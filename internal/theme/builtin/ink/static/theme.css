@@ -93,6 +93,7 @@
   --s4: 1rem;
   --s5: 1.25rem;
   --s6: 1.5rem;
+  --s7: 1.75rem;
   --s8: 2rem;
   --s10: 2.5rem;
   --s12: 3rem;
@@ -725,6 +726,7 @@ a:hover {
  */
 .field-input,
 .auth-form input:not([type="hidden"]),
+.auth-form textarea,
 .comment-form :is(input, textarea),
 .search-form input {
   width: 100%;
@@ -740,23 +742,24 @@ a:hover {
   transition: border-color var(--t-fast) var(--ease-out);
 }
 
-:is(.field-input, .auth-form input, .comment-form :is(input, textarea), .search-form input)::placeholder {
+:is(.field-input, .auth-form input, .auth-form textarea, .comment-form :is(input, textarea), .search-form input)::placeholder {
   color: var(--fg-muted);
 }
 
-:is(.field-input, .auth-form input, .comment-form :is(input, textarea), .search-form input):hover {
+:is(.field-input, .auth-form input, .auth-form textarea, .comment-form :is(input, textarea), .search-form input):hover {
   border-color: var(--fg-subtle);
 }
 
-:is(.field-input, .auth-form input, .comment-form :is(input, textarea), .search-form input):focus-visible {
+:is(.field-input, .auth-form input, .auth-form textarea, .comment-form :is(input, textarea), .search-form input):focus-visible {
   border-color: var(--seal);
 }
 
-:is(.field-input, .auth-form input, .comment-form input)[aria-invalid="true"] {
+:is(.field-input, .auth-form input, .auth-form textarea, .comment-form input)[aria-invalid="true"] {
   border-color: var(--danger);
 }
 
 textarea.field-input,
+.auth-form textarea,
 .comment-form textarea {
   resize: vertical;
   line-height: 1.7;
@@ -2668,6 +2671,291 @@ a.comment-author:hover {
 
 .account-logout {
   margin-top: var(--s4);
+}
+
+/* ---------- 个人中心（账户页） ---------- */
+/*
+ * 一页三块：形象（封面 + 方印 + 昵称 + 简介）、编辑资料、账号本身。
+ *
+ * 它比正文宽（.wrap--wide）：两栏排版，正文那 36 个汉字的栏宽在这里只会把表单挤成一条。
+ */
+.account {
+  max-width: 64rem;
+  margin-inline: auto;
+}
+
+/*
+ * 形象区是一张卡片，但封面的两条边要贴着卡片的圆角，
+ * 所以 overflow: hidden 由这一层给——**子元素自己裁不掉父级的圆角**。
+ */
+.account-hero {
+  overflow: hidden;
+  margin-bottom: var(--s6);
+  border: 1px solid var(--line);
+  border-radius: var(--corner-card);
+  background: var(--surface);
+  box-shadow: var(--elevation-card);
+}
+
+/*
+ * 封面带。没有封面时它仍然占位：一片印色淡底 + 一道下边线，
+ * 与文章页的默认封面同一种处理（那里也是「没有图」而不是「少一块」）。
+ *
+ * 高度用 clamp 而不是 aspect-ratio：aspect-ratio 配 max-height 会把**宽度**也缩掉
+ * （宽高比与上限一起算，宽度只好让步），于是封面带在宽屏上两边各空出一截。
+ */
+.account-banner {
+  height: clamp(7rem, 18vw, 12rem);
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(
+    135deg,
+    var(--seal-soft),
+    color-mix(in oklab, var(--seal) 6%, var(--surface))
+  );
+}
+
+.account-banner img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 方印头像：比页眉那枚大一圈（3.5rem），压在封面的下沿上 */
+.account-id {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s5);
+  padding: 0 var(--card-pad) var(--card-pad);
+}
+
+.account-seal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 4.5rem;
+  height: 4.5rem;
+  margin-top: calc(var(--s7) * -1);
+  border: 3px solid var(--surface);
+  border-radius: var(--corner-seal);
+  background: var(--seal);
+  color: var(--seal-on);
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  object-fit: cover;
+  user-select: none;
+}
+
+.account-seal img {
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--corner-seal) - 1px);
+  object-fit: cover;
+}
+
+.account-id-text {
+  min-width: 0;
+  padding-top: var(--s4);
+}
+
+.account-name {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.account-handle {
+  margin: var(--s1) 0 0;
+  color: var(--fg-subtle);
+  font-size: var(--fs-sm);
+}
+
+.account-bio {
+  max-width: 34em;
+  margin: var(--s3) 0 0;
+  color: var(--fg-muted);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.account-bio.is-empty {
+  color: var(--fg-subtle);
+}
+
+/*
+ * 两栏：左边改资料（宽），右边是账号本身（窄）。
+ * 断点按容器所在的视口给——这一页没有容器查询的必要，整页只有这一处两栏。
+ */
+.account-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20rem;
+  gap: var(--s6);
+  align-items: start;
+}
+
+.account-main,
+.account-block {
+  padding: var(--card-pad);
+  border: 1px solid var(--line);
+  border-radius: var(--corner-card);
+  background: var(--surface);
+  box-shadow: var(--elevation-card);
+}
+
+.account-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+/*
+ * 提交键在这一页不铺满整行。
+ * 那条「按钮占满整行」的规则是给登录 / 注册页写的——那页只有一个动作，
+ * 整行就是它的宽度；这里的卡片有六百多像素宽，一条贯穿的实心条子会把版面压住。
+ */
+.account .auth-actions .btn {
+  width: auto;
+}
+
+/* 账号信息里的行不带卡片自己的内边距（它已经在 .account-block 里了） */
+.account-block .account-meta {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.account-link {
+  margin: var(--s4) 0 0;
+  font-size: var(--fs-sm);
+}
+
+/* ---------- 图片字段（头像 / 封面） ---------- */
+
+.account-media + .account-media {
+  margin-top: var(--s5);
+}
+
+.account-media-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  align-items: baseline;
+  margin-bottom: var(--s2);
+}
+
+.account-media-label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.account-media-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  align-items: center;
+}
+
+.account-media-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--corner-seal);
+  background: var(--seal);
+  color: var(--seal-on);
+  font-size: var(--fs-md);
+  overflow: hidden;
+}
+
+.account-media-thumb.is-wide {
+  width: 5rem;
+  height: 2.75rem;
+  background: var(--surface-inset);
+}
+
+.account-media-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/*
+ * 文件输入框不套自绘的假按钮：原生控件自带「未选择文件 / 文件名」这句话，
+ * 而那正是用户选完文件后最需要确认的一件事。只把浏览器自带的按钮涂成站内的样子。
+ */
+.account-media input[type="file"] {
+  /* 清掉 .auth-form 给文本输入框的那套框：文件框自己带一个按钮，
+     再套一层输入框的边框就成了框里套框 */
+  flex: 1 1 12rem;
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+
+.account-media input[type="file"]::file-selector-button {
+  margin-inline-end: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--corner-control);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out), background-color var(--t-fast) var(--ease-out);
+}
+
+.account-media input[type="file"]::file-selector-button:hover {
+  border-color: var(--seal);
+  background: var(--seal-soft);
+  color: var(--seal);
+}
+
+.account-remove {
+  display: flex;
+  gap: var(--s2);
+  align-items: center;
+  margin-top: var(--s2);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.account-remove input[type="checkbox"] {
+  /* 复选框在 .auth-form 里会被当成文本输入框（那条规则给所有非 hidden 的 input
+     套上整宽与 2.75rem 的最小高度），所以这里要连同尺寸一起复位。
+     勾选色跟主题色走，与 Console 的复选框同一种做法。 */
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--seal);
+}
+
+/* 窄屏：两栏并一栏，右栏（账号与密码）落到下面 —— 那是「改完资料再看」
+   的顺序，比把它顶到上面更顺 */
+@media (max-width: 56rem) {
+  .account-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .account-id {
+    gap: var(--s4);
+  }
 }
 
 /* ==================================================================

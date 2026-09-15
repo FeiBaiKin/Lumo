@@ -24,14 +24,17 @@ type User struct {
 	// Console 需要的是「这个号能不能登录」，那是 userView.EmailVerified 那个布尔值的事。
 	EmailVerifiedAt *time.Time `bun:"email_verified_at" json:"-"`
 	// PasswordHash 绝不出现在 JSON 中：json:"-" 是防止口令哈希经 API 泄漏的第一道防线。
-	PasswordHash string     `bun:"password_hash,notnull" json:"-"`
-	DisplayName  string     `bun:"display_name"          json:"displayName"`
-	AvatarURL    string     `bun:"avatar_url"            json:"avatarUrl"`
-	Bio          string     `bun:"bio"                   json:"bio"`
-	Disabled     bool       `bun:"disabled"              json:"disabled"`
-	LastLoginAt  *time.Time `bun:"last_login_at"         json:"lastLoginAt,omitempty"`
-	CreatedAt    time.Time  `bun:"created_at,nullzero"   json:"createdAt"`
-	UpdatedAt    time.Time  `bun:"updated_at,nullzero"   json:"updatedAt"`
+	PasswordHash string `bun:"password_hash,notnull" json:"-"`
+	DisplayName  string `bun:"display_name"          json:"displayName"`
+	AvatarURL    string `bun:"avatar_url"            json:"avatarUrl"`
+	Bio          string `bun:"bio"                   json:"bio"`
+	// BannerURL 是个人中心的封面图（前台自己传，后台不管）。
+	// 与 AvatarURL 同源：都指向媒体库里的一条记录，都只存地址不存文件。
+	BannerURL   string     `bun:"banner_url"            json:"bannerUrl"`
+	Disabled    bool       `bun:"disabled"              json:"disabled"`
+	LastLoginAt *time.Time `bun:"last_login_at"         json:"lastLoginAt,omitempty"`
+	CreatedAt   time.Time  `bun:"created_at,nullzero"   json:"createdAt"`
+	UpdatedAt   time.Time  `bun:"updated_at,nullzero"   json:"updatedAt"`
 
 	// Roles 由 LoadRoles 填充，不是数据库列。
 	Roles []Role `bun:"-" json:"roles,omitempty"`
