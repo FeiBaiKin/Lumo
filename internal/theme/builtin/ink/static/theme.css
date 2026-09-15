@@ -78,11 +78,12 @@
   /*
    * 圆角四档，与 Console 逐值相同：
    * 控件与卡片 4px、浮层 6px（大一档以表达高度）。
-   * 头像是唯一的整圆，也与 Console 一致（人用圆、物用方角）。
+   * 印面 2px：页眉那枚方印头像是它唯一的用处，比控件更方（印是刻出来的，不是做的按钮）。
    */
   --corner-control: 4px;
   --corner-card: 4px;
   --corner-overlay: 6px;
+  --corner-seal: 2px;
   --corner-full: 9999px;
 
   /* 间距：4px 基准的模块化梯级 */
@@ -547,7 +548,7 @@ a:hover {
     margin-inline-start: 0;
   }
 
-  .site-account {
+  .site-tools {
     margin-inline-start: auto;
   }
 }
@@ -988,6 +989,18 @@ textarea.field-input,
 }
 
 /* ---------- 账户入口 ---------- */
+/*
+ * 页眉右端的一组工具：账户入口 + 配色切换。
+ *
+ * 账户菜单（绝对定位，right: 0）的基准是里层的 .site-account 而不是这一层：
+ * 菜单该从**头像**底下长出来，而不是从切换按钮底下——按钮点开的是配色，不是菜单。
+ */
+.site-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
 /* relative 是账户菜单的定位基准：菜单绝对定位在这块的右下角 */
 .site-account {
   position: relative;
@@ -997,11 +1010,14 @@ textarea.field-input,
 }
 
 /*
- * 已登录：一枚圆头像。
+ * 已登录：一枚方印。
  *
- * 第二版这里是一枚方印（主题的插图原件，刻意不用圆形）。改成圆，
- * 因为 Console 的规矩是「人用圆、物用方角」，而这里挂的是一个人。
- * 方印保留在它真正该在的地方：空状态与归档页头的插图。
+ * 第二版这里就是方印，中途改成过圆形（理由是 Console 那条「人用圆、物用方角」）。
+ * 改回方印：那条规矩是 **Console** 的，前台该讲的是主题自己的话——
+ * 站名与导航都是方正的宋体骨架，一个灰圆头像挂在这一行的右端，它是唯一的柔物。
+ * 印面用主题色、首字用印色，与文章页那枚印章插图同源。
+ *
+ * 尺寸取 2rem：与导航的字号、切换按钮同级，四个角的方与宋体的横细竖粗是同一套语言。
  */
 /*
  * 头像在模板里是 <a>，被 account-menu.js 换成 <button>（见那里的说明）。
@@ -1012,8 +1028,113 @@ textarea.field-input,
   display: inline-flex;
   padding: 0;
   border: 0;
-  border-radius: var(--corner-full);
+  border-radius: var(--corner-seal);
   background: none;
+}
+
+/*
+ * 与头像同尺寸、同圆角、同一行的方角族，但它是**描边**而不是实底：
+ * 一枚实心印 + 一枚实心按钮会变成两块一样的色块，主次就没了。
+ * 描边按钮悬停时描边与图标转主题色，说明它是可点的，不必再配底色。
+ *
+ * 没有 JavaScript 时它一直是 hidden（模板里给的），所以要先声明 hidden 赢过 display：
+ * 全局的 [hidden] 规则特异性不够，会被下面这条 display: inline-flex 盖掉
+ * （二级菜单撞过同一件事，见 .site-nav-sub[hidden]）。
+ */
+.scheme-toggle[hidden] {
+  display: none;
+}
+
+.scheme-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--corner-seal);
+  background: none;
+  color: var(--fg-muted);
+  transition: color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out);
+}
+
+.scheme-toggle:hover {
+  border-color: var(--seal);
+  background: var(--seal-soft);
+  color: var(--seal);
+}
+
+/*
+ * 三态各有自己的图标，三枚都渲染进 DOM，显隐**只由 CSS 决定**：
+ * <html data-scheme-pref> 是唯一的状态源，脚本只改那一个属性与按钮的 aria-label。
+ * 换 DOM 的话每次切换都要重建一个 SVG，而那正是「切换时抖一下」的来源。
+ *
+ * 没有 data-scheme-pref（脚本还没跑或没 JS）时三枚都不显示 —— 这正是想要的：
+ * 按钮那时还是 hidden，图标不该先冒出来。
+ */
+.scheme-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.6) rotate(-30deg);
+  transition: opacity var(--t-fast) var(--ease-out),
+    transform var(--t-fast) var(--ease-out);
+}
+
+:root[data-scheme-pref="auto"] .scheme-icon[data-scheme-icon="auto"],
+:root[data-scheme-pref="light"] .scheme-icon[data-scheme-icon="light"],
+:root[data-scheme-pref="dark"] .scheme-icon[data-scheme-icon="dark"] {
+  opacity: 1;
+  transform: none;
+}
+
+/*
+ * 切换主题时的圆形揭示（View Transitions）。
+ *
+ * 默认的交叉淡入在这件事上不好看：整页同时淡一次，像屏幕闪了一下。
+ * 改成从按钮位置扩散的一个圆 —— 变化有个来处，眼睛知道刚才发生了什么。
+ * 三段覆盖是必需的：默认那条 view-transition 会同时跑交叉淡入与新视图动画，
+ * 不关掉的话圆形揭示会被叠上一层淡入，边缘发虚。
+ */
+::view-transition-image-pair(root) {
+  isolation: auto;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  display: block;
+}
+
+/*
+ * 动效总闸（站长在主题设置里关掉「页面动效」）与访客系统的「减少动态效果」。
+ *
+ * 前者是站长的选择，在本文件里以 [data-motion="off"] 表达；
+ * 后者是访客的选择，只有媒体查询问得到。两者都只关动画，不关功能：
+ * 切换照常发生，只是瞬间到位。
+ */
+[data-motion="off"] .scheme-icon {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scheme-icon {
+    transition: none;
+  }
+
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
 
 /*
@@ -1151,6 +1272,10 @@ textarea.field-input,
   color: var(--danger);
 }
 
+/*
+ * 印面。首字版与上传图版共用这一条尺寸与圆角，只有底色不同：
+ * 首字是印面（主题色底 + 印色字），上传图自己带画面，底色不显。
+ */
 .site-avatar img,
 .avatar-fallback {
   display: flex;
@@ -1159,13 +1284,19 @@ textarea.field-input,
   flex: none;
   width: 2rem;
   height: 2rem;
-  border-radius: var(--corner-full);
-  background: var(--surface-active);
-  color: var(--fg-muted);
+  border-radius: var(--corner-seal);
+  background: var(--seal);
+  color: var(--seal-on);
   font-size: var(--fs-sm);
   font-weight: 500;
   object-fit: cover;
   user-select: none;
+}
+
+/* 悬停把印面压深一档，与按钮的悬停同一条规则：能点的东西要动一下 */
+.site-avatar:hover img,
+.site-avatar:hover .avatar-fallback {
+  background-color: var(--seal-hover);
 }
 
 /* ==================================================================
