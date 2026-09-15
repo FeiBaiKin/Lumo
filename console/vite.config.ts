@@ -35,10 +35,12 @@ export default defineConfig({
       "/uploads": { target: "http://127.0.0.1:8080", changeOrigin: true },
     },
   },
+  // 2026-09-15 清空全部用例，src/test/setup.ts 一并删除，故这里不再有 setupFiles。
+  // 将来加回用例时，setup 文件要同时加回并重新挂上；测试脚本已带
+  // --passWithNoTests，零用例时不会把 CI 判红。
   test: {
     environment: "jsdom",
     globals: true,
-    setupFiles: ["./src/test/setup.ts"],
     css: false,
   },
 });
