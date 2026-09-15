@@ -37,8 +37,8 @@
 ## 快速开始
 
 ```bash
-git clone https://github.com/FeiBaiKin/lumo.git
-cd lumo
+git clone https://github.com/FeiBaiKin/Lumo.git
+cd Lumo
 
 # 全量构建：Console 前端 + 后端二进制
 task all

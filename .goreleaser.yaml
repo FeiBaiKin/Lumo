@@ -109,11 +109,11 @@ dockers_v2:
       org.opencontainers.image.version: "{{ .Version }}"
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.created: "{{ .Date }}"
-      org.opencontainers.image.source: "https://github.com/FeiBaiKin/lumo"
+      org.opencontainers.image.source: "https://github.com/FeiBaiKin/Lumo"
       org.opencontainers.image.licenses: "AGPL-3.0-or-later"
 
 release:
   draft: true
   prerelease: auto
   footer: |
-    **完整变更**：https://github.com/FeiBaiKin/lumo/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **完整变更**：https://github.com/FeiBaiKin/Lumo/compare/{{ .PreviousTag }}...{{ .Tag }}

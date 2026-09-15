@@ -29,8 +29,8 @@ go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 ## 跑起来
 
 ```bash
-git clone https://github.com/FeiBaiKin/lumo.git
-cd lumo
+git clone https://github.com/FeiBaiKin/Lumo.git
+cd Lumo
 
 # 单独建一个开发库，不要和别的项目共用
 createdb lumo_dev
