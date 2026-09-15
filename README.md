@@ -319,7 +319,7 @@ deploy/            Dockerfile（源码构建）、Dockerfile.goreleaser（发布
 
 ## 许可证
 
-[AGPL-3.0](./LICENSE)，并附带**插件与主题接口例外条款**：
+[AGPL-3.0](./LICENSE)，并附带**[插件与主题接口例外条款](./EXCEPTIONS.md)**：
 通过主题模板接口或插件 API 与 Lumo 交互的独立作品不构成衍生作品，
 可以用任何许可证发布，包括闭源出售。
 

@@ -137,7 +137,7 @@ scope 用模块名（`theme` / `console` / `auth` / `account` / `media` …）�
 
 ## 许可证
 
-Lumo 以 [AGPL-3.0](./LICENSE) 授权，并附带插件与主题接口例外条款。
+Lumo 以 [AGPL-3.0](./LICENSE) 授权，并附带[插件与主题接口例外条款](./EXCEPTIONS.md)。
 
 项目采用开源 + 商业双授权（见 [COMMERCIAL.md](./COMMERCIAL.md)），因此提交代码前
 需要签署 [贡献者许可协议（CLA）](./CLA.md)——在你第一个 PR 的描述里加一行声明即可。
