@@ -26,7 +26,7 @@ var (
 	ErrBuiltin = errors.New("内置主题不可删除")
 )
 
-// 必需模板（agent.md §4.4）。缺任何一个，主题都装不上。
+// 必需模板。缺任何一个，主题都装不上。
 var requiredTemplates = []string{"index.html", "post.html", "page.html", "404.html"}
 
 // 可选模板：缺省时回退到内置默认主题的同名模板。
@@ -45,7 +45,7 @@ func RequiredTemplates() []string { return append([]string(nil), requiredTemplat
 // OptionalTemplates 返回可选模板名。
 func OptionalTemplates() []string { return append([]string(nil), optionalTemplates...) }
 
-// 模板目录内的约定子目录（Hugo 风格，agent.md §4.1）。
+// 模板目录内的约定子目录（Hugo 风格）。
 const (
 	// dirLayouts 存放外层骨架，页面模板用 {{ template "layouts/base.html" . }} 之类引用。
 	dirLayouts = "layouts"
@@ -56,7 +56,7 @@ const (
 // Engine 是一套已解析的主题模板。
 //
 // 用 html/template 而非 pongo2 / jet：主题是第三方代码，XSS 面就在主题里，
-// 只有 html/template 做上下文感知转义（agent.md §4.1）。代价是模板作者体验一般，
+// 只有 html/template 做上下文感知转义。代价是模板作者体验一般，
 // 用 Hugo 风格的 layout / partial 约定与函数库补齐。
 //
 // 并发安全：解析在构造期一次完成，Render 只读。
@@ -167,7 +167,7 @@ func collectTemplateNames(fsys fs.FS) ([]string, error) {
 	return names, nil
 }
 
-// SetFallback 设置回退引擎：本主题缺失的模板转由它渲染（agent.md §4.4）。
+// SetFallback 设置回退引擎：本主题缺失的模板转由它渲染。
 func (e *Engine) SetFallback(fallback *Engine) {
 	if fallback != e {
 		e.fallback = fallback
@@ -193,7 +193,7 @@ func (e *Engine) Lookup(name string) (*Engine, bool) {
 
 // Render 渲染指定模板。
 //
-// 模板缺失时按 agent.md §4.4 回退到内置默认主题的同名模板，而不是报错或渲染空白——
+// 模板缺失时回退到内置默认主题的同名模板，而不是报错或渲染空白——
 // 分类、标签、归档、搜索、作者这五个模板对主题作者是可选的。
 //
 // 注意回退是**整页**回退而非按块回退：缺 category.html 时整页都由默认主题渲染，
@@ -262,7 +262,7 @@ func TemplateStatuses(names []string) []TemplateStatus {
 	return out
 }
 
-// PageTemplates 返回主题提供的 page-*.html 模板名（WordPress 模式，agent.md §4.2）。
+// PageTemplates 返回主题提供的 page-*.html 模板名（WordPress 模式）。
 //
 // 独立页面可以在后台选择其中之一；列表由主题决定，Console 据此渲染下拉框。
 func PageTemplates(names []string) []string {

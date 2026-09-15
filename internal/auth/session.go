@@ -210,7 +210,7 @@ func (s *SessionStore) CSRFCookieName() string {
 //
 // 会话 Cookie 为 HttpOnly，前端 JS 读不到，防止 XSS 直接窃取会话；
 // CSRF Cookie 必须可被 JS 读取（双提交模式），故不设 HttpOnly。
-// 两者均为 SameSite=Lax（agent.md §7.1）。
+// 两者均为 SameSite=Lax。
 func (s *SessionStore) SetCookies(w http.ResponseWriter, issued *IssuedSession) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.SessionCookieName(),

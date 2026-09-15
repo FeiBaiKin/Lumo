@@ -45,7 +45,7 @@ import { createPortal } from "react-dom";
 /**
  * 块编辑器（TipTap v3 开源扩展集，不碰 Pro 付费项）。
  *
- * 内容格式策略见 agent.md §3.4：`raw` 存**规范 HTML**，不存 ProseMirror JSON。
+ * 内容格式策略：`raw` 存**规范 HTML**，不存 ProseMirror JSON。
  * 这一条决定了本文件的两件事：
  *   - 初始内容用 `editor.getHTML()` 取，而不是 JSON.stringify
  *   - 自定义块若将来需要携带结构，用 `data-*` 属性而不是私有 JSON 节点
@@ -148,7 +148,7 @@ export function HtmlEditor({
     },
     editorProps: {
       attributes: {
-        // 编辑区本身就是「纸」（agent.md §11.3）：左右留白由页面的内容列负责，
+        // 编辑区本身就是「纸」：左右留白由页面的内容列负责，
         // 这里只管上下呼吸与最小高度
         class: cn(
           "prose-editor max-w-none focus:outline-none",

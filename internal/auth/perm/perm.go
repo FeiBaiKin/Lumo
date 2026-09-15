@@ -1,7 +1,7 @@
 // Package perm 定义权限串、内置角色与所有权规则。
 //
 // 权限串格式为 <资源>:<动作>，动词统一为 write / write_any / publish / delete_any / manage。
-// `_any` 后缀表示「不限所有权」；不带后缀的权限只能操作自己拥有的对象（agent.md §7.2）。
+// `_any` 后缀表示「不限所有权」；不带后缀的权限只能操作自己拥有的对象。
 package perm
 
 import (
@@ -13,7 +13,7 @@ import (
 // Permission 是一条权限串。
 type Permission string
 
-// v1 权限清单（agent.md §7.2）。
+// v1 权限清单。
 const (
 	PostsWrite     Permission = "posts:write"
 	PostsWriteAny  Permission = "posts:write_any"
@@ -160,7 +160,7 @@ func Parse(s string) (Permission, error) {
 	return p, nil
 }
 
-// 内置角色名（agent.md §7.2）。
+// 内置角色名。
 //
 // 2026-09-15 站长把内置角色收成三挡：用户 / 编辑 / 管理员，外加不对站长开放的
 // super-admin。原先的 author（只能写自己的、不能发布）取消——它的活由自定义角色承担，
@@ -308,7 +308,7 @@ func (s Set) List() []Permission {
 
 // Allows 判定在给定所有权前提下，集合是否允许该权限。
 //
-// 规则（agent.md §7.2）：
+// 规则：
 //   - 直接持有 `<资源>:<动作>_any` ⇒ 无条件允许
 //   - 直接持有不带 `_any` 的权限 ⇒ 仅当 owned 为真时允许
 //   - 请求的权限本身带 `_any` ⇒ 必须直接持有，不能由基础权限升级得来

@@ -14,7 +14,7 @@ import (
 // GroupMail 是发信设置分组。
 const GroupMail = "mail"
 
-// EnvSMTPPassword 是 SMTP 口令的兜底环境变量（agent.md §9）。
+// EnvSMTPPassword 是 SMTP 口令的兜底环境变量。
 //
 // 口令的正规去处是后台「邮件发送」里的口令字段（加密入库、接口不回传），
 // 环境变量留给不便改后台的部署：容器编排里注入密钥、或者口令由运维统管。
@@ -54,7 +54,7 @@ func (st *Settings) Credential() string {
 	return os.Getenv(EnvSMTPPassword)
 }
 
-// mailForm 是 mail 分组的表单声明（agent.md §5）。
+// mailForm 是 mail 分组的表单声明。
 //
 // 未启用发信时，SMTP 服务器与发件人两段整段不出现——此前它们一律摊在页面上，
 // 一个只想关掉通知的站长仍要面对七个字段。

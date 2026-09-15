@@ -16,7 +16,7 @@ import { toast } from "sonner";
 /**
  * 主题设置。
  *
- * **与站点设置共用同一个表单引擎** —— 这正是 agent.md §5 定那套声明式 Schema、
+ * **与站点设置共用同一个表单引擎** —— 这正是声明式 Schema、
  * 并在阶段 4 让主题通过 `settings.yaml` 声明设置项的全部理由。
  * 主题设置与站点设置的唯一差别是数据来源（安装时编译 vs 启动期登记）
  * 与存储位置（theme_settings vs settings 两张表），

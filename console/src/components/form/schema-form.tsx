@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
- * 通用表单引擎（agent.md §5）。
+ * 通用表单引擎。
  *
  * 输入是一份 JSON Schema 子集与一组值，输出是一个可用的表单 ——
  * 引擎本身不认识任何具体字段。站点设置、主题设置、插件设置走的是同一条路径，
@@ -391,7 +391,7 @@ export function SchemaFormFields({
 
   /*
     分段渲染。字段之间一条细线，段与段之间留出更大的间距并给出标题——
-    设置项多起来以后，一长条没有分隔的表单会让人找不到东西（agent.md §5）。
+    设置项多起来以后，一长条没有分隔的表单会让人找不到东西。
     没有 x-sections 的老 Schema 只会得到一段无标题的，外观与改动前一致。
   */
   const rendered = sections

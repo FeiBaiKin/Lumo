@@ -1,4 +1,4 @@
-// Package seo 提供搜索引擎与订阅源的输出（agent.md §8）。
+// Package seo 提供搜索引擎与订阅源的输出。
 //
 // 分两部分：
 //   - 根路径上的 robots.txt、sitemap.xml、feed.xml、atom.xml —— 非 JSON 且必须位于根路径，

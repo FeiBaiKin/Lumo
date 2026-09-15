@@ -17,7 +17,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 )
 
-// 三平面路由前缀（agent.md §6），定义在 api 包，这里保留别名便于引用与测试。
+// 三平面路由前缀，定义在 api 包，这里保留别名便于引用与测试。
 const (
 	PrefixConsole   = api.PrefixConsole
 	PrefixPublic    = api.PrefixPublic
@@ -65,7 +65,7 @@ const (
 
 // NewRouter 构造根路由并返回供模块注册用的三平面注册面。
 //
-// 三平面的鉴权策略（agent.md §6）由 api.NewPlanes 落实：
+// 三平面的鉴权策略由 api.NewPlanes 落实：
 //   - Console：解析凭据 + CSRF + **强制已认证**；细粒度权限由各操作声明
 //   - Public：解析凭据但不强制，匿名可读已发布内容
 //   - Extension：解析凭据 + CSRF + 强制已认证

@@ -1,4 +1,4 @@
-// Package content 提供文章与独立页面（agent.md §3.3、§8）。
+// Package content 提供文章与独立页面。
 //
 // 两者共用一张 posts 表，以 type 区分；发布、修订、定时发布与可见性逻辑只写一份，
 // 接口按类型分别挂在 /posts 与 /pages 下，权限分别走 posts:* 与 pages:*。

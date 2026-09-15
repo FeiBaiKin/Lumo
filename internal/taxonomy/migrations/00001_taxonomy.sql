@@ -1,5 +1,5 @@
 -- +goose Up
--- 分类（树形）与标签（agent.md §8）。本模块的迁移编号独立于核心，从 1 起。
+-- 分类（树形）与标签。本模块的迁移编号独立于核心，从 1 起。
 
 CREATE TABLE categories (
     id          bigserial   PRIMARY KEY,

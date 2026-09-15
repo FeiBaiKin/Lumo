@@ -1,5 +1,5 @@
 // Package form 提供声明式表单：用 Go 代码描述一组设置项，产出
-// JSON Schema 2020-12 子集 + 缺省值，供 Console 的通用表单引擎渲染（agent.md §5）。
+// JSON Schema 2020-12 子集 + 缺省值，供 Console 的通用表单引擎渲染。
 //
 // 为什么要有这一层：此前每个模块手写一段 JSON 字符串当 Schema（见 internal/settings/site.go
 // 的 siteSchema），字段名在 struct、Schema、Defaults、Public 四处各写一遍，没有任何
@@ -181,7 +181,7 @@ func Color(key string) *Field { return newField(key, TypeString, WidgetColor) }
 // Secret 是需要长期留存的口令或密钥：已存的值不回传、进库前加密、界面上留空即不改动。
 //
 // 它与 Text 的差别不在形态而在语义，而语义要由接口与存储两侧一起兑现
-// （见 internal/settings 的 Group.Mask 与 agent.md §5）。此处只负责把「这是口令」
+// （见 internal/settings 的 Group.Mask）。此处只负责把「这是口令」
 // 这件事写进声明，让两边都有据可依——没有这个声明，口令只能靠字段名去猜。
 func Secret(key string) *Field { return newField(key, TypeString, WidgetSecret) }
 

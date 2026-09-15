@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Finder 是供模板调用的只读数据访问面（agent.md §4.2）。
+// Finder 是供模板调用的只读数据访问面。
 //
 // 刻意**不提供任意查询**：主题能调的每个函数都在这里逐个列出、各自带缓存与条数上限。
 // 开放一个 `query` 函数会让主题变成应用——慢查询、N+1、越权读取都会跟着进来，
@@ -395,7 +395,7 @@ type MenuItemView struct {
 // CommentView 是评论在模板中的视图。
 //
 // 字段刻意受限：邮箱、IP 与 UA 一律不进模板——主题是第三方代码，
-// 一旦给了它就等于给了所有装这个主题的站点一个数据泄漏口子（agent.md §8）。
+// 一旦给了它就等于给了所有装这个主题的站点一个数据泄漏口子。
 type CommentView struct {
 	ID         int64
 	AuthorName string

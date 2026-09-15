@@ -7,7 +7,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
 )
 
-// 路由种类。每种路由注入固定的、有文档的上下文（agent.md §4.2），
+// 路由种类。每种路由注入固定的、有文档的上下文，
 // 保证主题作者「照着写就能跑」。
 const (
 	KindIndex    = "index"
@@ -22,10 +22,10 @@ const (
 
 	// KindFavorites 是「我的收藏」页。它由本模块渲染而不是 account——
 	// 那一页上是一列文章，而按可见性取文章、补作者分类标签、算分页
-	// 全都在本包里（agent.md §3.2：account 不为内容提供任何接口）。
+	// 全都在本包里（account 不为内容提供任何接口）。
 	KindFavorites = "favorites"
 
-	// 以下五种由 account 模块注入（agent.md §11.5）。
+	// 以下五种由 account 模块注入。
 	KindLogin          = "login"
 	KindRegister       = "register"
 	KindForgotPassword = "forgot-password"
@@ -72,7 +72,7 @@ type Context struct {
 	// Query 在搜索页上为搜索词。
 	Query string
 
-	// Find 是只读数据访问面，供侧栏页脚一类小部件取数（agent.md §4.2）。
+	// Find 是只读数据访问面，供侧栏页脚一类小部件取数。
 	//
 	// 为什么挂在上下文上而不是做成 posts.recent 这样的顶层模板函数：
 	// 模板函数在解析期就固定了，而 Finder 必须绑定当次请求的 context
@@ -201,7 +201,7 @@ type ThemeContext struct {
 // PostView 是注入模板的内容视图。
 //
 // 不直接用 content.Post：那是数据库实体，带着 Raw 原稿与 Meta 这些主题不该碰的字段。
-// 主题只消费渲染后的 Content（agent.md §3.3），编辑器换了主题也不受影响。
+// 主题只消费渲染后的 Content，编辑器换了主题也不受影响。
 type PostView struct {
 	ID    int64
 	Type  string

@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  // 内联的 Lucide 图标（agent.md §11.1：全站只用 Lucide，且界面禁用表情符号）。
+  // 内联的 Lucide 图标（全站只用 Lucide，且界面禁用表情符号）。
   var ICONS = {
     wrap:
       '<path d="M3 6h18"/><path d="M3 12h13a3 3 0 1 1 0 6h-3"/><path d="m16 15-3 3 3 3"/><path d="M3 18h7"/>',

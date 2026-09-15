@@ -17,7 +17,7 @@ import { useRef } from "react";
 /**
  * Markdown 编辑器（Milkdown 7）。
  *
- * 与块编辑器**产出同一对字段**：`raw` + `rawType`（agent.md §3.4）。
+ * 与块编辑器**产出同一对字段**：`raw` + `rawType`。
  * 两个编辑器都是 ProseMirror 系，但存下来的东西不同：这里是 Markdown 源码，
  * 那边是规范 HTML。作者按习惯选，主题只消费渲染结果，换编辑器不伤主题。
  *
@@ -71,7 +71,7 @@ function Surface({
       .config((ctx) => {
         ctx.set(rootCtx, root);
         ctx.set(defaultValueCtx, initialContent);
-        // 编辑区本身就是「纸」（agent.md §11.3）；左右留白由页面的内容列负责
+        // 编辑区本身就是「纸」；左右留白由页面的内容列负责
         ctx.update(editorViewOptionsCtx, (prev) => ({
           ...prev,
           attributes: {

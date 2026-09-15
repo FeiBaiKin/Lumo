@@ -19,7 +19,7 @@ func urlQueryEscape(s string) string { return url.QueryEscape(s) }
 
 // Frontend 是访客前台的路由处理器。
 //
-// 前台由 Go 服务端模板渲染（agent.md §3.1），不经三平面：它产出的是 HTML 页面
+// 前台由 Go 服务端模板渲染，不经三平面：它产出的是 HTML 页面
 // 而非 JSON，鉴权模型也不同（匿名可读，登录用户额外看得到自己的私密内容）。
 type Frontend struct {
 	renderer *Renderer
@@ -127,7 +127,7 @@ func (f *Frontend) post(w http.ResponseWriter, r *http.Request) {
 
 // page 渲染独立页面。
 //
-// 页面可选主题提供的 page-*.html 模板（WordPress 模式，agent.md §4.2）；
+// 页面可选主题提供的 page-*.html 模板（WordPress 模式）；
 // 模板不存在时回退到 page.html，而不是报错——主题换了之后旧页面还得能打开。
 func (f *Frontend) page(w http.ResponseWriter, r *http.Request) {
 	slug := pathParam(r, "slug")

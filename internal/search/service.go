@@ -39,7 +39,7 @@ type Result struct {
 // Searcher 是搜索能力的抽象。
 //
 // 前台与接口都只依赖这个接口，将来换成 meilisearch 一类外部引擎时，
-// 换掉实现即可，调用方不动（agent.md §2）。
+// 换掉实现即可，调用方不动。
 type Searcher interface {
 	Search(ctx context.Context, params *Params) (*Result, error)
 }

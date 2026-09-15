@@ -110,7 +110,7 @@ export function MediaPage() {
    *
    * 与服务端 internal/media/handler.go 的 canManage 逐字对应：
    * 自己的附件需 media:write，别人的需 media:delete_any。
-   * 附件是唯一一条 `_any` 权限同时管「改」与「删」的资源（agent.md §7.2），
+   * 附件是唯一一条 `_any` 权限同时管「改」与「删」的资源，
    * 故两者共用同一个判定。前端这一层只是不显示点了必然 403 的按钮。
    */
   const canManage = (media: Media) =>

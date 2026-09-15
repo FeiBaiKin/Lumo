@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// 插件包内的固定文件名（agent.md §14.3）。
+// 插件包内的固定文件名。
 const (
 	// FileManifest 是插件元信息，必需。
 	FileManifest = "plugin.yaml"
@@ -22,7 +22,7 @@ const (
 
 // APIVersion 与 Kind 是 plugin.yaml 里的固定写法。
 //
-// 与 Extension 平面同一套形态（agent.md §6.1）：插件清单本身就是一份 GVK 资源，
+// 与 Extension 平面同一套形态：插件清单本身就是一份 GVK 资源，
 // 将来要把它放进 extensions 表或经 API 暴露，都不必改格式。
 const (
 	APIVersion = "plugin.lumo.run/v1alpha1"

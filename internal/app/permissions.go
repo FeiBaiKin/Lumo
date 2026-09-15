@@ -2,7 +2,7 @@ package app
 
 import "github.com/FeiBaiKin/lumo/internal/auth/perm"
 
-// CorePermissions 返回核心自身引入的权限声明（agent.md §7.2）。
+// CorePermissions 返回核心自身引入的权限声明。
 //
 // 与模块的 Permissions() 并列：用户、角色、主题与站点级操作由核心实现，
 // 没有对应的功能模块，故在这里声明。角色编辑器据此拿到中文名，

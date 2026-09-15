@@ -781,7 +781,7 @@ func (m *Module) chineseDate(ctx context.Context, t time.Time) string {
 // roleLabels 把用户的角色拼成一行标签。
 //
 // 优先用角色的显示名（「管理员」），没有时退回角色名。用「、」连接而不是中点：
-// 中点是 agent.md §11.2 明确拒绝的那类元信息写法。
+// 中点是本主题明确拒绝的那类元信息写法。
 func roleLabels(user *auth.User) string {
 	labels := make([]string, 0, len(user.Roles))
 	for i := range user.Roles {

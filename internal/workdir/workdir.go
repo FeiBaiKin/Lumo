@@ -1,6 +1,6 @@
 // Package workdir 负责运行时工作目录的初始化。
 //
-// 目录结构固定为 ./data/{themes,plugins,uploads,cache,logs,backups}（agent.md §9）。
+// 目录结构固定为 ./data/{themes,plugins,uploads,cache,logs,backups}。
 package workdir
 
 import (

@@ -5,7 +5,7 @@ import type { components, paths } from "./schema";
  * Console 的 API 客户端。
  *
  * 类型全部来自 `schema.d.ts`——它由 `task console:api` 从后端导出的 OpenAPI 规范生成，
- * 不手写、不手改。手写两遍类型是生态项目的慢性病（agent.md §6）。
+ * 不手写、不手改。手写两遍类型是生态项目的慢性病。
  */
 
 /** Console 与 API 同源（都由同一个二进制提供），故用相对地址。 */

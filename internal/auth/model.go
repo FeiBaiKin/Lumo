@@ -140,7 +140,7 @@ func (s *Session) Expired(now time.Time) bool {
 	return !now.Before(s.ExpiresAt)
 }
 
-// AccessToken 是 Personal Access Token（agent.md §7.1：仅存哈希）。
+// AccessToken 是 Personal Access Token（仅存哈希）。
 type AccessToken struct {
 	bun.BaseModel `bun:"table:access_tokens,alias:at"`
 

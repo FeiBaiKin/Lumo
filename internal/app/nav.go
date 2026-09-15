@@ -176,7 +176,7 @@ func validateNavItem(item *NavItem) error {
 	return nil
 }
 
-// Console 侧边栏的分组标识（agent.md §8 的七组页面地图）。
+// Console 侧边栏的分组标识（七组页面地图）。
 //
 // 分组定义在核心而不是各模块各写一份：分组是**版面的骨架**，
 // 谁往里放东西是模块的事，骨架长什么样只该有一处说了算。

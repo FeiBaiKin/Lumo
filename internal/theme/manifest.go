@@ -13,7 +13,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/form"
 )
 
-// 主题包内的固定文件名（agent.md §4.4）。
+// 主题包内的固定文件名。
 const (
 	// FileManifest 是主题元信息。
 	FileManifest = "theme.yaml"
@@ -119,7 +119,7 @@ func parseManifest(data []byte) (*Manifest, error) {
 
 // SettingsDecl 是 settings.yaml 的内容：主题自己的设置项声明。
 //
-// 复用站点设置的统一表单 Schema（agent.md §5）：Console 用同一个表单引擎渲染，
+// 复用站点设置的统一表单 Schema：Console 用同一个表单引擎渲染，
 // 主题作者只需学一次。与站点设置的唯一差别是它不走 app.SettingGroup 的启动期登记——
 // 主题可以随时换，分组不能钉死在进程启动那一刻。
 type SettingsDecl struct {

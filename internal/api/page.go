@@ -1,6 +1,6 @@
 package api
 
-// 分页约定（agent.md §6）：v1 用 offset 分页，Console 表格需要跳页。
+// 分页约定：v1 用 offset 分页，Console 表格需要跳页。
 const (
 	// DefaultPageSize 是未指定 size 时的每页条数。
 	DefaultPageSize = 20

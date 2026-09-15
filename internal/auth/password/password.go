@@ -1,4 +1,4 @@
-// Package password 提供 argon2id 密码哈希与校验（agent.md §7.1）。
+// Package password 提供 argon2id 密码哈希与校验。
 //
 // 哈希串采用 PHC 标准格式，自带算法参数：
 //

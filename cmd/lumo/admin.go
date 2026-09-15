@@ -84,7 +84,7 @@ func openAdminDeps(ctx context.Context, configPath string) (*adminDeps, error) {
 		return nil, err
 	}
 
-	// 管理命令直接改动用户与凭据，先确认连到了哪个库（agent.md §13.2）。
+	// 管理命令直接改动用户与凭据，先确认连到了哪个库。
 	db.LogInfo(ctx, logger)
 
 	users := auth.NewStore(db.DB)

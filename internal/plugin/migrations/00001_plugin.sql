@@ -1,5 +1,5 @@
 -- +goose Up
--- 插件生命周期（agent.md §14.3）。
+-- 插件生命周期。
 --
 -- 插件状态是核心资产，与主题的 theme_state 同级，故用强类型表而不是 extensions：
 -- 后者经 Extension 平面开放通用 CRUD，插件记录被随手改写会让目录与库对不上。
@@ -16,7 +16,7 @@ CREATE TABLE plugins (
     installed_at    timestamptz NOT NULL DEFAULT now(),
     updated_at      timestamptz NOT NULL DEFAULT now(),
 
-    -- 与目录名同形（agent.md §6.1 的 DNS-1123）
+    -- 与目录名同形（DNS-1123）
     CONSTRAINT plugins_name_dns1123 CHECK (name ~ '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$')
 );
 

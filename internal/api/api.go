@@ -1,6 +1,6 @@
 // Package api 装配 huma：三平面分组、OpenAPI 配置、错误模型桥接与分页约定。
 //
-// 所有 REST 接口都经 huma.Register 注册（agent.md §6）：请求校验、problem+json
+// 所有 REST 接口都经 huma.Register 注册：请求校验、problem+json
 // 与 OpenAPI 3.1 由代码直接生成，模块不再直接接触 chi 路由。
 package api
 
@@ -14,7 +14,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 )
 
-// 三平面路由前缀（agent.md §6）。
+// 三平面路由前缀。
 const (
 	// PrefixConsole 需会话或 PAT + 权限校验。
 	PrefixConsole = "/api/v1/console"
@@ -68,7 +68,7 @@ type Planes struct {
 
 // NewPlanes 在根路由上创建 huma API 与三平面分组。
 //
-// 鉴权策略（agent.md §6）：
+// 鉴权策略：
 //   - Console：解析凭据 + CSRF + **强制已认证**；细粒度权限由各操作声明
 //   - ConsolePublic：只解析凭据，仅供登录一类极少数免认证端点
 //   - Public：解析凭据但不强制，匿名可读已发布内容；会话身份的写请求要过 CSRF

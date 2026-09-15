@@ -27,7 +27,7 @@ type Settings struct {
 	IncludePages   bool   `json:"includePages"`
 }
 
-// seoForm 是 seo 分组的表单声明（agent.md §5）。
+// seoForm 是 seo 分组的表单声明。
 //
 // 订阅源的两段只在开启订阅源时出现；此前 feedSize 与 feedFullText 一直摆在那里，
 // 即使订阅源是关的。

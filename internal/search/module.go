@@ -1,4 +1,4 @@
-// Package search 提供全文搜索（agent.md §2）。
+// Package search 提供全文搜索。
 //
 // 切词在 Go 侧完成（中日韩按二元组，见 tokenize.go），结果存进独立的 post_search 表，
 // 检索走 GIN 索引——全程不依赖任何 PostgreSQL 扩展，装机即用。

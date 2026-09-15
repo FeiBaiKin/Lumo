@@ -1,5 +1,5 @@
 -- +goose Up
--- 评论（agent.md §8）。本模块的迁移编号独立于核心，从 1 起。
+-- 评论。本模块的迁移编号独立于核心，从 1 起。
 -- 依赖 content 模块的 posts 表：modules.go 中 content 必须先于 comment 注册。
 
 CREATE TABLE comments (

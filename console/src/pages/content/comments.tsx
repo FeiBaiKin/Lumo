@@ -376,7 +376,7 @@ function CommentRow({
           <p className="line-clamp-2 text-sm whitespace-pre-wrap text-ink">
             {comment.content}
           </p>
-          {/* 邮箱与站外链接只在 Console 平面出现（agent.md §8）——站长排查需要它们 */}
+          {/* 邮箱与站外链接只在 Console 平面出现——站长排查需要它们 */}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-ink-muted">
             <span className="token">{comment.authorEmail || "无邮箱"}</span>
             {comment.authorUrl ? (
@@ -586,7 +586,7 @@ function BulkActions({
   );
 }
 
-/** 管理员回复。回复直接通过审核（agent.md §8）。 */
+/** 管理员回复。回复直接通过审核。 */
 function ReplyDialog({
   comment,
   onClose,

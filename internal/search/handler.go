@@ -39,7 +39,7 @@ func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 
 // Register 挂载接口。
 //
-// 搜索是匿名可用的公开能力（agent.md §6），只返回已发布且公开的内容；
+// 搜索是匿名可用的公开能力，只返回已发布且公开的内容；
 // 索引状态与重建属站点维护，走 Console 并复用 settings:manage——
 // 为一个维护端点单开一条权限串，只会让角色编辑器多一个没人看得懂的选项。
 func (h *Handler) Register(console, public huma.API) {

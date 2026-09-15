@@ -66,7 +66,7 @@ func runMigrate(args []string) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	// 迁移是破坏性操作，先确认连到了哪个库——库名相近极易误连（agent.md §13.2）。
+	// 迁移是破坏性操作，先确认连到了哪个库——库名相近极易误连。
 	db.LogInfo(ctx, logger)
 
 	// 走与 serve 相同的模块注册链，以收集各模块的迁移来源；不注册接口。

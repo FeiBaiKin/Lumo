@@ -2,7 +2,7 @@
  * Tailwind CSS v4 入口。
  *
  * 分两层：
- *   tokens.css —— 三层设计 token（primitive → semantic → component），见 agent.md §11.3
+ *   tokens.css —— 三层设计 token（primitive → semantic → component）
  *   本文件     —— 把 token 映射给 Tailwind，并定义少量全局基础样式
  *
  * 映射一律用 `@theme inline`：内联后生成的工具类引用的是 `var(--chrome)` 这类变量本身，
@@ -24,7 +24,7 @@
 /*
  * 清空 Tailwind 的内置主题键。
  *
- * 这不是洁癖，是让 agent.md §11.3 那条「组件里出现裸色值就是缺陷」在语法上无法违反：
+ * 这不是洁癖，是让「组件里出现裸色值就是缺陷」这条约定在语法上无法违反：
  * 清掉之后 `bg-blue-500`、`rounded-lg`、`shadow-md` 都生成不出任何规则，
  * 写错了不会有编译错误，但页面会明显不对 —— 作者只能回来用 token。
  * 留 spacing 与字号阶梯不动：字号下方另有覆盖，spacing 不存在「裸值 vs 语义值」的分裂。
@@ -221,7 +221,7 @@
    * 编辑区的正文排版（TipTap 与 Milkdown 共用同一个类名）。
    *
    * 这是 Console 里**唯一**一处「纸」：外壳走冷调中性色，只有正在写的这张区域
-   * 用主题的纸色与 2px 圆角（agent.md §11.3）。故这里的排版规则也刻意贴近
+   * 用主题的纸色与 2px 圆角。故这里的排版规则也刻意贴近
    * 前台「墨 Ink」的正文：行高 1.8、中文优先的字体栈、段落间距大于行距。
    */
   .prose-editor {
@@ -478,7 +478,7 @@
   }
 }
 
-/* 全局遵守 prefers-reduced-motion（agent.md §11.1 硬底线）。
+/* 全局遵守 prefers-reduced-motion（硬底线）。
    把动效压到 1ms 而不是 none —— 某些库的过渡回调依赖 transitionend，
    设为 none 会让它们永远不触发。 */
 @media (prefers-reduced-motion: reduce) {

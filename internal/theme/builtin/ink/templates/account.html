@@ -2,7 +2,7 @@
 
 {{ define "main" }}
 {{- /*
-个人中心（agent.md §7.1）。
+个人中心。
 
 一页三块，从上到下是「你是谁 → 改什么 → 账号本身」：
 
@@ -15,11 +15,11 @@
      这些是**不复核**的，故排在右侧一栏，改资料时不必从它们中间穿过去。
 
 表单是原生 POST（`enctype="multipart/form-data"`）：账户页是基础功能，
-不该因为一段脚本没加载出来就不可用（agent.md §0.2 的定稿决策）。
+不该因为一段脚本没加载出来就不可用（定稿决策）。
 选完文件能直接看到「已选哪个文件」由浏览器给，不需要预览脚本。
 
 模板里的值一律直接输出、绝不 safeHTML：昵称与简介是用户自己填的，
-那是这个主题唯一的 XSS 面（agent.md §3.4 只允许 .Post.Content 走 safeHTML）。
+那是这个主题唯一的 XSS 面（只允许 .Post.Content 走 safeHTML）。
 */ -}}
 <div class="wrap wrap--wide">
   {{ with .CurrentUser }}

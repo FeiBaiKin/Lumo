@@ -1,11 +1,11 @@
-// Package theme 提供主题系统：模板引擎、主题包加载、前台路由与主题设置（agent.md §4）。
+// Package theme 提供主题系统：模板引擎、主题包加载、前台路由与主题设置。
 //
 // 主题是一个 zip 包（theme.yaml + settings.yaml + templates/ + static/），后台上传即可切换。
 // 模板引擎用 html/template——主题是第三方代码，XSS 面就在主题里，而它是唯一做
 // 上下文感知转义的引擎；模板作者体验由 Hugo 风格的 layout / partial 约定与函数库补齐。
 //
 // 内置默认主题「墨 Ink」编译进二进制，既是开箱即用的外观，也是所有主题的回退：
-// 第三方主题缺失可选模板时自动回退到它的同名模板（agent.md §4.4）。
+// 第三方主题缺失可选模板时自动回退到它的同名模板。
 package theme
 
 import (
@@ -154,7 +154,7 @@ func (m *Module) Routes(r app.Router) {
 
 // Start 实现 app.Starter：加载已安装主题并恢复启用项。
 //
-// 这是模块第一次被允许访问数据库的时机（agent.md §3.2）。
+// 这是模块第一次被允许访问数据库的时机。
 func (m *Module) Start(ctx context.Context) error {
 	// 先把内置主题解压到 data/themes（已存在则不动），再扫目录 ——
 	// 顺序不能反：LoadInstalled 正是靠磁盘上那份把注册表里的内置主题顶掉。
@@ -264,7 +264,7 @@ func (m *Module) RestoreBuiltin() error {
 //
 // 导出给 account 模块：前台账户页与全站页面必须用同一套模板引擎、同一套回退规则与
 // 同一份主题设置，否则账户页会在换主题时独自错位。它是本模块唯一对外开放的
-// 渲染入口，模块之间仍然不引用彼此的内部实现（agent.md §3.2）。
+// 渲染入口，模块之间仍然不引用彼此的内部实现。
 func (m *Module) Renderer() *Renderer { return m.renderer }
 
 // Frontend 返回前台处理器。

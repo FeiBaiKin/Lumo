@@ -6,7 +6,7 @@
 每个参数是什么一目了然，而位置参数得回到片段里数第几个。
 
 错误文本与回填值一律**直接输出**，绝不 safeHTML：这是第三方主题唯一的 XSS 面
-（agent.md §3.4 只允许 .Post.Content 走 safeHTML）。
+（只允许 .Post.Content 走 safeHTML）。
 
 密码字段靠的是「Form.Values 里永远没有密码」这条保证（见 theme.FormState 的说明），
 而不是这个片段里的某个分支——不存在的东西回填不出来。

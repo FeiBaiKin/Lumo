@@ -1,4 +1,4 @@
-// Package taxonomy 提供分类（树形）与标签（agent.md §8）。
+// Package taxonomy 提供分类（树形）与标签。
 //
 // 这是第一个业务模块，也是模块形态的样板：自带迁移、经三平面注册面挂接口、
 // 声明所用权限；核心对它一无所知，仅在 cmd/lumo/modules.go 装配。

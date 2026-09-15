@@ -1,4 +1,4 @@
-// Package account 提供前台账户体系：自助注册、邮箱验证、找回密码与账户页（agent.md §7.1、§11.5）。
+// Package account 提供前台账户体系：自助注册、邮箱验证、找回密码与账户页。
 //
 // 它不引入自己的用户表——注册用户落核心的 `users` 表，只授内置角色 `member`。
 // 理由是复用：会话、登录限流、argon2 并发闸门、改密踢下线这些都已经是核心的现成实现，
@@ -143,7 +143,7 @@ func (m *Module) MountFrontend(r chi.Router, optional func(http.Handler) http.Ha
 			g.Use(optional)
 		}
 		// 每个流程都是 GET 渲染表单 + POST 提交，表单走原生提交、不依赖 JavaScript：
-		// 登录是基础功能，不该因为一段脚本没加载出来就不可用（agent.md §0.2 的定稿决策）。
+		// 登录是基础功能，不该因为一段脚本没加载出来就不可用（定稿决策）。
 		//
 		// 成功即 302、失败即原地渲染（见各处理器）：成功后重定向才能避免刷新重复提交，
 		// 失败原地渲染才能回填用户刚填的值与逐字段错误。
@@ -165,7 +165,7 @@ func (m *Module) MountFrontend(r chi.Router, optional func(http.Handler) http.Ha
 
 // 前台账户路由。
 //
-// 这些是**被保留的固定路径**：它们会遮蔽同名的独立页面（agent.md §3.2 的已知限制）。
+// 这些是**被保留的固定路径**：它们会遮蔽同名的独立页面（已知限制）。
 // 导出成常量是为了让这份保留清单只有一个出处，将来要改成动态判断也有地方可改。
 const (
 	PathLogin          = "/login"

@@ -86,7 +86,7 @@ type installInput struct {
 // 字段与站点设置、主题设置的视图一致：Console 的通用表单引擎只认这一种形态。
 //
 // 类型名刻意带 plugin 前缀：huma 的 Schema 注册表按**类型名跨模块索引**，
-// 两个包里各有一个 settingsGroupView 会在注册时 panic（agent.md §6）。
+// 两个包里各有一个 settingsGroupView 会在注册时 panic。
 // 这个坑只有整机装配那一刻才炸，单模块的测试永远碰不到。
 type pluginSettingsView struct {
 	Name        string         `json:"name"`

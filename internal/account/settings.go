@@ -25,7 +25,7 @@ type Settings struct {
 	RegistrationNotice string `json:"registrationNotice"`
 }
 
-// accountForm 是 account 分组的表单声明（agent.md §5）。
+// accountForm 是 account 分组的表单声明。
 //
 // 只有两项，是刻意的：
 //   - 不做 defaultRole 下拉——注册用户固定 member。一个能让访客自助拿到 author

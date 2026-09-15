@@ -1,7 +1,7 @@
 // Package app 定义模块契约与应用注册器。
 //
 // v1 不做运行时插件加载，但所有功能模块必须以「编译期插件」形态组织：
-// 核心不得直接依赖模块内部实现（agent.md §3.2）。这样 v2 接入 WASM 或
+// 核心不得直接依赖模块内部实现。这样 v2 接入 WASM 或
 // gRPC 宿主时，核心无需重写。
 package app
 
@@ -40,12 +40,12 @@ type Migrator interface {
 	Migrations() fs.FS
 }
 
-// SettingsProvider 声明模块注册设置项分组，走统一表单 Schema（agent.md §5）。
+// SettingsProvider 声明模块注册设置项分组，走统一表单 Schema。
 type SettingsProvider interface {
 	Settings() []SettingGroup
 }
 
-// PermissionProvider 声明模块引入的权限串（agent.md §7.2）。
+// PermissionProvider 声明模块引入的权限串。
 type PermissionProvider interface {
 	Permissions() []Permission
 }
@@ -58,7 +58,7 @@ type HookProvider interface {
 // RouteProvider 声明模块挂载 HTTP 接口。
 //
 // 接口注册通过三平面注册面进行，模块不能直接接触根路由，
-// 以保证鉴权与前缀约定不被绕过（agent.md §6）。
+// 以保证鉴权与前缀约定不被绕过。
 type RouteProvider interface {
 	Routes(r Router)
 }
@@ -74,7 +74,7 @@ type Closer interface {
 	Close(ctx context.Context) error
 }
 
-// Router 是暴露给模块的接口注册面（agent.md §6）。
+// Router 是暴露给模块的接口注册面。
 //
 // 四个注册面都是 huma.API：模块用 huma.Register 声明操作，请求校验、错误格式与
 // OpenAPI 文档随之自动生成。前缀与鉴权中间件挂在各平面的分组上，模块无需也不能自行处理。
@@ -96,7 +96,7 @@ type Router interface {
 	Raw(method, path string, handler http.HandlerFunc)
 }
 
-// SettingGroup 是一组设置项声明，走统一表单 Schema（agent.md §5）。
+// SettingGroup 是一组设置项声明，走统一表单 Schema。
 //
 // 分组是设置的读写单位：Console 按分组渲染表单，接口按分组整体替换值。
 type SettingGroup struct {
@@ -123,7 +123,7 @@ type SettingGroup struct {
 	// 字段必须存在于 Form 中且为布尔，否则注册时报错：写错一个名字的代价
 	// 是标题栏上少个开关，而那在界面上没有任何提示。
 	Toggle string
-	// Form 是表单声明（agent.md §5）。模块用 internal/form 的 DSL 构建；
+	// Form 是表单声明。模块用 internal/form 的 DSL 构建；
 	// 主题包从 settings.yaml 读入后经 form.Build 得到。
 	//
 	// 值 = Form 的缺省值被已保存值按顶层键覆盖；Schema、缺省值与条件依赖
@@ -135,7 +135,7 @@ type SettingGroup struct {
 	Check func(values map[string]any) error
 }
 
-// Permission 是一条权限声明，格式为 <资源>:<动作>（agent.md §7.2）。
+// Permission 是一条权限声明，格式为 <资源>:<动作>。
 type Permission struct {
 	// Key 是权限串，如 posts:write。
 	Key string

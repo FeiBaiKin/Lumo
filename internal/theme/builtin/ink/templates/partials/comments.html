@@ -1,5 +1,5 @@
 {{- /*
-评论区。内容已在服务端全文转义并有限富化（agent.md §8），此处用 safeHTML 输出。
+评论区。内容已在服务端全文转义并有限富化，此处用 safeHTML 输出。
 
 访客提交走 Public 平面的 REST 接口，故表单由 JS 提交而非原生 form——
 原生提交后浏览器会跳到一个 JSON 响应页。无 JS 时表单按 hidden 处理，
@@ -39,7 +39,7 @@
       <label for="c-content">评论</label>
       <textarea id="c-content" name="content" required rows="4" maxlength="10000"></textarea>
     </p>
-    {{- /* 蜜罐：正常访客看不见它，填了必是机器人（agent.md §8 的反垃圾第一判据）。 */ -}}
+    {{- /* 蜜罐：正常访客看不见它，填了必是机器人（反垃圾第一判据）。 */ -}}
     <p class="comment-hp" aria-hidden="true">
       <label for="c-website2">请留空</label>
       <input id="c-website2" name="website2" type="text" tabindex="-1" autocomplete="off">

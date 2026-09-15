@@ -1,5 +1,5 @@
 -- +goose Up
--- 文章与独立页面（agent.md §3.3、§8）。本模块的迁移编号独立于核心，从 1 起。
+-- 文章与独立页面。本模块的迁移编号独立于核心，从 1 起。
 -- 依赖 taxonomy 模块的 categories / tags 表：modules.go 中 taxonomy 必须先于 content 注册。
 
 CREATE TABLE posts (
@@ -11,7 +11,7 @@ CREATE TABLE posts (
     slug          text        NOT NULL,
     status        text        NOT NULL DEFAULT 'draft',
     visibility    text        NOT NULL DEFAULT 'public',
-    -- 内容三字段（agent.md §3.3）：raw 原稿、content 渲染后 HTML、raw_type 原稿格式；主题只消费 content
+    -- 内容三字段：raw 原稿、content 渲染后 HTML、raw_type 原稿格式；主题只消费 content
     raw_type      text        NOT NULL DEFAULT 'html',
     raw           text        NOT NULL DEFAULT '',
     content       text        NOT NULL DEFAULT '',
@@ -20,7 +20,7 @@ CREATE TABLE posts (
     excerpt_auto  boolean     NOT NULL DEFAULT true,
     cover_url     text        NOT NULL DEFAULT '',
     pinned        boolean     NOT NULL DEFAULT false,
-    -- 页面可选主题提供的 page-*.html 模板（agent.md §4.2）；空串表示默认模板
+    -- 页面可选主题提供的 page-*.html 模板；空串表示默认模板
     template      text        NOT NULL DEFAULT '',
     author_id     bigint      NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
     -- 已发布：首次发布时间；定时发布：计划发布时间；草稿：NULL 或上次发布时间

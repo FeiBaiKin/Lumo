@@ -23,7 +23,7 @@ type Settings struct {
 	NotifyTo        string `json:"notifyTo"`
 }
 
-// commentForm 是 comment 分组的表单声明（agent.md §5）。
+// commentForm 是 comment 分组的表单声明。
 //
 // 三段按「开放范围 / 反垃圾 / 通知」切。评论关掉时后两段整段不显示——
 // 一个不打算开放评论的站点，没有理由被要求决定同一 IP 隔几秒能发一次。

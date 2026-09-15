@@ -145,7 +145,7 @@ type updateInput struct {
 // 客户端可以拿它断言「我改的确实是我以为的那条」，改地址得走删了重建。
 //
 // 只收这三个字段，而不是让客户端把 GET 到的整条记录原样 PUT 回来——请求体的未知字段
-// 一律拒绝（agent.md §6），响应里的 id / selfLink / 时间戳回传过来只会得到 422。
+// 一律拒绝，响应里的 id / selfLink / 时间戳回传过来只会得到 422。
 type extensionUpdateBody struct {
 	Kind string         `json:"kind,omitempty" maxLength:"63" doc:"若出现，须与该记录一致"`
 	Name string         `json:"name,omitempty" maxLength:"253" doc:"若出现，须与地址一致"`

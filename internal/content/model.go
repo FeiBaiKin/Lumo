@@ -41,7 +41,7 @@ const (
 	VisibilityPrivate Visibility = "private"
 )
 
-// RawType 是原稿格式（agent.md §3.3）。
+// RawType 是原稿格式。
 type RawType string
 
 // 原稿格式。

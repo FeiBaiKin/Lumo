@@ -13,7 +13,7 @@ import (
 var remoteURL = regexp.MustCompile(`^https?://`)
 
 /**
- * 正文净化（agent.md §3.4）。
+ * 正文净化。
  *
  * 背景：正文是**站点同源**输出的，而 Console 与管理 API 也在同一个源上。
  * 一段写进正文的脚本，会在任何访问该页面的浏览器里运行 —— 包括管理员，
@@ -79,7 +79,7 @@ func newSanitizer() *bluemonday.Policy {
 	// 它们不构成脚本执行面；真正危险的是事件属性与脚本标签，那些不在允许列表里。
 	p.AllowAttrs("class").Globally()
 	p.AllowAttrs("id").Globally()
-	// 自定义块的 data-* 属性（agent.md §3.4：富文本用 data-* 携带结构）。
+	// 自定义块的 data-* 属性（富文本用 data-* 携带结构）。
 	p.AllowDataAttributes()
 
 	// 行内样式：只放行一批纯表现性的属性，且由 bluemonday 校验取值，

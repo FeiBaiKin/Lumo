@@ -1,5 +1,5 @@
 -- +goose Up
--- Extension 平面按 URL 里的复数段寻址（agent.md §6.1），而核心表 extensions 只存单数 kind。
+-- Extension 平面按 URL 里的复数段寻址，而核心表 extensions 只存单数 kind。
 -- kind 到复数段的映射在 Go 侧（resource.go）且不可逆——Movie 与 Movy 都得到 movies——
 -- 所以把映射结果存成一列：数据库不必知道规则，按地址取记录也能走索引。
 

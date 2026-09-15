@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// 核心自用的分组与版本（agent.md §6.1）。插件另起分组，版本沿用同一套形态。
+// 核心自用的分组与版本。插件另起分组，版本沿用同一套形态。
 const (
 	// GroupLumo 是核心与默认主题使用的 API 分组。
 	GroupLumo = "io.github.feibaiikin.lumo"
@@ -14,7 +14,7 @@ const (
 	VersionAlpha = "v1alpha1"
 )
 
-// 命名形态（agent.md §6.1）。这些模式同时写进 OpenAPI 的参数声明，
+// 命名形态。这些模式同时写进 OpenAPI 的参数声明，
 // 形态不合法的地址在进入处理器之前就被 huma 拦下。
 const (
 	// GroupPattern 是反向域名：至少两段，段间以点分隔。

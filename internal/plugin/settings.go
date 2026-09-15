@@ -41,7 +41,7 @@ func (g *SettingsGroup) Validator() *settings.Validator { return g.validator }
 // 文件缺失时返回空列表而不是报错：绝大多数插件没有设置项，
 // 强制它们放一个空文件只会制造噪音。
 //
-// 解析走 form.Parse，与主题设置、站点设置共用同一套条件依赖语义（agent.md §5）。
+// 解析走 form.Parse，与主题设置、站点设置共用同一套条件依赖语义。
 // 各处的「设置」如果长着不一样的脸，站长就得学两遍。
 func loadSettings(fsys fs.FS) ([]SettingsGroup, error) {
 	data, err := fs.ReadFile(fsys, FileSettings)

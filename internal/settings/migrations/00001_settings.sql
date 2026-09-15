@@ -1,5 +1,5 @@
 -- +goose Up
--- 站点设置（agent.md §5）：每个分组一行，值为合并默认值后的完整对象。
+-- 站点设置：每个分组一行，值为合并默认值后的完整对象。
 
 CREATE TABLE settings (
     name        text        PRIMARY KEY,

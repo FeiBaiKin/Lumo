@@ -1,7 +1,7 @@
 // Package config 负责加载与校验运行配置。
 //
 // 优先级（后者覆盖前者）：内置默认值 → config.yaml → LUMO_* 环境变量。
-// 数据库 DSN 只接受环境变量 LUMO_DATABASE_DSN，口令不得写入配置文件（见 agent.md §9）。
+// 数据库 DSN 只接受环境变量 LUMO_DATABASE_DSN，口令不得写入配置文件。
 package config
 
 import (

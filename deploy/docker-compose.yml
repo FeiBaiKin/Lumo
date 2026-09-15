@@ -12,7 +12,7 @@
 # 最后这步必须带 -it：口令从终端读取且不回显，没有 TTY 时命令会直接失败
 # （这条 TTY 防线是刻意的，不提供 -password 参数，避免口令进入进程列表）。
 #
-# TLS 不在这里终结（agent.md §9），前面应有一层反向代理。
+# TLS 不在这里终结，前面应有一层反向代理。
 
 name: lumo
 
@@ -60,7 +60,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # DSN 只走环境变量，口令一律不进配置文件（agent.md §9）。
+      # DSN 只走环境变量，口令一律不进配置文件。
       #
       # 口令分两个变量保存：POSTGRES_PASSWORD 是原始口令，原样交给 PostgreSQL
       # 初始化；LUMO_DATABASE_DSN 是应用用的完整 URL，其中的口令段必须百分号

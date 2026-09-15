@@ -32,7 +32,7 @@ type Site struct {
 	PageSize     int    `json:"pageSize"`
 }
 
-// siteForm 是 site 分组的表单声明（agent.md §5）。
+// siteForm 是 site 分组的表单声明。
 //
 // 声明式而非手写 JSON：字段名在 Site 结构体、这份表单与 Public 白名单里各出现一次，
 // 但前两处的对应关系现在由编译器看着——写错一个键是编译错误，不是「打开那一页才发现」。

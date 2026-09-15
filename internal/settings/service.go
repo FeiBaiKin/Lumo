@@ -287,7 +287,7 @@ func collectDetails(unit *jsonschema.OutputUnit, out []httpx.ErrorDetail) []http
 //
 // 主题设置的声明由主题包的 settings.yaml 给出、随主题安装而变，
 // 不能走 RegisterGroups 那条「启动期固定登记」的路径；但校验语义必须与站点设置完全一致，
-// 否则主题作者要面对两套规则。故把编译与校验单独暴露出来（agent.md §5）。
+// 否则主题作者要面对两套规则。故把编译与校验单独暴露出来。
 //
 // 校验分两步，缺一不可：JSON Schema 判「值是否合法」，Form.Missing 判
 // 「此刻该显示的必填项是否都填了」。后者只能由 Form 回答——条件依赖的可见性是

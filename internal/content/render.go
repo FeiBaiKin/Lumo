@@ -17,7 +17,7 @@ import (
 )
 
 // markdown 是共享的 Markdown 转换器：GFM 扩展（表格、删除线、任务列表、自动链接）、
-// 自动标题 ID；允许原始 HTML 直通——服务端不做净化（agent.md §3.4）。
+// 自动标题 ID；允许原始 HTML 直通——服务端不做净化。
 // goldmark.Markdown 可并发使用。
 var markdown = goldmark.New(
 	goldmark.WithExtensions(extension.GFM),
@@ -25,7 +25,7 @@ var markdown = goldmark.New(
 	goldmark.WithRendererOptions(goldmarkhtml.WithUnsafe()),
 )
 
-// Render 把原稿渲染为主题消费的 HTML（agent.md §3.3）。
+// Render 把原稿渲染为主题消费的 HTML。
 //
 // HTML 原稿原样返回：编辑器产出的就是规范 HTML；Markdown 经 goldmark 渲染，
 // 标题锚点用 slug 规则生成，中文标题得到可读的中文 ID。

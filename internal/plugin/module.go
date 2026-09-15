@@ -1,4 +1,4 @@
-// Package plugin 提供插件系统：插件包加载、生命周期与设置声明（agent.md §14）。
+// Package plugin 提供插件系统：插件包加载、生命周期与设置声明。
 //
 // v1 的插件是**纯声明式**的：包内只有清单、设置声明与展示图，没有可执行的代码。
 // 这一期的目标是先把插件契约立起来——包的格式、安装与启停的语义、设置如何生效。
@@ -92,7 +92,7 @@ func (m *Module) Routes(r app.Router) {
 
 // Start 实现 app.Starter：扫描已安装插件并与库里的状态对齐。
 //
-// 这是模块第一次被允许访问数据库的时机（agent.md §3.2）。
+// 这是模块第一次被允许访问数据库的时机。
 func (m *Module) Start(ctx context.Context) error {
 	if m.store == nil {
 		return nil

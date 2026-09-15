@@ -117,7 +117,7 @@ type compiledSettings struct {
 // compileSettings 编译主题的设置声明。
 //
 // 复用 settings.Validator：主题设置与站点设置走同一个校验器与同一套错误明细格式，
-// Console 的表单引擎因此不必区分两者（agent.md §5）。
+// Console 的表单引擎因此不必区分两者。
 func compileSettings(themeName string, decl *SettingsDecl) (*compiledSettings, error) {
 	groups, err := decl.SettingGroups()
 	if err != nil {

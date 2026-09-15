@@ -1,4 +1,4 @@
-// Package mail 提供 SMTP 发信能力（agent.md §8）。
+// Package mail 提供 SMTP 发信能力。
 //
 // 对外只暴露 Sender 接口与一个后台队列：业务模块把邮件丢进队列就返回，
 // 绝不在请求路径上等 SMTP——对方服务器慢一秒，用户的评论就要多等一秒。

@@ -48,7 +48,7 @@ func (st *StorageSettings) Credentials() (accessKey, secretKey string, err error
 // 抽成变量是为了让六个字段的声明读起来整齐；语义与逐个写 Eq 完全一样。
 var s3Only = form.Eq("driver", DriverS3)
 
-// storageForm 是 storage 分组的表单声明（agent.md §5）。
+// storageForm 是 storage 分组的表单声明。
 //
 // 六个 s3 字段此前一律摊在页面上，选了「本地」也得看一遍。现在它们只在选 S3 时出现，
 // 而「选了 S3 就必须填地址与桶名」这条规则也从 checkStorage 挪进了声明里——

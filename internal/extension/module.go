@@ -1,4 +1,4 @@
-// Package extension 实现 Extension 平面的通用 CRUD（agent.md §6.1）。
+// Package extension 实现 Extension 平面的通用 CRUD。
 //
 // Extension 是给插件预留的自定义模型：核心不解释 spec 里有什么，只负责寻址、
 // 校验命名与持久化。一条记录由 (apiGroup, version, kind, name) 唯一确定，

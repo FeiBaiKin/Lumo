@@ -9,7 +9,7 @@ import type { ComponentProps } from "react";
  * 状态（已发布 / 待审）不用它 —— 状态用 StatusDot：圆点 + 文字，
  * 比一块色底更轻，也更符合 Halo 的列表语言。
  *
- * 关键约束（agent.md §11.3）：颜色不得单独表意，故本组件强制 children。
+ * 关键约束：颜色不得单独表意，故本组件强制 children。
  */
 
 const badgeVariants = cva(

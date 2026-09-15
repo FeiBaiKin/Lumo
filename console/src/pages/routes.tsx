@@ -134,7 +134,7 @@ function Placeholder({
 /**
  * 路由表。
  *
- * 用数组而非手写一堆 `<Route>`：路径必须与 agent.md §8 的页面地图一致，
+ * 用数组而非手写一堆 `<Route>`：路径必须与侧边栏的页面地图一致，
  * 集中在一处才看得出漏了哪一页，也才能一眼看出还有哪几页没实现。
  */
 export const APP_ROUTES = [

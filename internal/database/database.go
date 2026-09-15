@@ -72,8 +72,8 @@ func (db *DB) Version(ctx context.Context) (string, error) {
 
 // CurrentDatabase 返回当前连接的库名。
 //
-// 存在的意义是安全护栏：agent.md §13.2 列出的同实例他项目库（尤其与开发库
-// 仅差后缀的 gocms）一旦被误连，迁移会破坏真实数据。启动时记录实际库名，
+// 存在的意义是安全护栏：同一个 PostgreSQL 实例上往往还躺着别的项目库，库名
+// 又常常只差一个后缀，一旦误连，迁移会破坏真实数据。启动时记录实际库名，
 // 让误连在第一条日志就暴露。
 func (db *DB) CurrentDatabase(ctx context.Context) (string, error) {
 	var name string

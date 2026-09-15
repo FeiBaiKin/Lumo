@@ -1,4 +1,4 @@
-// Package settings 提供统一的声明式设置：分组 Schema、值存储、校验与读取（agent.md §5）。
+// Package settings 提供统一的声明式设置：分组 Schema、值存储、校验与读取。
 //
 // 每个模块经 app.SettingsProvider 声明自己的分组；本模块在 Start 时汇总全部分组并编译 Schema，
 // 其他模块经 From(app) 取得 Service 读取有效值。装配顺序上本模块应排在最前。

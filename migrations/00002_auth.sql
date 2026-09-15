@@ -1,7 +1,7 @@
 -- +goose Up
--- 认证与权限（agent.md §7）。
+-- 认证与权限。
 
--- 用户表。v1 不开访客注册，用户由管理员创建（agent.md §7.1）。
+-- 用户表。v1 不开访客注册，用户由管理员创建。
 CREATE TABLE users (
     id            bigserial   PRIMARY KEY,
     username      text        NOT NULL,
@@ -77,7 +77,7 @@ CREATE INDEX sessions_user_idx ON sessions (user_id);
 -- 清理过期会话的定期任务按此索引扫描
 CREATE INDEX sessions_expires_idx ON sessions (expires_at);
 
--- Personal Access Token，供无头调用（agent.md §7.1：仅存哈希）。
+-- Personal Access Token，供无头调用（仅存哈希）。
 CREATE TABLE access_tokens (
     id          bigserial   PRIMARY KEY,
     -- 令牌的 SHA-256 哈希（十六进制），明文仅在创建时返回一次

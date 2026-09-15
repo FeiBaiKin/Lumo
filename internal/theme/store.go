@@ -28,7 +28,7 @@ const (
 	// PathFavorites 是「我的收藏」页。
 	//
 	// 挂在 /account 下而不是做成顶层的 /favorites：顶层单段路径会遮蔽同名的独立页面
-	// （agent.md §3.2 的已知限制，account 的那几条固定路径就是这么来的），
+	// （已知限制，account 的那几条固定路径就是这么来的），
 	// 而两段路径与 /{slug} 的兜底完全不相交，不必再往保留字清单里添一个词。
 	PathFavorites = "/account/favorites"
 )
@@ -56,7 +56,7 @@ func NewStore(db *bun.DB) *Store { return &Store{db: db} }
 // Searcher 是前台搜索页需要的能力：关键词进，按相关度排好序的文章 ID 与总数出。
 //
 // 只要 ID 与顺序，作者 / 分类 / 标签仍由主题自己的查询补齐——这样搜索引擎换成
-// 什么实现都与前台无关（agent.md §2）。
+// 什么实现都与前台无关。
 type Searcher interface {
 	SearchPostIDs(ctx context.Context, query string, limit, offset int) ([]int64, int, error)
 }

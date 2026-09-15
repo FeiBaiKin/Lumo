@@ -20,7 +20,7 @@ func SetErrorLogger(logger *slog.Logger) {
 	errorLogger.Store(logger)
 }
 
-// 把 huma 的错误构造函数替换为 httpx.Problem：全站只有一种错误模型（agent.md §6）。
+// 把 huma 的错误构造函数替换为 httpx.Problem：全站只有一种错误模型。
 // huma 会用 NewError 的返回类型反射出 OpenAPI 里的错误响应 schema。
 func init() {
 	huma.NewError = newProblem
@@ -60,7 +60,7 @@ func newProblem(status int, detail string, errs ...error) huma.StatusError {
 
 // newProblemWithContext 是 huma 在请求处理链内构造错误的入口。
 //
-// 5xx 一律不回传内部细节：错误只记入日志，响应体仅含状态与标题（agent.md §6）。
+// 5xx 一律不回传内部细节：错误只记入日志，响应体仅含状态与标题。
 // 处理器返回的普通 error 会走到这里并成为 500，因此模块不必担心 DB 错误文本外泄。
 func newProblemWithContext(ctx huma.Context, status int, detail string, errs ...error) huma.StatusError {
 	if status < http.StatusInternalServerError {

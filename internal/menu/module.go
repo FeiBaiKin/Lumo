@@ -1,4 +1,4 @@
-// Package menu 提供导航菜单（agent.md §8）。
+// Package menu 提供导航菜单。
 //
 // 菜单分两层：menus 是菜单本身（主题按 slug 引用），menu_items 是它的条目树。
 // 条目分两类——自定义链接手填地址，站内条目（文章 / 页面 / 分类 / 标签）指向记录 ID，

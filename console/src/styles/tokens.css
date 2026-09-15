@@ -1,7 +1,7 @@
 /*
  * Lumo Console 设计 token —— 三层架构（primitive → semantic → component）。
  *
- * 依据 agent.md §11.3「Console 设计方向」第二版（2026-09-12，参照 Halo 的结构语言重做）。
+ * Console 设计方向第二版（2026-09-12，参照 Halo 的结构语言重做）。
  *
  * 三条不可违反的规则：
  *   1. 只有 primitive 层允许出现字面量（oklch / px / ms）。semantic 层只引用 primitive，
@@ -124,7 +124,7 @@
 
   /*
    * 字体栈。Console 经 go:embed 进单一二进制，必须能离线跑，
-   * 故与「墨 Ink」同策：只用系统字体，零加载成本（agent.md §11.1）。
+   * 故与「墨 Ink」同策：只用系统字体，零加载成本。
    */
   --typeface-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC",

@@ -30,8 +30,8 @@ var namedLayouts = map[string]string{
 
 // baseFuncs 返回与请求无关的模板函数库。
 //
-// 设计取舍：只提供**纯函数**与格式化工具，数据访问一律走路由上下文或 Finder
-// （agent.md §4.2）。不给模板开任意查询的口子——那会把主题变成应用，
+// 设计取舍：只提供**纯函数**与格式化工具，数据访问一律走路由上下文或 Finder。
+// 不给模板开任意查询的口子——那会把主题变成应用，
 // 也会让「主题里写了一条慢查询」这种问题无从排查。
 func baseFuncs() template.FuncMap {
 	return template.FuncMap{

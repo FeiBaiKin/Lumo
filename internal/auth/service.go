@@ -19,7 +19,7 @@ var ErrInvalidCredentials = errors.New("用户名或密码错误")
 // ErrAccountDisabled 表示账号已被停用。
 var ErrAccountDisabled = errors.New("账号已被停用")
 
-// ErrEmailUnverified 表示账号的邮箱尚未验证（agent.md §7.1）。
+// ErrEmailUnverified 表示账号的邮箱尚未验证。
 var ErrEmailUnverified = errors.New("邮箱未验证")
 
 // Service 编排登录、登出与密码变更。

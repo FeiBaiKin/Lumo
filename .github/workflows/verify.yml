@@ -82,7 +82,7 @@ jobs:
   test:
     name: Go 测试（用例已于 2026-09-15 清空，本作业目前是空跑）
     runs-on: ubuntu-latest
-    # 集成测试需要 PostgreSQL；agent.md §12 要求直连独立测试库。
+    # 集成测试需要 PostgreSQL，且必须直连一个独立的测试库。
     # 本作业保留下来是为了将来加回用例时不用重新接线：现在它只会拉起库、
     # 跑一条没有任何用例的 go test，然后绿着退出。
     services:
@@ -102,7 +102,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      # 库名含 test（同 agent.md §13.2 的独立测试库约定；护栏已删，见上）
+      # 库名含 test（独立测试库约定；护栏已删，见上）
       LUMO_TEST_DSN: postgres://postgres:postgres@127.0.0.1:5432/lumo_test?sslmode=disable
       # -race 依赖 cgo，故在本作业覆盖全局的 CGO_ENABLED=0。
       # 交付二进制仍是纯静态（见 build 与 cross-build 作业）。

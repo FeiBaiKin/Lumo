@@ -70,7 +70,7 @@ func (m *Module) Permissions() []app.Permission { return nil }
 
 // Store 返回收藏存储，供主题前台取数（见 theme 的 Favoriter 接口）。
 //
-// 这是本模块唯一对外开放的入口，模块之间仍然不引用彼此的内部实现（agent.md §3.2）。
+// 这是本模块唯一对外开放的入口，模块之间仍然不引用彼此的内部实现。
 func (m *Module) Store() *Store { return m.store }
 
 // From 取回收藏存储；模块未装配或没有数据库时返回 nil。
