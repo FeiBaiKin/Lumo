@@ -312,8 +312,17 @@ deploy/            Dockerfile（源码构建）、Dockerfile.goreleaser（发布
 开发环境、代码约定与提交规范见 [CONTRIBUTING.md](./CONTRIBUTING.md)；
 参与前请先读一遍[行为准则](./CODE_OF_CONDUCT.md)。
 
+项目采用开源 + 商业双授权，提交代码前需要签署 [CLA](./CLA.md)——
+你保留自己代码的版权，授予的是许可而非所有权。
+
 发现安全问题请走 [SECURITY.md](./SECURITY.md) 里的私有报告通道，不要开公开 Issue。
 
 ## 许可证
 
-[GPL-3.0](./LICENSE)
+[AGPL-3.0](./LICENSE)，并附带**插件与主题接口例外条款**：
+通过主题模板接口或插件 API 与 Lumo 交互的独立作品不构成衍生作品，
+可以用任何许可证发布，包括闭源出售。
+
+自己建站（含商业站点）、企业内部部署、开发出售主题与插件，都不需要额外授权。
+把 Lumo 本身作为托管服务转售、或嵌入闭源产品分发，则需要
+[商业授权](./COMMERCIAL.md)。

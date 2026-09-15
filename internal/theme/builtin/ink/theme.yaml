@@ -5,5 +5,5 @@ description: Lumo 内置默认主题。为中文长文阅读设计：与后台�
 author: Lumo
 homepage: https://github.com/FeiBaiKin/lumo
 repo: https://github.com/FeiBaiKin/lumo
-license: GPL-3.0
+license: AGPL-3.0-or-later
 requireLumo: 0.1.0

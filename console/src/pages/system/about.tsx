@@ -214,7 +214,7 @@ export function AboutPage() {
             </p>
             <p className="flex items-start gap-2">
               <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-              Lumo 以 GPL-3.0 发布。进度与设计取舍见仓库内的约束文档。
+              Lumo 以 AGPL-3.0 发布，并附带插件与主题接口例外条款。
             </p>
           </CardBody>
         </Card>

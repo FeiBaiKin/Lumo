@@ -110,7 +110,7 @@ dockers_v2:
       org.opencontainers.image.revision: "{{ .FullCommit }}"
       org.opencontainers.image.created: "{{ .Date }}"
       org.opencontainers.image.source: "https://github.com/FeiBaiKin/lumo"
-      org.opencontainers.image.licenses: "GPL-3.0"
+      org.opencontainers.image.licenses: "AGPL-3.0-or-later"
 
 release:
   draft: true
