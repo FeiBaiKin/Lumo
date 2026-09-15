@@ -76,8 +76,7 @@
 
     {{ if $post.Tags }}
     <p class="article-tags">
-      {{ range $post.Tags }}<a class="tag" href="/tags/{{ .Slug }}"
-        {{ with .Color }}style="--tag-color: {{ . }}"{{ end }}>{{ .Name }}</a>{{ end }}
+      {{ range $post.Tags }}<a class="tag" href="{{ .URL }}" style="--tag-h: {{ .Hue }}">{{ .Name }}</a>{{ end }}
     </p>
     {{ end }}
 

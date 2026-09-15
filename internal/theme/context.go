@@ -216,10 +216,12 @@ type PostView struct {
 	CoverURL string
 	Pinned   bool
 	// Template 是页面选择的主题模板名（仅独立页面），如 page-about。
-	Template    string
-	Author      *AuthorView
-	Categories  []taxonomy.Category
-	Tags        []taxonomy.Tag
+	Template   string
+	Author     *AuthorView
+	Categories []taxonomy.Category
+	// Tags 用 TermView 而不是 taxonomy.Tag：它要带一个派生出来的色相（Hue），
+	// 而色相是「怎么画」的事，不该塞进核心的领域模型里。
+	Tags        []TermView
 	PublishedAt time.Time
 	UpdatedAt   time.Time
 	// ReadingTime 是估算阅读分钟数。

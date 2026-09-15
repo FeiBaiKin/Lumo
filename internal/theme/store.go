@@ -155,7 +155,7 @@ func (r *postRow) toView(author *AuthorView) PostView {
 		Template:   r.Template,
 		Author:     author,
 		Categories: []taxonomy.Category{},
-		Tags:       []taxonomy.Tag{},
+		Tags:       []TermView{},
 		UpdatedAt:  r.UpdatedAt,
 	}
 	if r.PublishedAt.Valid {
@@ -383,11 +383,8 @@ func (s *Store) attach(ctx context.Context, rows []postRow) ([]PostView, error) 
 				ID: t.ID, Name: t.Name, Slug: t.Slug, Description: t.Description, CoverURL: t.CoverURL,
 			})
 		}
-		for _, t := range tags[rows[i].ID] {
-			view.Tags = append(view.Tags, taxonomy.Tag{
-				ID: t.ID, Name: t.Name, Slug: t.Slug, Description: t.Description, Color: t.Color,
-			})
-		}
+		// 标签带上算好的色相（同一个标签在列表、侧栏、文章页必须是同一个颜色）
+		view.Tags = withHues(tags[rows[i].ID])
 		out = append(out, view)
 	}
 	return out, nil

@@ -30,8 +30,7 @@
     <section class="tag-cloud">
       <h2 class="section-title">从标签开始</h2>
       <p class="cloud">
-        {{ range $cloud }}<a class="tag" href="{{ .URL }}" data-weight="{{ .Weight }}"
-          {{ with .Color }}style="--tag-color: {{ . }}"{{ end }}>{{ .Name }}</a>{{ end }}
+        {{ range $cloud }}<a class="tag" href="{{ .URL }}" style="--tag-h: {{ .Hue }}">{{ .Name }}</a>{{ end }}
       </p>
     </section>
     {{ end }}

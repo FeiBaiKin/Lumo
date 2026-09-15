@@ -1,6 +1,7 @@
 {{- /*
-标签云。字号由 Finder 给的 Weight（1–5，按文章数分档）决定，不在这里算：
-分档规则要跟侧栏、搜索页保持一致，散在模板里就会出现「同一个标签在两处不一样大」。
+标签云。标签的尺寸与形状全站统一，颜色由 Finder 算好的色相决定（见 withHues）：
+色相不在模板里算，否则同一个标签在首页、侧栏、文章页会得到三个颜色。
+热度只由**顺序**表达（Cloud 已按文章数倒序），不再用字号——那会让一屏标签高低不齐。
 */ -}}
 {{ $page := .Page }}{{ $m := .M }}
 {{ $count := default 24 $m.count }}
@@ -12,8 +13,7 @@
     <a class="module-more" href="/tags">全部标签</a>
   </div>
   <p class="cloud cloud--lg">
-    {{ range $cloud }}<a class="tag" href="{{ .URL }}" data-weight="{{ .Weight }}"
-      {{ with .Color }}style="--tag-color: {{ . }}"{{ end }}>{{ .Name }}<span class="tag-count">{{ .Count }}</span></a>{{ end }}
+    {{ range $cloud }}<a class="tag" href="{{ .URL }}" style="--tag-h: {{ .Hue }}">{{ .Name }}<span class="tag-count">{{ .Count }}</span></a>{{ end }}
   </p>
 </section>
 {{ end }}

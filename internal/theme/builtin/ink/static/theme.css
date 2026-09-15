@@ -328,6 +328,51 @@
 }
 
 /* ==================================================================
+   标签色
+   ================================================================== */
+/*
+ * 标签的底色 / 文字 / 描边只给**明度与彩度**，色相由每枚标签自己的 --tag-h 提供
+ * （见 .tag）。这样一屏标签可以有十几二十种颜色，而对比度始终是同一个数：
+ * 明度定死，变的只有色相。
+ *
+ * 三处入口各写一遍是 CSS 的限制、不是复制粘贴的疏忽：「跟随系统」要包在 @media 里，
+ * 「站长指定暗色」是个属性选择器。改动时三块必须同时改（与上面 --seal 一套同理）。
+ */
+:root {
+  /* 模板没给色相时的兜底：主题蓝那一带，总比一条黑标签好 */
+  --tag-h: 250;
+  --tag-bg-l: 0.94;
+  --tag-bg-c: 0.05;
+  --tag-bg-hover-l: 0.9;
+  --tag-fg-l: 0.42;
+  --tag-fg-c: 0.105;
+  --tag-line-l: 0.87;
+  --tag-line-c: 0.06;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-scheme="auto"] {
+    --tag-bg-l: 0.3;
+    --tag-bg-c: 0.05;
+    --tag-bg-hover-l: 0.35;
+    --tag-fg-l: 0.8;
+    --tag-fg-c: 0.09;
+    --tag-line-l: 0.38;
+    --tag-line-c: 0.055;
+  }
+}
+
+:root[data-scheme="dark"] {
+  --tag-bg-l: 0.3;
+  --tag-bg-c: 0.05;
+  --tag-bg-hover-l: 0.35;
+  --tag-fg-l: 0.8;
+  --tag-fg-c: 0.09;
+  --tag-line-l: 0.38;
+  --tag-line-c: 0.055;
+}
+
+/* ==================================================================
    基础
    ================================================================== */
 
@@ -2104,24 +2149,42 @@ textarea.field-input,
  * 描边式角标（Console 的 Badge outline 变体）。标签可以带站长指定的颜色，
  * 那时描边与文字都跟着换——底色不换，一排彩色块会盖过文章标题。
  */
+/*
+ * 标签：尺寸、形状、文字居中全站统一，一枚一色。
+ *
+ * 这三处曾经各不相同——列表里是 4px 圆角的小角标、标签云按热度分五档字号、
+ * 首页模块里是胶囊。现在合成**一条**规则：高、圆角、字号、内边距都写在这里，
+ * 别处不再覆盖（.cloud--lg 只剩间距）。
+ *
+ * 颜色由 --tag-h（色相）拼出来，**明度与彩度固定**。固定感知亮度是
+ * 「每枚颜色不同、但每一枚都读得清」的唯一稳法：只变色相时，对比度在各色相之间
+ * 最多漂 ±9%；而 HSL 那种「固定 L 只变 H」的做法，黄与蓝的实际亮度能差一个数量级。
+ * 色相从哪来、站长设的颜色怎么参与，见 finder.go 的 tagHue。
+ */
 .tag {
   display: inline-flex;
   align-items: center;
-  height: 1.625rem;
-  padding-inline: var(--s2);
-  border: 1px solid var(--tag-color, var(--line-strong));
+  justify-content: center;
+  height: 1.75rem;
+  padding-inline: var(--s3);
+  border: 1px solid oklch(var(--tag-line-l) var(--tag-line-c) var(--tag-h));
   border-radius: var(--corner-control);
-  color: var(--tag-color, var(--fg-muted));
+  background: oklch(var(--tag-bg-l) var(--tag-bg-c) var(--tag-h));
+  color: oklch(var(--tag-fg-l) var(--tag-fg-c) var(--tag-h));
   font-size: var(--fs-xs);
-  transition: background-color var(--t-fast) var(--ease-out);
+  /* 中文没有西文的升部降部，靠 align-items 居中常偏下 1px 左右，故把行盒压平 */
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color var(--t-fast) var(--ease-out),
+    border-color var(--t-fast) var(--ease-out);
 }
 
 .tag:hover {
-  background: var(--surface-active);
-  color: var(--tag-color, var(--fg));
+  background: oklch(var(--tag-bg-hover-l) var(--tag-bg-c) var(--tag-h));
+  border-color: oklch(var(--tag-fg-l) var(--tag-fg-c) var(--tag-h));
 }
 
-/* 标签云：字号由服务端算好的 1–5 档权重决定 */
+/* 标签云只调间距：尺寸与形状与别处的标签完全一致 */
 .cloud {
   display: flex;
   flex-wrap: wrap;
@@ -2129,12 +2192,6 @@ textarea.field-input,
   align-items: center;
   margin: 0;
 }
-
-.cloud .tag[data-weight="1"] { font-size: var(--fs-xs); }
-.cloud .tag[data-weight="2"] { font-size: var(--fs-sm); }
-.cloud .tag[data-weight="3"] { font-size: var(--fs-base); height: 1.875rem; }
-.cloud .tag[data-weight="4"] { font-size: var(--fs-md); height: 2rem; }
-.cloud .tag[data-weight="5"] { font-size: var(--fs-lg); height: 2.25rem; }
 
 /* ==================================================================
    归档页头（分类 / 标签 / 作者 / 月份）
@@ -3727,20 +3784,19 @@ html.auth-open {
 
 /* ---------- 标签云（首页模块里的放大版） ---------- */
 
+/* 标签云（首页模块）：间距略松一档，标签本身与别处一模一样 */
 .cloud--lg {
   gap: var(--s3);
 }
-.cloud--lg .tag {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--s2);
-  padding: var(--s2) var(--s4);
-  border-radius: var(--corner-full);
-  font-size: var(--fs-sm);
-}
+
+/*
+ * 标签上的计数。跟着标签的文字色走（opacity 而不是换一个灰），
+ * 否则一枚暖色的标签里会嵌进一个冷灰的数字。
+ */
 .tag-count {
-  color: var(--fg-subtle);
-  font-size: 0.75em;
+  margin-inline-start: var(--s2);
+  font-size: 0.85em;
+  opacity: 0.75;
 }
 
 /* ---------- 友情链接 ---------- */

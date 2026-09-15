@@ -3,6 +3,9 @@ package theme
 import (
 	"context"
 	"html/template"
+	"math"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -203,11 +206,17 @@ func (f *Finder) Tags() TagsFinder { return TagsFinder{f} }
 // All 返回全部标签，按名称排序。
 func (t TagsFinder) All() []TermView {
 	return cached(t.f, "tags.all", func() ([]TermView, error) {
-		return t.f.store.Tags(t.f.ctx, 0)
+		tags, err := t.f.store.Tags(t.f.ctx, 0)
+		if err != nil {
+			return nil, err
+		}
+		return withHues(tags), nil
 	})
 }
 
-// Cloud 返回按文章数倒序的前 n 个标签，每个带 Weight（1–5）供渲染字号。
+// Cloud 返回按文章数倒序的前 n 个标签。
+//
+// 顺序就是热度的唯一表达：字号不参与编码（见 withHues）。
 func (t TagsFinder) Cloud(n int) []TermView {
 	n = clamp(n)
 	return cached(t.f, "tags.cloud:"+itoa(n), func() ([]TermView, error) {
@@ -215,7 +224,7 @@ func (t TagsFinder) Cloud(n int) []TermView {
 		if err != nil {
 			return nil, err
 		}
-		return withWeights(tags), nil
+		return withHues(tags), nil
 	})
 }
 
@@ -348,8 +357,10 @@ type TermView struct {
 	URL string
 	// Count 是其下已发布且公开的文章数。
 	Count int
-	// Weight 是标签云的字号权重，取值 1–5；非标签云场景为 0。
-	Weight int
+	// Hue 是这枚标签的色相（0–359），CSS 用它拼出底色与文字色。
+	// 站长设过颜色就用那个颜色的色相，没设过由标识稳定算出（见 tagHue）。
+	// 分类不用它，为零值。
+	Hue int
 }
 
 // CategoryNode 是带文章数的分类树节点。
@@ -406,28 +417,121 @@ type CommentNode struct {
 	Children []*CommentNode
 }
 
-// withWeights 给标签云的条目按文章数分配 1–5 的权重。
+// withHues 给每枚标签算一个色相。
 //
-// 按名次而非绝对数量分档：一个站点可能最热标签 500 篇、次热 3 篇，
-// 按数量线性映射会让除最热之外的全挤在最小号。
-func withWeights(tags []TermView) []TermView {
-	if len(tags) == 0 {
-		return tags
-	}
-	maxCount := 0
-	minCount := tags[0].Count
-	for _, t := range tags {
-		maxCount = max(maxCount, t.Count)
-		minCount = min(minCount, t.Count)
-	}
-	span := maxCount - minCount
+// 2026-09-15 改：此前标签云按文章数分 1–5 档字号，同一屏里的标签因此高低不齐——
+// 站长要的是「大小统一、形状统一、文字居中，颜色可以各不相同」。热度改由**顺序**
+// 表达（Cloud 仍按文章数倒序取前 n 个），不再占用字号这个通道。
+//
+// 色相的计算见 tagHue。
+func withHues(tags []TermView) []TermView {
 	for i := range tags {
-		if span == 0 {
-			tags[i].Weight = 3
-			continue
-		}
-		// 5 档，向上取整保证最热的一定是 5。
-		tags[i].Weight = 1 + (tags[i].Count-minCount)*4/span
+		tags[i].Hue = tagHue(&tags[i])
 	}
 	return tags
+}
+
+// tagHue 返回一枚标签的色相（0–359）。
+//
+// 两条来源，站长优先：
+//
+//  1. 后台给这个标签设过颜色 → 用它。**只取色相**，深浅由主题按明暗模式定：
+//     一排标签的对比度必须一致，而站长给的颜色（比如浅黄）直接拿来当文字色会读不清。
+//  2. 没设过 → 由标签标识稳定地算一个。稳定是硬要求：同一个标签在列表、文章页、
+//     标签云里必须是同一个颜色，换一页就换色的话，颜色就不成其为标识了。
+//
+// 算法是「哈希 → 有限调色板」而不是「哈希 → 0–359 连续取值」：连续取值下，
+// 一屏里出现两枚几乎同色的标签是常态（十六枚里撞色是概率问题，不是运气问题），
+// 而那比「两枚标签同色」更难看。
+func tagHue(t *TermView) int {
+	if hue, ok := hexHue(t.Color); ok {
+		return hue
+	}
+	// 用 slug 而不是显示名：站长改标签名不该换颜色。
+	// 没有 slug 时退回名字，至少还是个稳定值。
+	seed := t.Slug
+	if seed == "" {
+		seed = t.Name
+	}
+	return paletteHues[int(hash32(seed)%uint32(len(paletteHues)))]
+}
+
+// paletteHues 是没设颜色时用的调色板，16 个大致等距的色相。
+//
+// 等距不是必需，但「大致均匀铺开」能让一屏标签看起来是调过的而不是随机的。
+var paletteHues = []int{
+	22, 44, 67, 89, 112, 134, 157, 179,
+	202, 224, 247, 269, 292, 314, 337, 359,
+}
+
+// hash32 是 FNV-1a 32 位加一轮 murmur3 的收尾混合。
+//
+// 单用 FNV-1a 对本场景够用（它的低位是真正被搅动过的），
+// 收尾混合是为了让「前缀相同的一串中文标签」也散得开——
+// 中文标签常有「前端 / 前端工程 / 前端工程化」这种前缀族。
+func hash32(s string) uint32 {
+	const (
+		offset = 2166136261
+		prime  = 16777619
+	)
+	h := uint32(offset)
+	for i := 0; i < len(s); i++ {
+		h ^= uint32(s[i])
+		h *= prime
+	}
+	// murmur3 的 fmix32
+	h ^= h >> 16
+	h *= 0x85ebca6b
+	h ^= h >> 13
+	h *= 0xc2b2ae35
+	h ^= h >> 16
+	return h
+}
+
+// hexHue 把站长设的 #rrggbb 转成 OKLCH 的色相角。
+//
+// 转 OKLCH 而不是 HSL：主题的标签色是用 oklch() 拼出来的，两者的色相角不是同一个刻度
+// （同一个红色，HSL 是 0°、OKLCH 约 29°）。用 HSL 的色相角去喂 oklch() 会得到一个
+// 完全不是站长选的那个颜色。
+//
+// 解析失败（空串、写坏的十六进制）返回 false，调用方退回按名字生成。
+func hexHue(color string) (int, bool) {
+	hex := strings.TrimPrefix(strings.TrimSpace(color), "#")
+	if len(hex) != 6 {
+		return 0, false
+	}
+	value, err := strconv.ParseUint(hex, 16, 32)
+	if err != nil {
+		return 0, false
+	}
+	r := float64((value>>16)&0xff) / 255
+	g := float64((value>>8)&0xff) / 255
+	b := float64(value&0xff) / 255
+
+	// sRGB → 线性（与 theme.css 里那套一致：阈值 0.04045，见 WCAG 的相对亮度定义）
+	lin := func(c float64) float64 {
+		if c <= 0.04045 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	r, g, b = lin(r), lin(g), lin(b)
+
+	// 线性 sRGB → OKLab（Björn Ottosson 的矩阵）
+	l := 0.4122214708*r + 0.5363325363*g + 0.0514459929*b
+	m := 0.2119034982*r + 0.6806995451*g + 0.1073969566*b
+	s := 0.0883024619*r + 0.2817188376*g + 0.6299787005*b
+
+	l, m, s = math.Cbrt(l), math.Cbrt(m), math.Cbrt(s)
+
+	// 只要色相，故只算 a 与 b 两个对立轴（L 用不上）。
+	// 写成三行而不是挤成一行：这三行是三个不同的轴，混起来正是最容易犯的错。
+	a := 1.9779984951*l - 2.4285922050*m + 0.4505937099*s
+	bb := 0.0259040371*l + 0.7827717662*m - 0.8086757660*s
+
+	hue := math.Atan2(bb, a) * 180 / math.Pi
+	if hue < 0 {
+		hue += 360
+	}
+	return int(math.Round(hue)) % 360, true
 }
