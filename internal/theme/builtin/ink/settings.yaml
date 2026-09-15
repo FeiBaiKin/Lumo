@@ -60,7 +60,9 @@ groups:
 
   - name: homepage
     label: 首页
-    description: 首页由若干模块自上而下拼成。拖动可以调整先后，删掉即不显示。
+    # 这一组刻意不写 description：整组只有「模块」一个主体，「模块」字段自己的说明
+    # 已经把事情说完了。再在前面挂一句组级说明，就成了同一页上两段说同一件事的话，
+    # 而那段话原来还占着页面顶部一整行。说明跟着要说明的字段走。
     order: 5
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
@@ -73,7 +75,7 @@ groups:
           title: 首页模块
           x-widget: repeater
           x-item-label: 模块
-          description: 从上到下就是首页上的先后顺序；拖动条目左侧的手柄可以调整。每个模块的参数只对它自己生效
+          description: 首页由若干模块自上而下拼成，从上到下就是前台的先后顺序。拖动条目左侧的手柄可以调整，删掉即不显示；每个模块的参数只对它自己生效
           items:
             type: object
             additionalProperties: false

@@ -483,7 +483,8 @@ function SwitchControl({
   error,
   disabled,
   onChange,
-}: ControlProps) {
+  stacked = false,
+}: ControlProps & { stacked?: boolean | undefined }) {
   const label = labelFor(schema, path);
   return (
     /*
@@ -491,14 +492,27 @@ function SwitchControl({
      * 窄的时候（弹窗里的插件设置）标签在左、开关在右，与全站的 SwitchRow 一致；
      * 宽的时候（设置页）并入 FieldGrid 那套「标签列 + 控件列」，开关落在控件列的开头。
      * 用容器查询而不是窗口断点：弹窗的宽度与窗口无关，用断点会在宽屏上把两列塞进 672px 的弹窗。
+     * stacked 的分支见 FieldGrid：卡片里不分栏。
      */
-    <div className="flex items-start justify-between gap-4 @[44rem]:grid @[44rem]:grid-cols-[16rem_minmax(0,1fr)] @[44rem]:gap-x-8">
-      <div className="flex min-w-0 flex-col gap-0.5 @[44rem]:pt-2">
+    <div
+      className={cn(
+        "flex items-start justify-between gap-4",
+        stacked
+          ? "max-w-2xl"
+          : "@[44rem]:grid @[44rem]:grid-cols-[16rem_minmax(0,1fr)] @[44rem]:gap-x-8",
+      )}
+    >
+      <div
+        className={cn(
+          "flex min-w-0 flex-col gap-0.5",
+          !stacked && "@[44rem]:pt-2",
+        )}
+      >
         {/* 开关的标签在窄容器里比别的字段大一档（它是整行的标题）；
             宽容器下并入标签列，就跟其他字段的标签同号，否则同一列里两种字号会发锯齿 */}
         <FieldLabel
           htmlFor={fieldId(path)}
-          className="text-base @[44rem]:text-sm"
+          className={cn("text-base", !stacked && "@[44rem]:text-sm")}
         >
           {label}
         </FieldLabel>
@@ -512,7 +526,7 @@ function SwitchControl({
         checked={Boolean(value)}
         disabled={disabled}
         onCheckedChange={(checked) => onChange(checked)}
-        className="mt-0.5 @[44rem]:mt-2"
+        className={cn("mt-0.5", !stacked && "@[44rem]:mt-2")}
         aria-describedby={error ? `${fieldId(path)}-error` : undefined}
       />
     </div>
@@ -529,19 +543,37 @@ function SwitchControl({
  * 为什么按容器宽度而不是窗口宽度切换：同一套表单引擎既渲染在整页的设置页里
  * （上千像素），也渲染在 672px 的弹窗里（插件设置）。窗口宽 1440 时弹窗照样只有 672，
  * 用媒体查询会把两列硬塞进弹窗。容器查询问的是「我实际有多宽」，这才是对的问题。
+ *
+ * `stacked` 关掉这套自适应，一律上下排：卡片（重复条目、嵌套对象）里的字段用它。
+ * 标签列是给一整页字段留的对齐位，而卡片本身就只有几百像素 —— 挤出一列之后，
+ * 说明文字个个折成两行，控件也退到半宽，卡片反倒比不分栏时更挤（见 RepeaterItem）。
  */
 function FieldGrid({
   label,
   description,
   children,
+  stacked = false,
 }: {
   label: ReactNode;
   description: ReactNode;
   children: ReactNode;
+  stacked?: boolean | undefined;
 }) {
   return (
-    <div className="flex flex-col gap-y-1.5 @[44rem]:grid @[44rem]:grid-cols-[16rem_minmax(0,1fr)] @[44rem]:gap-x-8">
-      <div className="flex min-w-0 flex-col gap-0.5 @[44rem]:pt-2">
+    <div
+      className={cn(
+        "flex flex-col gap-y-1.5",
+        stacked
+          ? "max-w-2xl"
+          : "@[44rem]:grid @[44rem]:grid-cols-[16rem_minmax(0,1fr)] @[44rem]:gap-x-8",
+      )}
+    >
+      <div
+        className={cn(
+          "flex min-w-0 flex-col gap-0.5",
+          !stacked && "@[44rem]:pt-2",
+        )}
+      >
         {label}
         {description}
       </div>
@@ -769,6 +801,7 @@ function RepeaterItem({
           values,
           disabled,
           onChange,
+          stacked: true,
         })}
       </Inset>
     </Reorder.Item>
@@ -782,6 +815,13 @@ export type RenderGroup = (props: {
   values: Record<string, unknown>;
   disabled: boolean;
   onChange: (values: Record<string, unknown>) => void;
+  /**
+   * 这一组画在卡片里（重复条目的每一条、嵌套对象）。
+   *
+   * 卡片内的字段一律上下排：标签列（16rem）在几百像素宽的卡片里会把说明文字
+   * 挤成两行、控件也只剩半宽，卡片比不分栏时更挤。见 FieldGrid。
+   */
+  stacked?: boolean | undefined;
 }) => React.ReactNode;
 
 /**
@@ -800,6 +840,7 @@ export function SchemaField({
   onBlur,
   scope,
   renderGroup,
+  stacked = false,
 }: ControlProps & {
   renderGroup: RenderGroup;
   /**
@@ -810,6 +851,11 @@ export function SchemaField({
    * 没有任何报错。让类型检查把漏传挡在编译期，比让它在运行期变成幽灵字段好。
    */
   scope: FormValues;
+  /**
+   * 一律上下排（不走「标签列 + 控件列」）。卡片里的字段由 renderGroup 传 true，
+   * 理由见 FieldGrid。
+   */
+  stacked?: boolean | undefined;
 }) {
   if (!isVisible(schema["x-show-if"], scope)) {
     return null;
@@ -830,12 +876,40 @@ export function SchemaField({
 
   // 布尔字段自成一行，排布见 SwitchControl
   if (widget === "switch") {
-    return <SwitchControl {...control} />;
+    return <SwitchControl {...control} stacked={stacked} />;
   }
 
-  // 复合控件（列表 / 重复 / 嵌套）自己负责显示错误，其余在这里统一显示
-  const showError =
-    widget !== "list" && widget !== "repeater" && widget !== "group";
+  /*
+    整块的字段（重复条目）不套 FieldGrid 那套「标签列 + 控件列」。
+    16rem 的标签列是给单行控件留的对齐位，而重复条目是一整摞卡片：
+    标签列会把它挤窄一大截 —— 首页模块的卡片因此掉到容器查询的断点以下，
+    连卡内的参数都从两列退成上下排，而站长进这一页要看的就是那些卡片。
+    标签与说明改为压在整块上方，宽度全留给条目。
+
+    用 fieldset + legend 而不是「div 加一个 label」：重复条目没有单一的可聚焦控件，
+    给它一个指向不存在元素的 for 是假的关联；fieldset 天生就是「一组同构控件」的
+    语义，读屏会把它连同标题一起念出来。fieldset 自带 min-inline-size: min-content，
+    窄容器下会撑破布局，故补 min-w-0。
+  */
+  if (widget === "repeater") {
+    return (
+      <fieldset className="min-w-0">
+        <legend className="text-sm font-medium text-ink select-none">
+          {label}
+        </legend>
+        <div className="flex flex-col gap-3 pt-1">
+          {schema.description ? (
+            <FieldDescription>{schema.description}</FieldDescription>
+          ) : null}
+          {renderControl(widget, control, renderGroup)}
+        </div>
+      </fieldset>
+    );
+  }
+
+  // 复合控件（列表 / 嵌套）自己负责显示错误，其余在这里统一显示
+  // （重复条目在上面就返回了，它同样自带错误行）
+  const showError = widget !== "list" && widget !== "group";
 
   return (
     <FieldGrid
@@ -845,6 +919,7 @@ export function SchemaField({
           <FieldDescription>{schema.description}</FieldDescription>
         ) : null
       }
+      stacked={stacked}
     >
       {renderControl(widget, control, renderGroup)}
       {showError ? <ErrorLine path={path} error={error} /> : null}
@@ -905,6 +980,7 @@ function renderControl(
             values,
             disabled: control.disabled,
             onChange: control.onChange,
+            stacked: true,
           })}
         </Inset>
       );

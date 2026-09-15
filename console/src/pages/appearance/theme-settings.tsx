@@ -150,6 +150,12 @@ function ThemeGroupForm({
       values={group.values as FormValues}
       serverErrors={errors}
       serverMessages={messages}
+      /*
+        一律上下排。这个面板与主题列表并排，实际只有 800 出头，
+        挤出的那一列标签会把每条说明折成两行、控件也只剩半宽 ——
+        站长在这个页面上抱怨的正是「空间很窄」（见 controls.tsx 的 FieldGrid）。
+      */
+      stacked
       onSubmit={async (values) => {
         setErrors({});
         setMessages([]);

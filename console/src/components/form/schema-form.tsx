@@ -66,6 +66,13 @@ export type SchemaFormProps = {
   secretSet?: readonly string[] | undefined;
   /** 值的比较器。设置值都是 JSON 可序列化的，默认用序列化结果比较。 */
   isEqual?: (a: FormValues, b: FormValues) => boolean;
+  /**
+   * 一律上下排（不走「标签列 + 控件列」）。
+   *
+   * 主题设置用它：那个面板与主题列表并排、只有 800 出头，挤出一列之后说明文字
+   * 个个折成两行，控件也只剩半宽。站点设置铺满工作区，两列在那儿才是成立的。
+   */
+  stacked?: boolean | undefined;
   className?: string;
 };
 
@@ -86,6 +93,7 @@ export function SchemaForm({
   disableWhenPristine = true,
   isEqual,
   secretSet,
+  stacked = false,
   className,
 }: SchemaFormProps) {
   const [form, setForm] = useState<FormValues>(() =>
@@ -248,6 +256,7 @@ export function SchemaForm({
         disabled={disabled || pending}
         onChange={setValue}
         onBlur={markTouched}
+        stacked={stacked}
       />
 
       <div className="flex flex-wrap items-center gap-3 border-line border-t pt-4">
@@ -305,6 +314,8 @@ export type SchemaFormFieldsProps = {
   omit?: readonly string[] | undefined;
   /** 没有任何字段可见时显示的内容（条件依赖把整组字段都藏起来时）。 */
   empty?: React.ReactNode | undefined;
+  /** 一律上下排（不走「标签列 + 控件列」）。见 SchemaFormProps。 */
+  stacked?: boolean | undefined;
   className?: string | undefined;
 };
 
@@ -327,6 +338,7 @@ export function SchemaFormFields({
   disabled = false,
   omit,
   empty,
+  stacked = false,
   className,
 }: SchemaFormFieldsProps) {
   /*
@@ -343,6 +355,7 @@ export function SchemaFormFields({
       values: groupValues,
       disabled: groupDisabled,
       onChange: onGroupChange,
+      stacked,
     }) => (
       <div className="@container flex flex-col gap-4">
         {/*
@@ -367,6 +380,7 @@ export function SchemaFormFields({
                 onBlur={() => onBlur(path)}
                 scope={groupValues}
                 renderGroup={renderGroup}
+                stacked={stacked}
               />
             );
           })}
@@ -424,6 +438,7 @@ export function SchemaFormFields({
                 onBlur={() => onBlur(key)}
                 scope={values}
                 renderGroup={renderGroup}
+                stacked={stacked}
               />
             ))}
           </div>
