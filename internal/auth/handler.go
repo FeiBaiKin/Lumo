@@ -377,12 +377,22 @@ type userView struct {
 	DisplayName string   `json:"displayName"`
 	AvatarURL   string   `json:"avatarUrl"`
 	Roles       []string `json:"roles"`
+	// RoleLabels 与 Roles 一一对应，是角色的显示名。
+	//
+	// 一并下发是为了让界面永远不用自己捏一张「角色名 → 中文」的表：
+	// 那张表在 2026-09-15 把内置角色从五挡收成三挡时就漂过一次——
+	// 侧栏还挂着已经不存在的「作者」。显示名可以改，只能以服务端为准。
+	RoleLabels []string `json:"roleLabels"`
 	// EmailVerified 只暴露布尔值，不暴露验证时间：后台需要知道「这个号能不能登录」，
 	// 但那个时间戳除了精确到秒的账号活动轨迹之外没有任何用处。
 	EmailVerified bool `json:"emailVerified"`
 }
 
 func newUserView(u *User) userView {
+	labels := make([]string, 0, len(u.Roles))
+	for i := range u.Roles {
+		labels = append(labels, u.Roles[i].DisplayLabel())
+	}
 	return userView{
 		ID:            u.ID,
 		Username:      u.Username,
@@ -390,6 +400,7 @@ func newUserView(u *User) userView {
 		DisplayName:   u.Name(),
 		AvatarURL:     u.AvatarURL,
 		Roles:         u.RoleNames(),
+		RoleLabels:    labels,
 		EmailVerified: u.EmailVerified(),
 	}
 }

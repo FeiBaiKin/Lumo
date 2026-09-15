@@ -66,6 +66,11 @@ const contentClass = cn(
   "-translate-x-1/2 -translate-y-1/2",
   "rounded-overlay border border-line bg-surface shadow-overlay",
   "flex max-h-[calc(100dvh-3rem)] flex-col outline-none",
+  // 页面习惯把标题栏 / 主体 / 底栏包在一个 <form> 里提交（角色、用户、分类…）。
+  // 那个 form 就成了面板唯一的 flex 子项：它自己的高度不设限，于是面板被 max-h 卡住、
+  // 内容溢出到面板之外——底部的「保存」按钮落在视口外，而且页面滚动被浮层锁着，滚不到。
+  // 让 form 顶替面板当 flex 容器，主体的 overflow-y-auto 才真正生效。
+  "[&>form]:flex [&>form]:min-h-0 [&>form]:flex-1 [&>form]:flex-col",
 );
 
 export function DialogContent({

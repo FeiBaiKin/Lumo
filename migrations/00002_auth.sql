@@ -27,7 +27,8 @@ CREATE TABLE users (
 CREATE UNIQUE INDEX users_username_key ON users (lower(username));
 CREATE UNIQUE INDEX users_email_key ON users (lower(email));
 
--- 角色表。内置角色由程序保证存在，builtin 标记防止被编辑或删除。
+-- 角色表。内置角色由程序保证存在，builtin 标记防止被删除
+-- （2026-09-15 起内置角色的**权限**可改，见 00004；名字与删除仍然受保护）。
 CREATE TABLE roles (
     id          bigserial   PRIMARY KEY,
     name        text        NOT NULL,

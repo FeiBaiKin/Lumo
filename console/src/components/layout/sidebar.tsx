@@ -44,13 +44,6 @@ import { Link, useLocation } from "react-router";
  * 无权限的项直接不渲染：显示一个点了就 403 的入口，比没有这个入口更糟。
  */
 
-const ROLE_LABELS: Record<string, string> = {
-  "super-admin": "超级管理员",
-  admin: "管理员",
-  editor: "编辑",
-  author: "作者",
-};
-
 const THEME_OPTIONS: { value: ThemeChoice; label: string; icon: typeof Sun }[] =
   [
     { value: "light", label: "浅色", icon: Sun },
@@ -175,7 +168,9 @@ export function SidebarNav({
 /** 底部用户区（Halo 的 UserProfileBanner）：头像、名字、角色，右侧一个菜单。 */
 export function UserBanner({ className }: { className?: string }) {
   const { user } = useAuth();
-  const role = user?.roles?.[0];
+  // 显示名由服务端随用户一起下发：站长可以改角色的显示名，
+  // 前端写死一张表就会在下一次改档时漂掉（作者角色取消那次就漂过）。
+  const role = user?.roleLabels?.[0];
   return (
     <div
       className={cn(
@@ -194,7 +189,7 @@ export function UserBanner({ className }: { className?: string }) {
         {role ? (
           <Badge tone="outline" className="w-fit">
             <ShieldCheck aria-hidden="true" />
-            {ROLE_LABELS[role] ?? role}
+            {role}
           </Badge>
         ) : null}
       </div>

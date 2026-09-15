@@ -109,7 +109,7 @@ func runCreateUser(args []string) error {
 	username := fs.String("username", "", "用户名（小写字母、数字、连字符）")
 	email := fs.String("email", "", "邮箱")
 	displayName := fs.String("display-name", "", "显示名，缺省时使用用户名")
-	roles := fs.String("role", perm.RoleAuthor, "角色，多个用逗号分隔")
+	roles := fs.String("role", perm.RoleAdmin, "角色，多个用逗号分隔")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

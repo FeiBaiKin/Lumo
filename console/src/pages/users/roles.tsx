@@ -37,7 +37,15 @@ import { EntitySkeleton, ErrorState } from "@/components/ui/states";
 import { Checkbox, CheckboxRow } from "@/components/ui/toggle";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Eye, Lock, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import {
+  Eye,
+  Lock,
+  Pencil,
+  Plus,
+  RotateCcw,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 /**
@@ -46,34 +54,26 @@ import { useMemo, useState } from "react";
  * 角色编辑器由**服务端的权限清单**驱动（`/permissions`），不是前端写死的勾选框。
  * 这一点是刻意的：权限串由各模块声明并随版本演进，前端写死一份就会
  * 在新增权限时静默漏掉它 —— 而「角色编辑器里看不到某条权限」
- * 会让站长以为那条权限不存在。
+ * 会让站长以为那条权限不存在。资源分组的中文名同理，也由服务端下发。
  *
  * 清单按**资源**分组。一屏几十个勾选框会让人无从下手；按资源分组后，
  * 每一组都是「这个角色能不能碰这一类东西」，是可以逐组决策的。
  *
- * 内置角色不可改删（每次启动以代码为准播种），故它们只能「查看权限」，
- * 并在标签上标出「内置」—— 一个点了没反应的编辑按钮比没有这个按钮更让人困惑。
+ * 三挡内置角色（用户 / 编辑 / 管理员）的权限**可以改**（2026-09-15 起）：
+ * 改过的会在标题旁标出「已自定义」，并给出「恢复默认」写回代码里的那一套。
+ * 超级管理员不在本页出现（`locked`），它不可改、不可删，也就没有可点的编辑入口 ——
+ * 一个点了没反应的编辑按钮比没有这个按钮更让人困惑。
  */
 
 type Role = components["schemas"]["Role"];
 type PermissionView = components["schemas"]["PermissionView"];
 
-const RESOURCE_LABELS: Record<string, string> = {
-  posts: "文章",
-  pages: "页面",
-  taxonomies: "分类与标签",
-  comments: "评论",
-  media: "附件",
-  menus: "菜单",
-  users: "用户",
-  roles: "角色",
-  themes: "主题",
-  settings: "设置",
-  extensions: "扩展记录",
-  site: "站点",
+type PermissionGroup = {
+  resource: string;
+  /** 资源段的中文名，由服务端下发；缺声明时回退到资源标识。 */
+  label: string;
+  items: PermissionView[];
 };
-
-type PermissionGroup = { resource: string; items: PermissionView[] };
 
 /** 按资源分组；`held` 给出时只保留持有的项。 */
 function groupByResource(
@@ -81,18 +81,20 @@ function groupByResource(
   held?: string[],
 ): PermissionGroup[] {
   const set = held ? new Set(held) : null;
-  const map = new Map<string, PermissionView[]>();
+  const map = new Map<string, PermissionGroup>();
   for (const permission of permissions) {
     if (set && !set.has(permission.key)) {
       continue;
     }
-    const list = map.get(permission.resource) ?? [];
-    list.push(permission);
-    map.set(permission.resource, list);
+    const group = map.get(permission.resource) ?? {
+      resource: permission.resource,
+      label: permission.resourceLabel || permission.resource,
+      items: [],
+    };
+    group.items.push(permission);
+    map.set(permission.resource, group);
   }
-  return [...map.entries()]
-    .map(([resource, items]) => ({ resource, items }))
-    .sort((a, b) => a.resource.localeCompare(b.resource));
+  return [...map.values()].sort((a, b) => a.resource.localeCompare(b.resource));
 }
 
 export function RolesPage() {
@@ -102,6 +104,7 @@ export function RolesPage() {
   const [editing, setEditing] = useState<Role | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Role | null>(null);
+  const [resetting, setResetting] = useState<Role | null>(null);
 
   const rolesQuery = useQuery({
     queryKey: ["roles"],
@@ -131,12 +134,16 @@ export function RolesPage() {
   const permissions = permsQuery.data ?? [];
   const loading = rolesQuery.isLoading || permsQuery.isLoading;
 
+  // 锁定的角色（超级管理员）不在这里出现：它不可改也不可删，
+  // 列出来只会占一行。用户页仍能把它分配给账号。
+  const manageable = roles.filter((role) => !role.locked);
+
   return (
     <>
       <PageHeader
         icon={ShieldCheck}
         title="角色"
-        description="角色即一组权限串。内置角色随代码播种，不可修改；自定义角色可以自由组合"
+        description="用户、编辑、管理员三挡内置角色的权限可以随时改，也可以另建角色组合出更细的分工"
         actions={
           <Button
             variant="primary"
@@ -172,12 +179,13 @@ export function RolesPage() {
             />
           ) : (
             <EntityList>
-              {roles.map((role) => (
+              {manageable.map((role) => (
                 <RoleRow
                   key={role.id}
                   role={role}
                   onView={() => setViewing(role)}
                   onEdit={() => setEditing(role)}
+                  onReset={() => setResetting(role)}
                   onDelete={() => setDeleting(role)}
                 />
               ))}
@@ -229,6 +237,36 @@ export function RolesPage() {
           setDeleting(null);
         }}
       />
+
+      <ConfirmDialog
+        open={resetting !== null}
+        onOpenChange={(open) => !open && setResetting(null)}
+        title={`把「${resetting?.label || resetting?.name}」恢复默认？`}
+        consequence={
+          <p>
+            这个角色的权限会写回代码里的那一套，
+            <strong className="font-medium text-ink">
+              你对它做过的调整会丢失
+            </strong>
+            。用户不受影响 —— 变的只是角色带哪些权限。
+          </p>
+        }
+        confirmLabel="恢复默认"
+        onConfirm={async () => {
+          if (!resetting) {
+            return;
+          }
+          const role = resetting;
+          await runMutation(
+            () =>
+              api.POST("/api/v1/console/roles/{id}/reset", {
+                params: { path: { id: role.id } },
+              }),
+            { success: "已恢复默认权限", invalidate: ["roles"] },
+          ).catch(() => {});
+          setResetting(null);
+        }}
+      />
     </>
   );
 }
@@ -238,11 +276,13 @@ function RoleRow({
   role,
   onView,
   onEdit,
+  onReset,
   onDelete,
 }: {
   role: Role;
   onView: () => void;
   onEdit: () => void;
+  onReset: () => void;
   onDelete: () => void;
 }) {
   const label = role.label || role.name;
@@ -256,14 +296,18 @@ function RoleRow({
           width="max-w-lg"
           title={label}
           extra={
-            role.builtin ? (
-              <Badge tone="outline">
-                <Lock aria-hidden="true" />
-                内置
-              </Badge>
-            ) : (
-              <Badge tone="seal">自定义</Badge>
-            )
+            <>
+              {role.builtin ? (
+                <Badge tone="outline">
+                  <Lock aria-hidden="true" />
+                  内置
+                </Badge>
+              ) : (
+                <Badge tone="seal">自定义</Badge>
+              )}
+              {/* 内置角色的权限被改过：不标出来的话，「恢复默认」这个入口会显得莫名其妙 */}
+              {role.customized ? <Badge tone="warn">已自定义</Badge> : null}
+            </>
           }
           description={
             <>
@@ -281,12 +325,18 @@ function RoleRow({
             <Eye aria-hidden="true" />
             查看权限
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onEdit}>
+            <Pencil aria-hidden="true" />
+            编辑
+          </DropdownMenuItem>
+          {role.builtin && role.customized ? (
+            <DropdownMenuItem onSelect={onReset}>
+              <RotateCcw aria-hidden="true" />
+              恢复默认
+            </DropdownMenuItem>
+          ) : null}
           {role.builtin ? null : (
             <>
-              <DropdownMenuItem onSelect={onEdit}>
-                <Pencil aria-hidden="true" />
-                编辑
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem danger onSelect={onDelete}>
                 <Trash2 aria-hidden="true" />
@@ -322,8 +372,8 @@ function PermissionsDialog({
           <DialogTitle>{role?.label || role?.name}</DialogTitle>
           <DialogDescription>
             {role?.builtin
-              ? "内置角色不可修改，每次启动以代码为准播种。"
-              : "自定义角色，可在菜单里编辑。"}
+              ? "内置角色。权限可以改，改过之后行尾菜单里能恢复默认。"
+              : "自定义角色，可自由组合权限。"}
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-3">
@@ -338,16 +388,19 @@ function PermissionsDialog({
                 className="flex flex-wrap items-start gap-2"
               >
                 <span className="w-24 shrink-0 pt-0.5 text-sm text-ink-muted">
-                  {RESOURCE_LABELS[group.resource] ?? group.resource}
+                  {group.label}
                 </span>
                 <div className="flex min-w-0 flex-1 flex-wrap gap-1">
                   {group.items.map((item) => (
                     <Badge
                       key={item.key}
-                      tone="neutral"
+                      tone={item.dangerous ? "danger" : "neutral"}
                       title={item.description}
                     >
                       {item.label}
+                      {item.dangerous ? (
+                        <span className="opacity-80">高危</span>
+                      ) : null}
                     </Badge>
                   ))}
                 </div>
@@ -472,7 +525,8 @@ function RoleDialog({
               {role ? `编辑「${role.label || role.name}」` : "新建角色"}
             </DialogTitle>
             <DialogDescription>
-              角色是一组权限串的集合。用户可以有多个角色，实际权限是它们的并集。
+              角色是一组权限的集合。用户可以有多个角色，实际权限是它们的并集。
+              内置角色改过之后，行尾菜单里能恢复默认。
             </DialogDescription>
           </DialogHeader>
 
@@ -555,7 +609,7 @@ function RoleDialog({
                           toggleGroup(group.items, value === true)
                         }
                       />
-                      {RESOURCE_LABELS[group.resource] ?? group.resource}
+                      {group.label}
                     </label>
                     <div className="grid gap-0.5 sm:grid-cols-2">
                       {group.items.map((item) => (
@@ -566,10 +620,17 @@ function RoleDialog({
                           onCheckedChange={(checked) =>
                             toggle(item.key, checked)
                           }
-                          label={item.label}
-                          description={
-                            <code className="token">{item.key}</code>
+                          label={
+                            <span className="flex items-center gap-1.5">
+                              {item.label}
+                              {item.dangerous ? (
+                                <Badge tone="danger">高危</Badge>
+                              ) : null}
+                            </span>
                           }
+                          // 中文说明来自服务端（各模块声明）。用英文权限串当描述的话，
+                          // 站长勾选时并不知道这一条到底给了对方什么，尤其是带 _any 的那些。
+                          description={item.description || item.key}
                         />
                       ))}
                     </div>

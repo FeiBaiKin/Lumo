@@ -78,8 +78,33 @@ type Role struct {
 	Description string            `bun:"description"         json:"description"`
 	Permissions []perm.Permission `bun:"permissions,type:jsonb" json:"permissions"`
 	Builtin     bool              `bun:"builtin"             json:"builtin"`
-	CreatedAt   time.Time         `bun:"created_at,nullzero" json:"createdAt"`
-	UpdatedAt   time.Time         `bun:"updated_at,nullzero" json:"updatedAt"`
+	// Locked 为真表示该角色不对站长开放：不可改、不可删，也不在角色管理页出现
+	// （仍可分配给用户）。目前只有 super-admin 是锁定的。
+	Locked bool `bun:"-" json:"locked"`
+	// Customized 为真表示内置角色的权限已被站长改过，与代码里的默认值不同。
+	// 界面据此提示「已自定义」并给出「恢复默认」；自定义角色恒为假。
+	Customized bool      `bun:"-" json:"customized"`
+	CreatedAt  time.Time `bun:"created_at,nullzero" json:"createdAt"`
+	UpdatedAt  time.Time `bun:"updated_at,nullzero" json:"updatedAt"`
+}
+
+// fillMeta 填上两个派生字段。它们不是数据库列，只在输出前算一次。
+func (r *Role) fillMeta() {
+	r.Locked = r.Builtin && perm.Locked(r.Name)
+	if defaults, ok := perm.BuiltinRoles[r.Name]; ok {
+		r.Customized = r.Builtin && !perm.EqualSets(r.Permissions, defaults)
+	}
+}
+
+// DisplayLabel 返回用于展示的角色名，显示名缺失时回退到标识。
+//
+// 显示名可以由站长改（内置角色的名字也随代码更新），故它只能从服务端取，
+// 前端写死一张表就会在下一次改档时漂掉。
+func (r *Role) DisplayLabel() string {
+	if r.Label != "" {
+		return r.Label
+	}
+	return r.Name
 }
 
 // UserRole 是用户与角色的关联。

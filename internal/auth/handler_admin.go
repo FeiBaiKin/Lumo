@@ -28,6 +28,7 @@ const (
 	pathUserPassword = "/users/{id}/password"
 	pathRoles        = "/roles"
 	pathRoleByID     = "/roles/{id}"
+	pathRoleReset    = "/roles/{id}/reset"
 )
 
 // PermissionInfo 是一条权限的展示信息，由各模块声明、核心汇总。
@@ -148,7 +149,7 @@ func (h *AdminHandler) Register(console huma.API) {
 		Method:      http.MethodGet,
 		Path:        pathRoles,
 		Summary:     "列出角色",
-		Description: "含内置与自定义角色。内置角色每次启动以代码为准覆盖，不可改删。",
+		Description: "含内置、自定义与锁定的超级管理员（是否显示由前端决定：用户页要用它分配角色，角色页隐藏它）。",
 		Tags:        tagRoles,
 		Middlewares: roles,
 	}, h.listRoles)
@@ -167,17 +168,28 @@ func (h *AdminHandler) Register(console huma.API) {
 		OperationID: "role-update",
 		Method:      http.MethodPut,
 		Path:        pathRoleByID,
-		Summary:     "更新自定义角色",
+		Summary:     "更新角色",
+		Description: "内置角色的权限与显示名可以改，标识不可改（它是权限判定与播种用的键）；超级管理员整条不对外开放。",
 		Tags:        tagRoles,
 		Middlewares: roles,
 		Errors:      []int{http.StatusBadRequest, http.StatusConflict, http.StatusNotFound},
 	}, h.updateRole)
 	huma.Register(console, huma.Operation{
+		OperationID: "role-reset",
+		Method:      http.MethodPost,
+		Path:        pathRoleReset,
+		Summary:     "恢复内置角色的默认权限",
+		Description: "把内置角色的权限、显示名与描述写回代码里的默认值。自定义角色没有默认值可回退。",
+		Tags:        tagRoles,
+		Middlewares: roles,
+		Errors:      []int{http.StatusConflict, http.StatusNotFound},
+	}, h.resetRole)
+	huma.Register(console, huma.Operation{
 		OperationID:   "role-delete",
 		Method:        http.MethodDelete,
 		Path:          pathRoleByID,
 		Summary:       "删除自定义角色",
-		Description:   "仍被用户持有时拒绝删除；内置角色不可删。",
+		Description:   "仍被用户持有时拒绝删除；内置角色不可删（删了下一次启动又会补回来）。",
 		Tags:          tagRoles,
 		DefaultStatus: http.StatusNoContent,
 		Middlewares:   roles,
@@ -305,9 +317,13 @@ type permissionView struct {
 	DisplayName string `json:"label" doc:"权限的显示名；模块未声明时回退为权限串本身"`
 	Description string `json:"description"`
 	Resource    string `json:"resource"`
-	Action      string `json:"action"`
+	// ResourceLabel 是资源段的中文名；清单里没有对应项时为空串，前端回退到 resource。
+	ResourceLabel string `json:"resourceLabel"`
+	Action        string `json:"action"`
 	// IsAny 为真表示该权限不限所有权。
 	IsAny bool `json:"isAny"`
+	// Dangerous 为真表示这条权限能把站点交出去或让脚本在站内执行，界面上应当标出来。
+	Dangerous bool `json:"dangerous"`
 }
 
 type permissionList struct {
@@ -526,6 +542,18 @@ func (h *AdminHandler) deleteRole(ctx context.Context, in *roleIDInput) (*struct
 	return nil, nil //nolint:nilnil // 无响应体，huma 按 DefaultStatus 返回 204
 }
 
+// resetRole 把内置角色的权限、显示名与描述写回代码里的默认值，并返回更新后的角色。
+func (h *AdminHandler) resetRole(ctx context.Context, in *roleIDInput) (*roleOutput, error) {
+	if err := h.store.ResetRole(ctx, in.ID); err != nil {
+		return nil, mapAdminError(err)
+	}
+	role, err := h.store.roleByID(ctx, in.ID)
+	if err != nil {
+		return nil, mapAdminError(err)
+	}
+	return &roleOutput{Body: *role}, nil
+}
+
 // listPermissions 返回全部权限串及其展示信息。
 //
 // 以 perm.All 为准、模块与核心声明的标签为辅：漏声明时权限仍然出现在清单里，
@@ -541,11 +569,13 @@ func (h *AdminHandler) listPermissions(_ context.Context, _ *struct{}) (*permiss
 	items := make([]permissionView, 0, len(perm.All))
 	for _, p := range perm.All {
 		view := permissionView{
-			Key:         p.String(),
-			DisplayName: p.String(),
-			Resource:    p.Resource(),
-			Action:      p.Action(),
-			IsAny:       p.IsAny(),
+			Key:           p.String(),
+			DisplayName:   p.String(),
+			Resource:      p.Resource(),
+			ResourceLabel: perm.ResourceLabels[p.Resource()],
+			Action:        p.Action(),
+			IsAny:         p.IsAny(),
+			Dangerous:     perm.Dangerous(p),
 		}
 		if info, ok := labels[p.String()]; ok {
 			view.DisplayName = info.Label
@@ -622,7 +652,8 @@ func mapAdminError(err error) error {
 	case errors.Is(err, ErrDuplicate):
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, ErrLastAdmin), errors.Is(err, ErrSelfOperation),
-		errors.Is(err, ErrRoleInUse), errors.Is(err, ErrBuiltinRole):
+		errors.Is(err, ErrRoleInUse), errors.Is(err, ErrBuiltinRole),
+		errors.Is(err, ErrRoleLocked), errors.Is(err, ErrRoleNotBuiltin):
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, ErrUserHasContent):
 		return huma.Error409Conflict(err.Error())

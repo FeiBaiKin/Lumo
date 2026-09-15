@@ -70,13 +70,6 @@ import { toast } from "sonner";
 
 type Token = components["schemas"]["AccessToken"];
 
-const ROLE_LABELS: Record<string, string> = {
-  "super-admin": "超级管理员",
-  admin: "管理员",
-  editor: "编辑",
-  author: "作者",
-};
-
 export function ProfilePage() {
   useDocumentTitle("个人中心");
   const { user, permissions, isToken } = useAuth();
@@ -114,10 +107,12 @@ export function ProfilePage() {
                   {(user?.roles ?? []).length === 0 ? (
                     <span className="text-ink-subtle">无角色</span>
                   ) : (
-                    (user?.roles ?? []).map((role) => (
+                    // roleLabels 与 roles 一一对应，用下标取显示名；
+                    // 显示名可以由站长改，不能在前端写死一张表
+                    (user?.roles ?? []).map((role, index) => (
                       <Badge key={role} tone="outline">
                         <ShieldCheck aria-hidden="true" />
-                        {ROLE_LABELS[role] ?? role}
+                        {user?.roleLabels?.[index] ?? role}
                       </Badge>
                     ))
                   )}

@@ -121,7 +121,7 @@ export function AboutPage() {
                 <DescriptionDetail className="flex flex-wrap items-baseline gap-2">
                   <span>{user?.displayName || user?.username}</span>
                   <span className="text-xs text-ink-muted">
-                    {user?.roles?.join("、") || "无角色"}
+                    {user?.roleLabels?.join("、") || "无角色"}
                   </span>
                 </DescriptionDetail>
 

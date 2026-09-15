@@ -30,6 +30,8 @@ var (
 	ErrSelfOperation = errors.New("不能对自己执行该操作")
 	// ErrUserHasContent 表示用户仍拥有内容，不能删除。
 	ErrUserHasContent = errors.New("用户仍有内容")
+	// ErrRoleNotBuiltin 表示对自定义角色执行了只有内置角色才有的操作（恢复默认）。
+	ErrRoleNotBuiltin = errors.New("自定义角色没有可恢复的默认权限")
 )
 
 // asConstraintViolation 暴露给本包内部的约束冲突识别。
@@ -222,14 +224,17 @@ func (s *Store) CreateRole(ctx context.Context, role *Role) error {
 	return nil
 }
 
-// UpdateRole 更新自定义角色的名称、显示名与权限。
+// UpdateRole 更新角色的显示名、描述与权限。
+//
+// 内置角色自 2026-09-15 起可改：三挡角色（用户 / 编辑 / 管理员）的权限由站长决定，
+// 名字仍是不可改的键。super-admin 整条锁定 —— 把它的权限改坏等于拆掉唯一的后门。
 func (s *Store) UpdateRole(ctx context.Context, roleID int64, label, description string, permissions []perm.Permission) error {
 	current, err := s.roleByID(ctx, roleID)
 	if err != nil {
 		return err
 	}
-	if current.Builtin {
-		return ErrBuiltinRole
+	if current.Locked {
+		return ErrRoleLocked
 	}
 	if permissions == nil {
 		permissions = []perm.Permission{}
@@ -243,6 +248,37 @@ func (s *Store) UpdateRole(ctx context.Context, roleID int64, label, description
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("更新角色: %w", err)
+	}
+	return requireOneRow(res, "角色")
+}
+
+// ResetRole 把内置角色的权限、显示名与描述恢复成代码里的默认值。
+//
+// 存在的理由：内置角色的权限只在首次创建时播种（见 SeedRoles），升级新增的权限
+// 不会自动补上。有这一条，「升级后编辑角色缺了新权限」才有自助解法，
+// 而不是要站长去翻本文档再逐条勾回来。
+func (s *Store) ResetRole(ctx context.Context, roleID int64) error {
+	current, err := s.roleByID(ctx, roleID)
+	if err != nil {
+		return err
+	}
+	if current.Locked {
+		return ErrRoleLocked
+	}
+	defaults, ok := perm.BuiltinRoles[current.Name]
+	if !ok {
+		return ErrRoleNotBuiltin
+	}
+	meta := perm.BuiltinRoleMeta[current.Name]
+	res, err := s.db.NewUpdate().Model((*Role)(nil)).
+		Set("label = ?", meta.Label).
+		Set("description = ?", meta.Description).
+		Set("permissions = ?", defaults).
+		Set("updated_at = now()").
+		Where("id = ?", roleID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("恢复默认角色: %w", err)
 	}
 	return requireOneRow(res, "角色")
 }
@@ -281,6 +317,7 @@ func (s *Store) roleByID(ctx context.Context, id int64) (*Role, error) {
 		}
 		return nil, fmt.Errorf("查询角色: %w", err)
 	}
+	role.fillMeta()
 	return role, nil
 }
 

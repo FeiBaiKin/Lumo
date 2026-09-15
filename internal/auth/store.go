@@ -20,8 +20,12 @@ var (
 	ErrNotFound = errors.New("对象不存在")
 	// ErrDuplicate 表示唯一约束冲突（用户名或邮箱已存在）。
 	ErrDuplicate = errors.New("对象已存在")
-	// ErrBuiltinRole 表示试图修改或删除内置角色。
-	ErrBuiltinRole = errors.New("内置角色不可修改")
+	// ErrBuiltinRole 表示试图删除内置角色。
+	//
+	// 内置角色的权限自 2026-09-15 起可改，故这个哨兵现在只剩「不可删」这一层含义。
+	ErrBuiltinRole = errors.New("内置角色不可删除")
+	// ErrRoleLocked 表示试图修改不对站长开放的角色（超级管理员）。
+	ErrRoleLocked = errors.New("超级管理员角色不对外开放")
 )
 
 // Store 提供用户与角色的持久化操作。
@@ -36,36 +40,38 @@ func NewStore(db bun.IDB) *Store {
 
 // SeedRoles 幂等地写入内置角色。
 //
-// 每次启动都执行：内置角色的权限集合随版本演进，必须以代码为准覆盖库中记录，
-// 否则升级后新增的权限不会生效。自定义角色不受影响。
+// 每次启动都执行，但只对两类字段负责：
+//
+//   - 显示名与描述**随代码覆盖** —— 措辞是产品的一部分，升级就该更新；
+//   - 权限集合**只在角色首次创建时写入**。2026-09-15 起内置角色的权限归站长
+//     （三挡角色都能在角色管理页自由勾选），每次启动覆盖回去等于无声改写站长的选择：
+//     升级时新增一条权限本可以自动放宽，而删掉一条权限却可能让正在用的账号突然 403。
+//
+// super-admin 例外（perm.Locked）：它不对站长开放，权限每次都按代码覆盖。
+// 代价是升级新增的权限不会自动落到已被改过的内置角色上，故角色管理页提供「恢复默认」。
 func (s *Store) SeedRoles(ctx context.Context) error {
-	labels := map[string]string{
-		perm.RoleSuperAdmin: "超级管理员",
-		perm.RoleAdmin:      "管理员",
-		perm.RoleEditor:     "编辑",
-		perm.RoleAuthor:     "作者",
-		perm.RoleMember:     "会员",
-	}
-
 	for _, name := range perm.BuiltinRoleNames {
-		permissions := perm.BuiltinRoles[name]
+		meta := perm.BuiltinRoleMeta[name]
 		role := &Role{
 			Name:        name,
-			Label:       labels[name],
-			Permissions: permissions,
+			Label:       meta.Label,
+			Description: meta.Description,
+			Permissions: perm.BuiltinRoles[name],
 			Builtin:     true,
 			CreatedAt:   time.Now(),
 			UpdatedAt:   time.Now(),
 		}
-		_, err := s.db.NewInsert().
+		query := s.db.NewInsert().
 			Model(role).
 			On("CONFLICT (name) DO UPDATE").
-			Set("permissions = EXCLUDED.permissions").
 			Set("builtin = true").
 			Set("label = EXCLUDED.label").
-			Set("updated_at = now()").
-			Exec(ctx)
-		if err != nil {
+			Set("description = EXCLUDED.description").
+			Set("updated_at = now()")
+		if perm.Locked(name) {
+			query = query.Set("permissions = EXCLUDED.permissions")
+		}
+		if _, err := query.Exec(ctx); err != nil {
 			return fmt.Errorf("写入内置角色 %s: %w", name, err)
 		}
 	}
@@ -274,6 +280,9 @@ func (s *Store) ListRoles(ctx context.Context) ([]Role, error) {
 	err := s.db.NewSelect().Model(&roles).Order("r.name").Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("查询角色列表: %w", err)
+	}
+	for i := range roles {
+		roles[i].fillMeta()
 	}
 	return roles, nil
 }

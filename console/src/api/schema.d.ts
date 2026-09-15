@@ -932,7 +932,7 @@ export interface paths {
         };
         /**
          * 列出角色
-         * @description 含内置与自定义角色。内置角色每次启动以代码为准覆盖，不可改删。
+         * @description 含内置、自定义与锁定的超级管理员（是否显示由前端决定：用户页要用它分配角色，角色页隐藏它）。
          */
         get: operations["role-list"];
         put?: never;
@@ -955,14 +955,37 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** 更新自定义角色 */
+        /**
+         * 更新角色
+         * @description 内置角色的权限与显示名可以改，标识不可改（它是权限判定与播种用的键）；超级管理员整条不对外开放。
+         */
         put: operations["role-update"];
         post?: never;
         /**
          * 删除自定义角色
-         * @description 仍被用户持有时拒绝删除；内置角色不可删。
+         * @description 仍被用户持有时拒绝删除；内置角色不可删（删了下一次启动又会补回来）。
          */
         delete: operations["role-delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/roles/{id}/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 恢复内置角色的默认权限
+         * @description 把内置角色的权限、显示名与描述写回代码里的默认值。自定义角色没有默认值可回退。
+         */
+        post: operations["role-reset"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2387,12 +2410,14 @@ export interface components {
         };
         PermissionView: {
             action: string;
+            dangerous: boolean;
             description: string;
             isAny: boolean;
             key: string;
             /** @description 权限的显示名；模块未声明时回退为权限串本身 */
             label: string;
             resource: string;
+            resourceLabel: string;
         };
         PluginListBody: {
             items: components["schemas"]["PluginView"][] | null;
@@ -2578,10 +2603,12 @@ export interface components {
             builtin: boolean;
             /** Format: date-time */
             createdAt: string;
+            customized: boolean;
             description: string;
             /** Format: int64 */
             id: number;
             label: string;
+            locked: boolean;
             name: string;
             permissions: string[] | null;
             /** Format: date-time */
@@ -2794,6 +2821,7 @@ export interface components {
             emailVerified: boolean;
             /** Format: int64 */
             id: number;
+            roleLabels: string[] | null;
             roles: string[] | null;
             username: string;
         };
@@ -6566,6 +6594,64 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "role-reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Role"];
+                };
             };
             /** @description Not Found */
             404: {
