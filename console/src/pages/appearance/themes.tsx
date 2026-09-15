@@ -47,6 +47,7 @@ import {
   Lock,
   Palette,
   RefreshCw,
+  RotateCcw,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -327,12 +328,27 @@ function ThemeDetail({
     onSuccess: onChanged,
   });
 
+  const restore = useMutation({
+    mutationFn: () =>
+      runMutation(
+        () =>
+          api.POST("/api/v1/console/themes/{name}/restore", {
+            params: { path: { name: theme.name } },
+          }),
+        { success: "已恢复出厂", invalidate: ["themes"] },
+      ),
+    onSuccess: onChanged,
+  });
+
   const templates = theme.templates ?? [];
   const required = templates.filter((item) => item.required);
   const optional = templates.filter((item) => !item.required && item.provided);
   const missing = required.filter((item) => !item.provided);
   const deletable = !theme.builtin && !theme.active;
   const label = theme.label || theme.name;
+  // 内置主题在磁盘上有副本时才是「可改的」：改模板即时生效，改坏了恢复出厂。
+  const builtinOnDisk = theme.builtin && theme.source === "disk";
+  const [confirmRestore, setConfirmRestore] = useState(false);
 
   return (
     <div className="flex flex-col gap-5 p-4">
@@ -401,11 +417,24 @@ function ThemeDetail({
               <Trash2 aria-hidden="true" />
               卸载
             </Button>
+          ) : theme.builtin ? (
+            /*
+              恢复出厂对内置主题是常驻入口，不因为「磁盘上没副本」而禁用：
+              source 是 embedded 往往意味着磁盘那份加载失败（模板被改坏），
+              而恢复出厂正是那种情况下的出路。
+            */
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={restore.isPending}
+              onClick={() => setConfirmRestore(true)}
+            >
+              <RotateCcw aria-hidden="true" />
+              恢复出厂
+            </Button>
           ) : (
             <span className="self-center text-xs text-ink-muted">
-              {theme.builtin
-                ? "内置主题是回退目标，不可卸载"
-                : "使用中的主题不可卸载，先切到别的主题"}
+              使用中的主题不可卸载，先切到别的主题
             </span>
           )}
         </div>
@@ -471,6 +500,26 @@ function ThemeDetail({
             ? "这个主题没有声明设置项"
             : `${(theme.settingGroups ?? []).length} 组，在上方标签里修改`}
         </DescriptionDetail>
+        {theme.builtin ? (
+          <>
+            <DescriptionTerm>来源</DescriptionTerm>
+            <DescriptionDetail>
+              {builtinOnDisk ? (
+                <>
+                  磁盘上的{" "}
+                  <code className="token">data/themes/{theme.name}</code>
+                  ，改模板即时生效；改坏了可以恢复出厂
+                </>
+              ) : (
+                <>
+                  二进制里那份（磁盘副本缺失或加载失败）。
+                  恢复出厂会重新解压一份到{" "}
+                  <code className="token">data/themes</code>
+                </>
+              )}
+            </DescriptionDetail>
+          </>
+        ) : null}
       </DescriptionList>
 
       <div className="flex flex-col gap-2 border-line border-t pt-4">
@@ -509,6 +558,27 @@ function ThemeDetail({
           </div>
         ) : null}
       </div>
+
+      <ConfirmDialog
+        open={confirmRestore}
+        onOpenChange={setConfirmRestore}
+        title={`把「${label}」恢复出厂？`}
+        consequence={
+          <p>
+            磁盘上的主题目录会被删掉，再用二进制里那份重新解压一遍，
+            <strong className="font-medium text-ink">
+              你对它做过的模板与静态资源改动会全部丢失
+            </strong>
+            。主题设置（配色、版式这些）不受影响，它们存在数据库里。
+          </p>
+        }
+        confirmLabel="恢复出厂"
+        pending={restore.isPending}
+        onConfirm={async () => {
+          await restore.mutateAsync().catch(() => {});
+          setConfirmRestore(false);
+        }}
+      />
     </div>
   );
 }

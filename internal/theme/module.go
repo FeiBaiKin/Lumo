@@ -11,6 +11,7 @@ package theme
 import (
 	"context"
 	"embed"
+	"errors"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -63,6 +64,8 @@ type Module struct {
 	logger   *slog.Logger
 	root     string
 	devMode  bool
+	// builtin 是二进制里的内置主题（已剥到主题包根），用于落盘与「恢复出厂」。
+	builtin fs.FS
 }
 
 // New 构造模块。
@@ -85,6 +88,7 @@ func (m *Module) Register(a *app.App) error {
 	if err != nil {
 		return err
 	}
+	m.builtin = builtin
 	registry, err := NewRegistry(&RegistryOptions{
 		Root:    m.root,
 		Builtin: builtin,
@@ -152,6 +156,20 @@ func (m *Module) Routes(r app.Router) {
 //
 // 这是模块第一次被允许访问数据库的时机（agent.md §3.2）。
 func (m *Module) Start(ctx context.Context) error {
+	// 先把内置主题解压到 data/themes（已存在则不动），再扫目录 ——
+	// 顺序不能反：LoadInstalled 正是靠磁盘上那份把注册表里的内置主题顶掉。
+	if m.builtin != nil {
+		created, err := MaterializeBuiltin(m.root, m.builtin)
+		if err != nil {
+			// 落盘失败不拦启动：二进制里那份照样服务，只是站长这次在
+			// data/themes 下看不到内置主题。
+			m.logger.Warn("内置主题落盘失败，本次仍用二进制里那份", slog.Any("error", err))
+		} else if created {
+			m.logger.Info("内置主题已解压到 data/themes",
+				slog.String("dir", filepath.Join(m.root, BuiltinName)))
+		}
+	}
+
 	if err := m.registry.LoadInstalled(); err != nil {
 		return err
 	}
@@ -175,8 +193,10 @@ func (m *Module) Start(ctx context.Context) error {
 		}
 	}
 
+	active := m.registry.Active()
 	m.logger.Info("主题系统就绪",
 		slog.String("active", m.registry.ActiveName()),
+		slog.String("source", active.Source),
 		slog.Int("installed", len(m.registry.List())),
 		slog.Bool("devMode", m.devMode))
 
@@ -225,6 +245,20 @@ func (m *Module) MountFrontend(r chi.Router, optional func(http.Handler) http.Ha
 
 // Registry 返回主题注册表，供其他模块与测试取用。
 func (m *Module) Registry() *Registry { return m.registry }
+
+// RestoreBuiltin 把内置主题恢复成出厂状态（重新解压）并立即重新加载。
+//
+// 站长改坏了模板时这是回到原版的唯一入口 —— 没有它，就只能去翻发行包。
+// 调用方必须先确认：站长对内置主题的改动会全部丢失。
+func (m *Module) RestoreBuiltin() error {
+	if m.builtin == nil {
+		return errors.New("内置主题的文件系统不可用")
+	}
+	if err := RestoreBuiltin(m.root, m.builtin); err != nil {
+		return err
+	}
+	return m.registry.loadBuiltinFromDisk()
+}
 
 // Renderer 返回页面渲染器。
 //

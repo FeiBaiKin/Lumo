@@ -3245,6 +3245,9 @@
               "null"
             ]
           },
+          "source": {
+            "type": "string"
+          },
           "templates": {
             "items": {
               "$ref": "#/components/schemas/TemplateStatus"
@@ -3268,6 +3271,7 @@
           "repo",
           "license",
           "builtin",
+          "source",
           "active",
           "templates",
           "pageTemplates",
@@ -10033,6 +10037,90 @@
           }
         ],
         "summary": "重新加载主题",
+        "tags": [
+          "themes"
+        ]
+      }
+    },
+    "/api/v1/console/themes/{name}/restore": {
+      "post": {
+        "description": "把内置主题的磁盘副本重新解压一遍，站长对它的全部改动都会丢失。只有内置主题有此操作。",
+        "operationId": "themes-restore",
+        "parameters": [
+          {
+            "description": "主题标识",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "主题标识",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "把内置主题恢复出厂",
         "tags": [
           "themes"
         ]

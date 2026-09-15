@@ -28,6 +28,7 @@ const (
 	pathThemeByName    = "/themes/{name}"
 	pathThemeActivate  = "/themes/{name}/activate"
 	pathThemeReload    = "/themes/{name}/reload"
+	pathThemeRestore   = "/themes/{name}/restore"
 	pathThemeSettings  = "/themes/{name}/settings"
 	pathThemeSettingsG = "/themes/{name}/settings/{group}"
 )
@@ -117,6 +118,17 @@ func (h *Handler) Register(console, public huma.API) {
 	}, h.reload)
 
 	huma.Register(console, huma.Operation{
+		OperationID: "themes-restore",
+		Method:      http.MethodPost,
+		Path:        pathThemeRestore,
+		Summary:     "把内置主题恢复出厂",
+		Description: "把内置主题的磁盘副本重新解压一遍，站长对它的全部改动都会丢失。只有内置主题有此操作。",
+		Tags:        tagThemes,
+		Middlewares: manage,
+		Errors:      []int{http.StatusConflict, http.StatusNotFound},
+	}, h.restore)
+
+	huma.Register(console, huma.Operation{
 		OperationID: "themes-settings-list",
 		Method:      http.MethodGet,
 		Path:        pathThemeSettings,
@@ -161,6 +173,9 @@ type View struct {
 	License     string `json:"license"`
 	// Builtin 为真表示内置主题，不可删除。
 	Builtin bool `json:"builtin"`
+	// Source 说明内置主题的来源：embedded（二进制里那份）或 disk（data/themes 下的副本）。
+	// 非内置主题为空串。界面据此告诉站长「你改的文件到底算不算数」。
+	Source string `json:"source"`
 	// Active 为真表示当前启用。
 	Active bool `json:"active"`
 	// Templates 列出必需与可选模板的提供情况。
@@ -193,6 +208,7 @@ func (h *Handler) viewOf(loaded *Loaded) View {
 		Repo:          loaded.Manifest.Repo,
 		License:       loaded.Manifest.License,
 		Builtin:       loaded.Builtin,
+		Source:        loaded.Source,
 		Active:        loaded.Manifest.Name == h.module.registry.ActiveName(),
 		Templates:     TemplateStatuses(loaded.Templates),
 		PageTemplates: PageTemplates(loaded.Templates),
@@ -343,6 +359,24 @@ func (h *Handler) reload(_ context.Context, in *nameInput) (*viewOutput, error) 
 		return nil, mapError(err)
 	}
 	loaded, _ := h.module.registry.Get(in.Name)
+	return &viewOutput{Body: h.viewOf(loaded)}, nil
+}
+
+// restore 把内置主题恢复成出厂状态并重新加载。
+//
+// 只对内置主题开放：别的主题「出厂状态」不存在，而这条路径会**整个删掉目录**，
+// 让它在错误的主题上生效等于一次静默的删除。
+func (h *Handler) restore(_ context.Context, in *nameInput) (*viewOutput, error) {
+	if in.Name != BuiltinName {
+		return nil, huma.Error409Conflict("只有内置主题可以恢复出厂")
+	}
+	if err := h.module.RestoreBuiltin(); err != nil {
+		return nil, mapError(err)
+	}
+	loaded, ok := h.module.registry.Get(BuiltinName)
+	if !ok {
+		return nil, huma.Error404NotFound(ErrNotFound.Error())
+	}
 	return &viewOutput{Body: h.viewOf(loaded)}, nil
 }
 

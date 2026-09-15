@@ -1200,6 +1200,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/themes/{name}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 把内置主题恢复出厂
+         * @description 把内置主题的磁盘副本重新解压一遍，站长对它的全部改动都会丢失。只有内置主题有此操作。
+         */
+        post: operations["themes-restore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/themes/{name}/settings": {
         parameters: {
             query?: never;
@@ -2838,6 +2858,7 @@ export interface components {
             pageTemplates: string[] | null;
             repo: string;
             settingGroups: string[] | null;
+            source: string;
             templates: components["schemas"]["TemplateStatus"][] | null;
             version: string;
         };
@@ -7458,6 +7479,65 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "themes-restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 主题标识 */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["View"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

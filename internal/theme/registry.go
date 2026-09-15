@@ -17,9 +17,12 @@ import (
 type Loaded struct {
 	// Manifest 是主题元信息。
 	Manifest Manifest
-	// Builtin 为真表示这是编译进二进制的内置主题，不可删除。
+	// Builtin 为真表示这是内置主题：不可删除，且始终是回退链的末端。
+	// 它可能是从二进制里直接加载的，也可能是磁盘上那份解压出来的副本（见 Source）。
 	Builtin bool
-	// Dir 是主题目录的绝对路径；内置主题为空串。
+	// Source 说明内置主题从哪来：SourceEmbedded 或 SourceDisk；非内置主题为空串。
+	Source string
+	// Dir 是主题目录的绝对路径；来自二进制的内置主题为空串。
 	Dir string
 	// FS 是主题包的根文件系统。
 	FS fs.FS
@@ -75,6 +78,8 @@ const BuiltinName = "ink"
 //
 // 内置主题必须加载成功，否则整个主题系统没有回退可用——
 // 那意味着任何第三方主题缺一个可选模板就会 500。故此处失败即启动失败。
+// 这里加载的**始终是二进制里那一份**：它是回退链的末端。
+// 磁盘上的副本由 LoadInstalled 顶上来（见 loadBuiltinFromDisk）。
 func NewRegistry(opts *RegistryOptions) (*Registry, error) {
 	r := &Registry{
 		root:    opts.Root,
@@ -88,6 +93,7 @@ func NewRegistry(opts *RegistryOptions) (*Registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("加载内置主题: %w", err)
 	}
+	builtin.Source = SourceEmbedded
 	r.fallback = builtin
 	r.themes[builtin.Manifest.Name] = builtin
 	r.active = builtin.Manifest.Name
@@ -105,8 +111,15 @@ func (r *Registry) LoadInstalled() error {
 	}
 	for _, name := range names {
 		if name == BuiltinName {
-			// 同名目录会遮蔽内置主题，那样回退链就断了。
-			r.recordBroken(name, "与内置主题同名，已忽略")
+			if err := r.loadBuiltinFromDisk(); err != nil {
+				// 磁盘那份坏了不影响服务：二进制里那份还在 themes 里顶着，
+				// 只是要在后台把原因说清楚，否则改坏模板的人会以为改动「没生效」。
+				r.recordBroken(name, err.Error())
+				if r.logger != nil {
+					r.logger.Warn("内置主题的磁盘副本不可用，改用二进制里的原版",
+						slog.Any("error", err))
+				}
+			}
 			continue
 		}
 		if err := r.Load(name); err != nil {
@@ -119,7 +132,28 @@ func (r *Registry) LoadInstalled() error {
 	return nil
 }
 
+// loadBuiltinFromDisk 用 data/themes/<内置主题名> 下的副本顶替注册表里的内置主题。
+//
+// 顶替而不是并列：内置主题只能有一份在生效，否则「当前启用的是哪个 ink」会变得说不清。
+// 副本缺模板时仍回退到二进制那份（fallback 链不变），所以删掉一个文件不会让站点 500。
+// 它依然是 Builtin（不可删），只是多了一个「可改」的属性。
+func (r *Registry) loadBuiltinFromDisk() error {
+	if err := r.Load(BuiltinName); err != nil {
+		return err
+	}
+	if r.logger != nil {
+		r.logger.Info("内置主题以磁盘副本为准",
+			slog.String("dir", filepath.Join(r.root, BuiltinName)))
+	}
+	return nil
+}
+
 // Load 加载（或重新加载）一个已安装主题。
+//
+// 加载内置主题名（data/themes/<BuiltinName>）时，结果仍然是**内置**主题：
+// 不可删除、排在列表最前、当别的主题的回退目标，只是来源标成磁盘。
+// 这一点必须在这里保证：「重新载入模板」走的也是这个方法，
+// 漏掉就会被悄悄降级成一个可以卸载的普通主题。
 func (r *Registry) Load(name string) error {
 	if !namePattern.MatchString(name) {
 		return fmt.Errorf("%w：非法主题名 %q", ErrInvalidPackage, name)
@@ -132,13 +166,17 @@ func (r *Registry) Load(name string) error {
 		return fmt.Errorf("检查主题目录: %w", err)
 	}
 
-	loaded, err := loadFS(name, os.DirFS(dir), dir, false)
+	isBuiltin := name == BuiltinName
+	loaded, err := loadFS(name, os.DirFS(dir), dir, isBuiltin)
 	if err != nil {
 		return err
 	}
 	if loaded.Manifest.Name != name {
 		return fmt.Errorf("%w：%s 声明的 name 为 %q，与目录名不一致",
 			ErrInvalidPackage, name, loaded.Manifest.Name)
+	}
+	if isBuiltin {
+		loaded.Source = SourceDisk
 	}
 	loaded.Engine().SetFallback(r.fallback.Engine())
 
@@ -307,8 +345,9 @@ func (r *Registry) Reload(name string) error {
 	if !ok {
 		return ErrNotFound
 	}
-	// 内置主题的模板嵌在二进制里，重载没有意义。
-	if loaded.Builtin {
+	// 只有落在磁盘上的主题能重载：二进制里那份重新解析一遍没有任何意义。
+	// 内置主题的磁盘副本走这条路（站长改了模板要能立刻看到）。
+	if loaded.Dir == "" {
 		return nil
 	}
 	if err := loaded.engine.reload(); err != nil {
@@ -351,7 +390,7 @@ func (r *Registry) Watch(ctx context.Context) {
 			return
 		case <-ticker.C:
 			loaded := r.Active()
-			if loaded.Builtin || loaded.Dir == "" {
+			if loaded.Dir == "" {
 				continue
 			}
 			current, err := fingerprint(filepath.Join(loaded.Dir, DirTemplates))
