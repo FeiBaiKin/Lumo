@@ -17,18 +17,30 @@ type compiledGroup struct {
 	app.SettingGroup
 	validator *settings.Validator
 	defaults  map[string]any
-	// intFields 是 Schema 中声明为 integer 的顶层字段名。
-	intFields map[string]bool
+	// intFields 是 Schema 里声明为 integer 的字段（含 repeater 条目内的），读写时还原成 int。
+	intFields []intField
 }
 
-// integerFields 从 Schema 文档里挑出声明为 integer 的顶层属性。
+// intField 是一个声明为 integer、需要从浮点还原成 int 的字段。
+//
+// itemOf 非空时表示它是数组字段 itemOf 的元素里的字段（repeater 的条目字段）——
+// 首页模块的条数、列数都长这样，而它们在模板里同样要当 int 用。
+type intField struct {
+	name   string
+	itemOf string
+}
+
+// integerFields 从 Schema 文档里挑出声明为 integer 的字段。
 //
 // 为什么需要它：设置值经 JSON 往返存取，而 encoding/json 把所有数字解成 float64。
 // 模板里 {{ .Find.Posts.Related $id .Theme.Settings.content.relatedCount }} 会因此
 // 报「expected int; got float64」——这是主题作者无从预料也无从修复的坑，
 // 必须在服务端消化掉。Schema 已经声明了哪些字段是整数，据此还原即可。
-func integerFields(doc map[string]any) map[string]bool {
-	out := map[string]bool{}
+//
+// 只走一层数组：repeater 的条目字段（items.properties）与顶层字段，
+// 再往里（数组套数组）本项目没有用到，多写的复杂度没人验证。
+func integerFields(doc map[string]any) []intField {
+	out := []intField{}
 	props, ok := doc["properties"].(map[string]any)
 	if !ok {
 		return out
@@ -38,8 +50,27 @@ func integerFields(doc map[string]any) map[string]bool {
 		if !ok {
 			continue
 		}
-		if typ, _ := prop["type"].(string); typ == "integer" {
-			out[name] = true
+		switch typ, _ := prop["type"].(string); typ {
+		case "integer":
+			out = append(out, intField{name: name})
+		case "array":
+			items, ok := prop["items"].(map[string]any)
+			if !ok {
+				continue
+			}
+			itemProps, ok := items["properties"].(map[string]any)
+			if !ok {
+				continue
+			}
+			for itemName, itemRaw := range itemProps {
+				itemProp, ok := itemRaw.(map[string]any)
+				if !ok {
+					continue
+				}
+				if sub, _ := itemProp["type"].(string); sub == "integer" {
+					out = append(out, intField{name: itemName, itemOf: name})
+				}
+			}
 		}
 	}
 	return out
@@ -47,17 +78,34 @@ func integerFields(doc map[string]any) map[string]bool {
 
 // coerceInts 就地把声明为 integer 的字段从浮点还原成 int。
 func (g *compiledGroup) coerceInts(values map[string]any) map[string]any {
-	for name := range g.intFields {
-		switch v := values[name].(type) {
-		case float64:
-			values[name] = int(v)
-		case float32:
-			values[name] = int(v)
-		case int64:
-			values[name] = int(v)
+	for _, field := range g.intFields {
+		if field.itemOf == "" {
+			coerceInt(values, field.name)
+			continue
+		}
+		list, ok := values[field.itemOf].([]any)
+		if !ok {
+			continue
+		}
+		for _, entry := range list {
+			if item, ok := entry.(map[string]any); ok {
+				coerceInt(item, field.name)
+			}
 		}
 	}
 	return values
+}
+
+// coerceInt 把 map 里某个键的浮点数字还原成 int。
+func coerceInt(values map[string]any, name string) {
+	switch v := values[name].(type) {
+	case float64:
+		values[name] = int(v)
+	case float32:
+		values[name] = int(v)
+	case int64:
+		values[name] = int(v)
+	}
 }
 
 // compiledSettings 是一个主题的全部设置分组，按声明顺序编译。

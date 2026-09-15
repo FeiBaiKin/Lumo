@@ -524,6 +524,69 @@ func (s *Store) PinnedPosts(ctx context.Context, n int) ([]PostView, error) {
 	return s.attach(ctx, rows)
 }
 
+// PopularPosts 返回按评论数排序的热门文章。//
+// PopularPosts 返回按评论数排序的热门文章。
+//
+// 判据只有**已通过审核的评论数**：本站不记录浏览量，也不做「阅读数」这种要额外埋点、
+// 又能被刷的东西。评论数是现成的、需要人工审核才能涨的，做「热门」的判据正好。
+// 评论数相同的按发布时间倒序，保证结果稳定（同分时不能每次刷新都换一批）。
+//
+// 页面的评论不参与：热门是文章列表，页面（关于、联系）本就不该出现在首页模块里。
+func (s *Store) PopularPosts(ctx context.Context, n int) ([]PostView, error) {
+	rows := []postRow{}
+	const sqlText = `SELECT ` + postColumns + ` FROM posts AS p WHERE ` + publicFilter + `
+ AND p.type = 'post'
+ ORDER BY (SELECT count(*) FROM comments AS c WHERE c.post_id = p.id AND c.status = 'approved') DESC,
+          p.published_at DESC NULLS LAST, p.id DESC
+ LIMIT ?`
+	if err := s.db.NewRaw(sqlText, n).Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("查询热门文章: %w", err)
+	}
+	return s.attach(ctx, rows)
+}
+
+// AdjacentPosts 返回给定文章的上一篇与下一篇（按发布时间，同在公开范围之内）。
+//
+// 比较用 (published_at, id) 这个二元组而不是只看时间：同一秒发布的两篇文章
+// 用单列比较会出现「上一篇和下一篇是同一篇」或者干脆漏掉一篇。
+//
+// 草稿、私密与定时未到的文章不算数 —— 前后篇是给读者在公开内容里翻页用的，
+// 让他翻到一篇打不开的页面，比没有这个链接更糟。
+func (s *Store) AdjacentPosts(ctx context.Context, postID int64, publishedAt time.Time) (prev, next *PostView, err error) {
+	const olderSQL = `SELECT ` + postColumns + ` FROM posts AS p WHERE ` + publicFilter + `
+ AND p.type = 'post' AND (p.published_at, p.id) < (?, ?)
+ ORDER BY p.published_at DESC, p.id DESC LIMIT 1`
+	const newerSQL = `SELECT ` + postColumns + ` FROM posts AS p WHERE ` + publicFilter + `
+ AND p.type = 'post' AND (p.published_at, p.id) > (?, ?)
+ ORDER BY p.published_at ASC, p.id ASC LIMIT 1`
+
+	olderRows, newerRows := []postRow{}, []postRow{}
+	if err = s.db.NewRaw(olderSQL, publishedAt, postID).Scan(ctx, &olderRows); err != nil {
+		return nil, nil, fmt.Errorf("查询上一篇: %w", err)
+	}
+	if err = s.db.NewRaw(newerSQL, publishedAt, postID).Scan(ctx, &newerRows); err != nil {
+		return nil, nil, fmt.Errorf("查询下一篇: %w", err)
+	}
+
+	older, attachErr := s.attach(ctx, olderRows)
+	if attachErr != nil {
+		return nil, nil, attachErr
+	}
+	newer, attachErr := s.attach(ctx, newerRows)
+	if attachErr != nil {
+		return nil, nil, attachErr
+	}
+	return firstOrNil(older), firstOrNil(newer), nil
+}
+
+// firstOrNil 取列表的第一项，空列表返回 nil（模板里用 {{ with }} 判断）。
+func firstOrNil(items []PostView) *PostView {
+	if len(items) == 0 {
+		return nil
+	}
+	return &items[0]
+}
+
 // RelatedPosts 返回与给定文章共享分类或标签最多的其他文章。
 //
 // 按共享词条数排序而非随机：共享 3 个标签的文章显然比共享 1 个的更相关。

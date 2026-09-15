@@ -1,49 +1,22 @@
 {{- /*
-文章列表。接收整个页面上下文，读 .Posts 与 .Theme.Settings.layout。
+文章列表（列表页用）。参数来自「列表与卡片」那组设置，所以分类、标签、归档、
+搜索与作者页不需要各自传参——它们都调用这个模板。
 
-列表项的结构刻意不是卡片：卡片会给每篇文章加一圈边框与阴影，让十篇文章变成
-十个等重的色块。长文站点的列表应该像目录——标题是主角，其余退后。
-
-此处不显示阅读时长：列表查询刻意不取正文（首页十篇文章的 HTML 动辄几百 KB），
-而没有正文就算不出字数，.ReadingTime 恒为 0。要显示时长就得把整篇正文拉回来，
-只为算个字数——不划算。阅读时长在文章页显示（那里本就有正文）。
+首页的模块不走这里：模块有自己的展示方式与列数，见 partials/post-grid.html。
 */ -}}
-{{ $layout := .Theme.Settings.layout }}
+{{ $listing := .Theme.Settings.listing }}
 
 {{ if .Posts }}
-<ul class="post-list" data-motion="list">
-  {{ range .Posts }}
-  <li class="post-item{{ if .Pinned }} is-pinned{{ end }}">
-    {{ if and $layout.showCover .CoverURL }}
-    <a class="post-cover" href="{{ .URL }}" tabindex="-1" aria-hidden="true">
-      <img src="{{ .CoverURL }}" alt="" loading="lazy" decoding="async">
-    </a>
-    {{ end }}
+  {{ template "partials/post-grid.html" (dict
+      "Page" .
+      "Posts" .Posts
+      "Style" $listing.listStyle
+      "Columns" $listing.columns
+      "ShowCover" $listing.showCover
+      "Excerpt" $listing.excerpt
+      "CategoryLabel" $listing.categoryLabel) }}
 
-    <div class="post-item-body">
-      <h2 class="post-item-title">
-        <a href="{{ .URL }}">{{ .Title }}</a>
-        {{ if .Pinned }}<span class="pin" title="置顶">置顶</span>{{ end }}
-      </h2>
-
-      <p class="post-item-meta">
-        {{ if not .PublishedAt.IsZero }}
-        <time datetime="{{ date "rfc3339" .PublishedAt }}">{{ date "chinese" .PublishedAt }}</time>
-        {{ end }}
-        {{ range .Categories }}
-        <a class="term" href="/categories/{{ .Slug }}">{{ .Name }}</a>
-        {{ end }}
-      </p>
-
-      {{ if eq $layout.indexMode "excerpt" }}
-        {{ with .Excerpt }}<p class="post-item-excerpt">{{ . }}</p>{{ end }}
-      {{ end }}
-    </div>
-  </li>
-  {{ end }}
-</ul>
-
-{{ template "partials/pagination.html" . }}
+  {{ template "partials/pagination.html" . }}
 {{ else }}
 <div class="empty-state">
   {{ template "partials/seal.html" "待" }}

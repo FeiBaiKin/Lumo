@@ -1,0 +1,54 @@
+{{- /*
+列表页侧栏。
+
+只出现在分类 / 标签 / 归档 / 搜索 / 作者这些列表页上（见 list-with-sidebar.html）。
+首页没有侧栏：首页是模块堆出来的，热门与标签在首页是模块，不重复放第二遍。
+*/ -}}
+<section class="side-block">
+  <h2 class="side-title">{{ .Site.Title }}</h2>
+  {{ with .Site.Description }}<p class="side-text">{{ . }}</p>{{ end }}
+  <p class="side-links">
+    <a href="/feed.xml">订阅</a>
+    <a href="/sitemap.xml">站点地图</a>
+  </p>
+</section>
+
+{{ $popular := .Find.Posts.Popular 5 }}
+{{ if $popular }}
+<section class="side-block">
+  <h2 class="side-title">热门文章</h2>
+  <ol class="rank-list">
+    {{ range $popular }}<li><a href="{{ .URL }}">{{ .Title }}</a></li>{{ end }}
+  </ol>
+</section>
+{{ end }}
+
+{{ $cloud := .Find.Tags.Cloud 24 }}
+{{ if $cloud }}
+<section class="side-block">
+  <h2 class="side-title">标签</h2>
+  <p class="cloud">
+    {{ range $cloud }}<a class="tag" href="{{ .URL }}" data-weight="{{ .Weight }}"
+      {{ with .Color }}style="--tag-color: {{ . }}"{{ end }}>{{ .Name }}</a>{{ end }}
+  </p>
+</section>
+{{ end }}
+
+{{ $comments := .Find.Comments.Recent 5 }}
+{{ if $comments }}
+<section class="side-block">
+  <h2 class="side-title">最新评论</h2>
+  <ul class="side-comments">
+    {{ range $comments }}
+    <li class="side-comment">
+      <p class="side-comment-meta">
+        <span class="side-comment-author">{{ .AuthorName }}</span>
+        <span class="side-comment-on">评</span>
+        <a href="{{ .PostURL }}">{{ .PostTitle }}</a>
+      </p>
+      <div class="side-comment-body">{{ .ContentHTML }}</div>
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}

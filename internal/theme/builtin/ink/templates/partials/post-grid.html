@@ -1,0 +1,51 @@
+{{- /*
+一组文章，按指定的展示方式渲染。首页模块与列表页都走这里，它们的区别只是参数从哪来：
+列表页读「列表与卡片」那组设置，首页模块读模块自己的参数（没填就用全局的）。
+
+入参 dict：
+  Page           整页上下文
+  Posts          文章列表
+  Style          grid / masonry / list
+  Columns        每行几列（list 方式下不生效）
+  ShowCover      是否显示封面
+  Excerpt        摘要行数
+  CategoryLabel  卡片上显示分类
+*/ -}}
+{{ $style := .Style }}{{ if not $style }}{{ $style = "grid" }}{{ end }}
+{{ $columns := .Columns }}{{ if not $columns }}{{ $columns = 3 }}{{ end }}
+
+{{ if eq $style "list" }}
+<ul class="post-list post-list--dense" data-motion="list">
+  {{ range .Posts }}
+  <li class="post-item{{ if .Pinned }} is-pinned{{ end }}">
+    {{ if and $.ShowCover .CoverURL }}
+    <a class="post-cover" href="{{ .URL }}" tabindex="-1" aria-hidden="true">
+      <img src="{{ .CoverURL }}" alt="" loading="lazy" decoding="async">
+    </a>
+    {{ end }}
+    <div class="post-item-body">
+      <h3 class="post-item-title">
+        <a href="{{ .URL }}">{{ .Title }}</a>
+        {{ if .Pinned }}<span class="pin" title="置顶">置顶</span>{{ end }}
+      </h3>
+      <p class="post-item-meta">
+        {{ if not .PublishedAt.IsZero }}
+        <time datetime="{{ date "rfc3339" .PublishedAt }}">{{ date "chinese" .PublishedAt }}</time>
+        {{ end }}
+        {{ with .Author }}<span>{{ .DisplayName }}</span>{{ end }}
+        {{ range .Categories }}<a class="term" href="/categories/{{ .Slug }}">{{ .Name }}</a>{{ end }}
+      </p>
+      {{ if and (ne $.Excerpt "none") .Excerpt }}<p class="post-item-excerpt">{{ . }}</p>{{ end }}
+    </div>
+  </li>
+  {{ end }}
+</ul>
+{{ else }}
+<div class="cards cards--{{ $style }}" data-excerpt="{{ .Excerpt }}"
+     style="--columns: {{ $columns }}">
+  {{ range .Posts }}
+    {{ template "partials/card.html" (dict "Page" $.Page "Post" . "ShowCover" $.ShowCover
+        "Excerpt" $.Excerpt "CategoryLabel" $.CategoryLabel) }}
+  {{ end }}
+</div>
+{{ end }}

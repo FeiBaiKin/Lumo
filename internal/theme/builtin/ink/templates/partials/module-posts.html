@@ -1,0 +1,66 @@
+{{- /*
+「一组文章」模块：精选卡片 / 最新文章 / 热门文章 三个类型共用这一个模板。
+
+它们只在**取哪些文章**与**默认展示方式**上不同：
+  精选、最新 —— 按模块里选的来源取（置顶 / 最新 / 某分类 / 某标签）
+  热门       —— 按已通过评论数排（判据见 internal/theme/store.go 的 PopularPosts）
+其余（标题、列数、展示方式、摘要）完全一样，所以不拆成三个几乎相同的文件。
+
+入参 dict：Page 整页上下文 / M 模块参数 / Index 模块序号（用来生成唯一 id）
+*/ -}}
+{{ $page := .Page }}{{ $m := .M }}
+{{ $count := default 6 $m.count }}
+{{ $type := $m.type }}
+
+{{- /*
+先取「最新」占位，再按类型改写。模板变量的类型由第一次赋值定下，
+所以必须用一个真正返回文章列表的调用起头：写成 `{{ $posts := slice }}`
+会在后面赋值时炸「cannot assign []theme.PostView to $posts of type []any」。
+这里多一次取数的代价是零：Finder 在同一请求内按 key 缓存，首页本来也要取最新。
+*/ -}}
+{{ $posts := $page.Find.Posts.Recent $count }}
+{{ if eq $type "popular" }}
+  {{ $posts = $page.Find.Posts.Popular $count }}
+{{ else if eq $type "featured" }}
+  {{ $source := default "recent" $m.source }}
+  {{ if eq $source "pinned" }}{{ $posts = $page.Find.Posts.Pinned $count }}
+  {{ else if eq $source "category" }}{{ $posts = $page.Find.Posts.ByCategory $m.term $count }}
+  {{ else if eq $source "tag" }}{{ $posts = $page.Find.Posts.ByTag $m.term $count }}
+  {{ end }}
+{{ end }}
+
+{{- /* 一个都取不到时整块不渲染：空标题下面挂一行「暂无内容」比不显示更难看。 */ -}}
+{{ if $posts }}
+{{ $listing := $page.Theme.Settings.listing }}
+{{ $style := $m.style }}{{ if not $style }}{{ $style = $listing.listStyle }}{{ end }}
+{{ $columns := $m.columns }}{{ if not $columns }}{{ $columns = $listing.columns }}{{ end }}
+{{ $title := $m.title }}
+{{ if not $title }}{{ if eq $type "popular" }}{{ $title = "热门" }}{{ else if eq $type "featured" }}{{ $title = "精选" }}{{ else }}{{ $title = "最新文章" }}{{ end }}{{ end }}
+
+<section class="home-module" aria-labelledby="mod-{{ .Index }}">
+  <div class="module-head">
+    <h2 class="module-title" id="mod-{{ .Index }}">{{ $title }}</h2>
+    {{ if ne $type "popular" }}
+    <a class="module-more" href="/posts">全部文章</a>
+    {{ end }}
+  </div>
+
+  {{ if and (eq $type "popular") (eq $style "list") }}
+  <ol class="rank-list rank-list--lg">
+    {{ range $posts }}
+    <li>
+      <a href="{{ .URL }}">{{ .Title }}</a>
+      <span class="rank-meta">
+        {{ if not .PublishedAt.IsZero }}<time datetime="{{ date "rfc3339" .PublishedAt }}">{{ date "date" .PublishedAt }}</time>{{ end }}
+      </span>
+    </li>
+    {{ end }}
+  </ol>
+  {{ else }}
+  {{ template "partials/post-grid.html" (dict
+      "Page" $page "Posts" $posts "Style" $style "Columns" $columns
+      "ShowCover" $listing.showCover "Excerpt" $listing.excerpt
+      "CategoryLabel" $listing.categoryLabel) }}
+  {{ end }}
+</section>
+{{ end }}

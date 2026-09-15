@@ -1,0 +1,26 @@
+{{- /*
+分类导航。一张卡片一个分类，显示名字与文章数。
+
+封面用分类自己的封面图，没有就用主题色到纸色的渐变：分类卡片没有图时
+留一块纯色比留一张灰色占位图好看，也不会让人以为图挂了。
+*/ -}}
+{{ $page := .Page }}{{ $m := .M }}
+{{ $count := default 6 $m.count }}
+{{ $cats := $page.Find.Categories.All }}
+{{ if $cats }}
+<section class="home-module" aria-labelledby="mod-{{ .Index }}">
+  <div class="module-head">
+    <h2 class="module-title" id="mod-{{ .Index }}">{{ default "分类" $m.title }}</h2>
+  </div>
+  <div class="cat-cards">
+    {{ range first $count $cats }}
+    <a class="cat-card" href="{{ .URL }}">
+      {{ with .CoverURL }}<img class="cat-cover" src="{{ . }}" alt="" loading="lazy" decoding="async">{{ end }}
+      <span class="cat-name">{{ .Name }}</span>
+      <span class="cat-count">{{ .Count }} 篇</span>
+      {{ with .Description }}<span class="cat-desc">{{ . }}</span>{{ end }}
+    </a>
+    {{ end }}
+  </div>
+</section>
+{{ end }}

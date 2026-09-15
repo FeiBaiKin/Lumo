@@ -1,7 +1,7 @@
 {{ template "layouts/base.html" . }}
 
 {{ define "main" }}
-<div class="wrap">
+<div class="wrap wrap--wide">
   <header class="archive-header has-seal">
     {{ template "partials/seal.html" "存" }}
     <div data-motion="title">
@@ -11,7 +11,7 @@
     </div>
   </header>
 
-  {{ template "partials/post-list.html" . }}
+  {{ template "partials/list-with-sidebar.html" . }}
 
   {{- /* 其余月份：归档页的读者通常在按时间浏览，给他下一站。 */ -}}
   {{ $months := .Find.Archives.ByMonth }}

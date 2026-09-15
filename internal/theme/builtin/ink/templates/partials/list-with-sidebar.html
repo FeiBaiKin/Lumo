@@ -1,0 +1,16 @@
+{{- /*
+列表页的版式：左边文章列表，右边侧栏。
+
+只有列表页有侧栏。首页没有——首页是模块堆出来的，把侧栏塞进去会让
+「模块自上而下」这条规则出现一个例外，而例外是这类模块化首页最难维护的地方。
+*/ -}}
+<div class="list-layout{{ if not .Theme.Settings.listing.showSidebar }} no-aside{{ end }}">
+  <div class="list-main">
+    {{ template "partials/post-list.html" . }}
+  </div>
+  {{ if .Theme.Settings.listing.showSidebar }}
+  <aside class="list-aside" aria-label="侧栏">
+    {{ template "partials/sidebar.html" . }}
+  </aside>
+  {{ end }}
+</div>

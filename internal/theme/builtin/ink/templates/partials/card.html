@@ -1,0 +1,44 @@
+{{- /*
+文章卡片。网格与瀑布流共用同一张卡片，两者的差别只在容器的 CSS。
+
+入参是一个 dict（模板没有多参数，只能这样传）：
+  Page          整页上下文，卡片里要用 .Find 之类的东西时靠它
+  Post          要渲染的文章
+  ShowCover     是否显示封面（文章没有封面时整块不出现，不留空位）
+  Excerpt       摘要行数：none / one / two / three
+  CategoryLabel 是否在标题上方显示分类（纯文字，不做链接 —— 卡片本身就是链接，
+                里面再套一个链接，键盘与触屏都难用）
+
+图片一律 loading="lazy" + decoding="async"，alt 用空串：
+封面在这套设计里是装饰，标题才是内容；给装饰图写 alt 只会让读屏用户多听一句废话。
+*/ -}}
+{{ $page := .Page }}{{ $post := .Post }}
+<article class="card">
+  {{ if and .ShowCover $post.CoverURL }}
+  <a class="card-cover" href="{{ $post.URL }}" tabindex="-1" aria-hidden="true">
+    <img src="{{ $post.CoverURL }}" alt="" loading="lazy" decoding="async">
+  </a>
+  {{ end }}
+
+  <div class="card-body">
+    {{ if and .CategoryLabel $post.Categories }}
+    <p class="card-terms">{{ range $i, $c := $post.Categories }}{{ if $i }} · {{ end }}{{ $c.Name }}{{ end }}</p>
+    {{ end }}
+
+    <h3 class="card-title">
+      <a href="{{ $post.URL }}">{{ $post.Title }}</a>
+      {{ if $post.Pinned }}<span class="pin" title="置顶">置顶</span>{{ end }}
+    </h3>
+
+    {{ if and (ne .Excerpt "none") $post.Excerpt }}
+    <p class="card-excerpt">{{ $post.Excerpt }}</p>
+    {{ end }}
+
+    <p class="card-meta">
+      {{ if not $post.PublishedAt.IsZero }}
+      <time datetime="{{ date "rfc3339" $post.PublishedAt }}">{{ date "chinese" $post.PublishedAt }}</time>
+      {{ end }}
+      {{ with $post.Author }}<span class="card-author">{{ .DisplayName }}</span>{{ end }}
+    </p>
+  </div>
+</article>

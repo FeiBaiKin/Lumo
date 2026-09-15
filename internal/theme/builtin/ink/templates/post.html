@@ -59,6 +59,18 @@
     </aside>
     {{ end }}
 
+    {{- /*
+    目录。由 toc.js 从正文的 h2/h3 里生成，标题不足三个时它自己保持隐藏。
+    做成前端生成而不是服务端算：正文已经是渲染好的 HTML，服务端再解析一遍只为
+    列个目录，等于让每次打开文章页都多走一次 HTML 解析；而这件事浏览器做得更好。
+    */ -}}
+    {{ if $content.showToc }}
+    <nav class="article-toc" data-toc aria-label="文章目录" hidden>
+      <p class="toc-title">目录</p>
+      <ul class="toc-list" data-toc-list></ul>
+    </nav>
+    {{ end }}
+
     {{- /* 正文是服务端渲染好的 HTML（agent.md §3.3），主题只消费不加工。 */ -}}
     <div class="prose">{{ safeHTML $post.Content }}</div>
 
@@ -90,6 +102,26 @@
       {{ end }}
     {{ end }}
   </article>
+
+  {{ if $content.showPrevNext }}
+    {{ $adjacent := .Find.Posts.Adjacent $post.ID $post.PublishedAt }}
+    {{ if or $adjacent.Prev $adjacent.Next }}
+    <nav class="article-adjacent" aria-label="上一篇与下一篇">
+      {{ with $adjacent.Prev }}
+      <a class="adjacent-item adjacent-prev" href="{{ .URL }}">
+        <span class="adjacent-label">上一篇</span>
+        <span class="adjacent-title">{{ .Title }}</span>
+      </a>
+      {{ else }}<span class="adjacent-item is-empty"></span>{{ end }}
+      {{ with $adjacent.Next }}
+      <a class="adjacent-item adjacent-next" href="{{ .URL }}">
+        <span class="adjacent-label">下一篇</span>
+        <span class="adjacent-title">{{ .Title }}</span>
+      </a>
+      {{ end }}
+    </nav>
+    {{ end }}
+  {{ end }}
 
   {{ if $content.showRelated }}
     {{ $related := .Find.Posts.Related $post.ID (default 3 $content.relatedCount) }}

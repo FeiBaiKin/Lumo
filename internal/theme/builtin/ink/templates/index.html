@@ -1,11 +1,37 @@
+{{- /*
+首页。第一页按「主题设置 → 首页」里的模块自上而下铺开；第二页起是普通的文章列表
+（首页也是分页的，翻到第二页还摆一排模块没有意义）。
+
+模块的分派写成 if 链而不是注册表：模板里没有「按名字查模板」这一步，
+而分支数量是固定的八种，写作显式分支时漏掉一种会在打开首页时立刻发现。
+*/ -}}
 {{ template "layouts/base.html" . }}
 
 {{ define "main" }}
-<div class="wrap">
-  {{ if and (eq .Pagination.Page 1) .Site.Description }}
-  <div data-motion="title"><p class="site-intro">{{ .Site.Description }}</p></div>
+{{ $home := .Theme.Settings.homepage }}
+<div class="wrap wrap--wide">
+  {{ if and (eq .Pagination.Page 1) $home.showIntro }}
+  <header class="home-intro" data-motion="title">
+    <h1 class="home-intro-title">{{ .Site.Title }}</h1>
+    {{ with .Site.Description }}<p class="home-intro-desc">{{ . }}</p>{{ end }}
+  </header>
   {{ end }}
 
-  {{ template "partials/post-list.html" . }}
+  {{ if eq .Pagination.Page 1 }}
+    {{ range $index, $module := $home.modules }}
+      {{ $ctx := dict "Page" $ "M" $module "Index" $index }}
+      {{ if eq $module.type "carousel" }}{{ template "partials/module-carousel.html" $ctx }}
+      {{ else if eq $module.type "notice" }}{{ template "partials/module-notice.html" $ctx }}
+      {{ else if eq $module.type "featured" }}{{ template "partials/module-posts.html" $ctx }}
+      {{ else if eq $module.type "categories" }}{{ template "partials/module-categories.html" $ctx }}
+      {{ else if eq $module.type "latest" }}{{ template "partials/module-posts.html" $ctx }}
+      {{ else if eq $module.type "popular" }}{{ template "partials/module-posts.html" $ctx }}
+      {{ else if eq $module.type "tags" }}{{ template "partials/module-tags.html" $ctx }}
+      {{ else if eq $module.type "links" }}{{ template "partials/module-links.html" $ctx }}
+      {{ end }}
+    {{ end }}
+  {{ else }}
+    {{ template "partials/post-list.html" . }}
+  {{ end }}
 </div>
 {{ end }}

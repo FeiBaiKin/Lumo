@@ -1,7 +1,7 @@
 {{ template "layouts/base.html" . }}
 
 {{ define "main" }}
-<div class="wrap">
+<div class="wrap wrap--wide">
   {{- /* 标签有自定义颜色时，印也跟着换色。 */ -}}
   <header class="archive-header has-seal"{{ with .Tag.Color }} style="--seal-color: {{ . }}"{{ end }}>
     {{ template "partials/seal.html" (printf "%.1s" .Tag.Name) }}
@@ -13,6 +13,6 @@
     </div>
   </header>
 
-  {{ template "partials/post-list.html" . }}
+  {{ template "partials/list-with-sidebar.html" . }}
 </div>
 {{ end }}

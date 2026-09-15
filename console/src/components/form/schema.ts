@@ -97,6 +97,11 @@ export type GroupSchema = FieldSchema & {
   required?: string[];
   /** 分段。缺省时按平铺形态渲染，与主题包声明的老 Schema 兼容。 */
   "x-sections"?: SectionSchema[];
+  /**
+   * 字段的渲染顺序。声明来自 YAML 时键序会丢（见 orderedFields），
+   * 想控制先后就得显式写一份。
+   */
+  "x-order"?: string[];
 };
 
 /** 值对象。刻意用 unknown 而不是 any：这个对象来自网络，未经校验。 */
@@ -504,6 +509,36 @@ function looseEqual(a: unknown, b: unknown): boolean {
   return String(a) === String(b);
 }
 
+/**
+ * 取一个对象的字段，按 `x-order` 给的顺序；没声明就按 properties 的键序。
+ *
+ * 为什么需要它：主题与插件的设置声明来自 YAML，解析成 map 之后键序就丢了
+ * （Go 的 map 遍历顺序不定）。后果是「模块」这个类型选择器会排在条数、来源的后面，
+ * 看上去像表单排错了——而声明方在 YAML 里明明是按顺序写的。
+ * 没被 x-order 提到的字段补在末尾，与分段对孤儿字段的处理一致。
+ */
+export function orderedFields(schema: GroupSchema): [string, FieldSchema][] {
+  const properties = schema.properties ?? {};
+  const order = schema["x-order"];
+  if (!order || order.length === 0) {
+    return Object.entries(properties);
+  }
+  const covered = new Set(order);
+  const entries: [string, FieldSchema][] = [];
+  for (const key of order) {
+    const field = properties[key];
+    if (field) {
+      entries.push([key, field]);
+    }
+  }
+  for (const [key, field] of Object.entries(properties)) {
+    if (!covered.has(key)) {
+      entries.push([key, field]);
+    }
+  }
+  return entries;
+}
+
 /** 渲染用的一个分段：标题、说明与它收下的字段。 */
 export type RenderSection = {
   title: string;
@@ -526,7 +561,7 @@ export function sectionsOf(schema: GroupSchema): RenderSection[] {
   const declared = schema["x-sections"];
 
   if (!declared || declared.length === 0) {
-    return [{ title: "", fields: Object.entries(properties) }];
+    return [{ title: "", fields: orderedFields(schema) }];
   }
 
   const covered = new Set<string>();

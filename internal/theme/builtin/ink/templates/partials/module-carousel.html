@@ -1,0 +1,60 @@
+{{- /*
+轮播图。取置顶文章，没有置顶就退回最新 —— 站长不可能既维护一个「轮播专用标签」
+又不小心漏掉它，置顶是现成的、一眼能看懂的开关。
+
+首屏第一张图用 eager：它是 LCP 元素，lazy 会让首屏白一下。
+其余 slide 仍是 lazy。
+
+入参 dict：Page / M / Index
+*/ -}}
+{{ $page := .Page }}{{ $m := .M }}
+{{ $count := default 5 $m.count }}
+{{ $source := default "pinned" $m.source }}
+
+{{ $posts := $page.Find.Posts.Pinned $count }}
+{{ if eq $source "recent" }}{{ $posts = $page.Find.Posts.Recent $count }}
+{{ else if eq $source "category" }}{{ $posts = $page.Find.Posts.ByCategory $m.term $count }}
+{{ else if eq $source "tag" }}{{ $posts = $page.Find.Posts.ByTag $m.term $count }}
+{{ else if not $posts }}{{ $posts = $page.Find.Posts.Recent $count }}{{ end }}
+
+{{ if $posts }}
+<section class="home-module module-carousel" aria-labelledby="mod-{{ .Index }}" data-carousel>
+  {{ with $m.title }}<div class="module-head"><h2 class="module-title" id="mod-{{ $.Index }}">{{ . }}</h2></div>{{ end }}
+  {{ if not $m.title }}<h2 class="visually-hidden" id="mod-{{ .Index }}">轮播</h2>{{ end }}
+
+  <div class="carousel" data-carousel-root>
+    <ul class="carousel-track" data-carousel-track>
+      {{ range $i, $post := $posts }}
+      <li class="carousel-slide{{ if not $post.CoverURL }} no-cover{{ end }}">
+        <a href="{{ $post.URL }}">
+          {{ with $post.CoverURL }}
+          <img src="{{ . }}" alt="" {{ if eq $i 0 }}loading="eager" fetchpriority="high"{{ else }}loading="lazy"{{ end }} decoding="async">
+          {{ end }}
+          <div class="carousel-caption">
+            {{ with $post.Categories }}
+            <p class="carousel-terms">{{ range $j, $c := . }}{{ if $j }} · {{ end }}{{ $c.Name }}{{ end }}</p>
+            {{ end }}
+            <h3 class="carousel-title">{{ $post.Title }}</h3>
+            {{ with $post.Excerpt }}<p class="carousel-excerpt">{{ . }}</p>{{ end }}
+            {{ if not $post.PublishedAt.IsZero }}
+            <p class="carousel-meta"><time datetime="{{ date "rfc3339" $post.PublishedAt }}">{{ date "chinese" $post.PublishedAt }}</time></p>
+            {{ end }}
+          </div>
+        </a>
+      </li>
+      {{ end }}
+    </ul>
+
+    {{- /* 只有一张时不给出按钮与圆点：一个点了没反应的箭头比没有箭头更让人困惑。 */ -}}
+    {{ if gt (len $posts) 1 }}
+    <button class="carousel-nav" type="button" data-carousel-prev aria-label="上一张">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <button class="carousel-nav" type="button" data-carousel-next aria-label="下一张">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+    <div class="carousel-dots" data-carousel-dots></div>
+    {{ end }}
+  </div>
+</section>
+{{ end }}

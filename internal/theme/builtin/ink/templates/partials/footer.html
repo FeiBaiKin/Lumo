@@ -1,11 +1,41 @@
-{{- /* 站点页脚。年份取站点时区的当前时间，而非服务器时区。 */ -}}
+{{- /*
+页脚。文案、版权行、备案号与社交链接都由「主题设置 → 页脚」给。
+
+版权行的 {year} 会被替换成当前年份：写死年份的页脚过一年就是错的，
+而这个替换比让站长每年回来改一次要省事。
+*/ -}}
+{{ $footer := .Theme.Settings.footer }}
 <footer class="site-footer">
   <div class="wrap">
-    <p class="copyright">© {{ year .Site.Now }} {{ .Site.Title }}</p>
-    {{ with .Theme.Settings.layout.footerText }}<p class="footer-text">{{ . }}</p>{{ end }}
-    <p class="footer-links">
-      <a href="/feed.xml">订阅</a>
-      <a href="/sitemap.xml">站点地图</a>
-    </p>
+    {{ with $footer.footerText }}<p class="footer-text">{{ . }}</p>{{ end }}
+
+    <div class="footer-bottom">
+      <p class="copyright">
+        {{ if $footer.copyright }}
+          {{ replace $footer.copyright "{year}" (printf "%d" (year .Site.Now)) }}
+        {{ else }}
+          © {{ year .Site.Now }} {{ .Site.Title }}
+        {{ end }}
+      </p>
+
+      {{ with $footer.icp }}
+      <p class="footer-icp">
+        {{ if $footer.icpLink }}
+        <a href="{{ $footer.icpLink }}" target="_blank" rel="noopener noreferrer nofollow">{{ . }}</a>
+        {{ else }}{{ . }}{{ end }}
+      </p>
+      {{ end }}
+
+      <p class="footer-links">
+        <a href="/feed.xml">订阅</a>
+        <a href="/sitemap.xml">站点地图</a>
+        {{ range $footer.socials }}
+        <a class="social" href="{{ .url }}" title="{{ .label }}" target="_blank" rel="noopener noreferrer">
+          {{ template "partials/icon.html" (printf "social-%s" .label) }}
+          <span class="visually-hidden">{{ .label }}</span>
+        </a>
+        {{ end }}
+      </p>
+    </div>
   </div>
 </footer>

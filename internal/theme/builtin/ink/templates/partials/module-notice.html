@@ -1,0 +1,15 @@
+{{- /*
+公告条。只有一条纯文本，不解析 HTML、不做关闭按钮。
+
+不记「访客关掉了它」：那需要一个 Cookie 或一次后端请求，而公告是站长要所有人看见的东西——
+把它做成可关的，等于给站长一个「发了但没人看到」的陷阱。要撤下就清空内容。
+*/ -}}
+{{ $m := .M }}
+{{ with $m.text }}
+<section class="home-module module-notice">
+  <p class="notice-bar">
+    <span class="notice-tag">公告</span>
+    <span class="notice-text">{{ . }}</span>
+  </p>
+</section>
+{{ end }}

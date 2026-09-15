@@ -100,6 +100,42 @@ func (p PostsFinder) Pinned(n int) []PostView {
 	})
 }
 
+// Popular 返回按评论数排序的热门文章（判据见 Store.PopularPosts）。
+func (p PostsFinder) Popular(n int) []PostView {
+	n = clamp(n)
+	return cached(p.f, "posts.popular:"+itoa(n), func() ([]PostView, error) {
+		return p.f.store.PopularPosts(p.f.ctx, n)
+	})
+}
+
+// Adjacent 返回上一篇与下一篇，供文章页的翻页链接用。
+//
+// 返回一个结构体而不是两个值：模板里 {{ $a := .Find.Posts.Adjacent $id }} 之后
+// 再 {{ with $a.Prev }} 比解构两值更清楚地表达「可能没有上一篇」。
+type Adjacent struct {
+	// Prev 是更早发布的一篇。
+	Prev *PostView
+	// Next 是更晚发布的一篇。
+	Next *PostView
+}
+
+// Adjacent 返回与给定文章相邻的两篇（按发布时间）。
+//
+// 文章没有发布时间（草稿不该走到这里，但模板可能被别处调用）时返回两个 nil，
+// 模板的 {{ with }} 会自然跳过。
+func (p PostsFinder) Adjacent(postID int64, publishedAt time.Time) Adjacent {
+	if publishedAt.IsZero() {
+		return Adjacent{}
+	}
+	key := "posts.adjacent:" + itoa(int(postID))
+	type pair struct{ prev, next *PostView }
+	result := cached(p.f, key, func() (pair, error) {
+		prev, next, err := p.f.store.AdjacentPosts(p.f.ctx, postID, publishedAt)
+		return pair{prev: prev, next: next}, err
+	})
+	return Adjacent{Prev: result.prev, Next: result.next}
+}
+
 // Related 返回与给定文章共享分类或标签的其他文章。
 func (p PostsFinder) Related(postID int64, n int) []PostView {
 	n = clamp(n)

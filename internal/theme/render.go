@@ -178,11 +178,12 @@ func (r *Renderer) NewContext(ctx context.Context, req *http.Request, kind strin
 	site := r.siteContext(ctx)
 
 	themeCtx := ThemeContext{
-		Name:       loaded.Manifest.Name,
-		Label:      loaded.Manifest.Label,
-		Version:    loaded.Manifest.Version,
-		AssetsBase: r.assetsBase + "/" + loaded.Manifest.Name,
-		Settings:   map[string]map[string]any{},
+		Name:          loaded.Manifest.Name,
+		Label:         loaded.Manifest.Label,
+		Version:       loaded.Manifest.Version,
+		AssetsBase:    r.assetsBase + "/" + loaded.Manifest.Name,
+		AssetsVersion: loaded.AssetVersion,
+		Settings:      map[string]map[string]any{},
 	}
 	if r.themeCfg != nil {
 		stored, err := r.themeCfg.Load(ctx, loaded.Manifest.Name)

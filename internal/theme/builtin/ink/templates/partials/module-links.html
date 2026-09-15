@@ -1,0 +1,25 @@
+{{- /*
+友情链接。条目来自一个菜单（在「菜单」页里维护），不另建一张友链表：
+
+友链与导航条目的结构完全一样（名字 + 地址 + 是否新窗口），
+多一张表就多一套 CRUD、一套迁移与一个后台页面，换来的只是「不跟导航混在一起」。
+真要在后台分开看，建一个叫 links 的菜单就够了。
+*/ -}}
+{{ $page := .Page }}{{ $m := .M }}
+{{ $items := $page.Find.Menus.Get $m.menu }}
+{{ if $items }}
+<section class="home-module" aria-labelledby="mod-{{ .Index }}">
+  <div class="module-head">
+    <h2 class="module-title" id="mod-{{ .Index }}">{{ default "友情链接" $m.title }}</h2>
+  </div>
+  <ul class="link-list">
+    {{ range $items }}
+    <li>
+      <a href="{{ .URL }}"{{ with .Target }} target="{{ . }}"{{ end }}{{ with .Rel }} rel="{{ . }}"{{ end }}>
+        {{ .Label }}
+      </a>
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}

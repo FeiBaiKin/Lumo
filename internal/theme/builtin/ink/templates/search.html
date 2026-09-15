@@ -1,7 +1,7 @@
 {{ template "layouts/base.html" . }}
 
 {{ define "main" }}
-<div class="wrap">
+<div class="wrap wrap--wide">
   <header class="archive-header">
     <p class="archive-kind">搜索</p>
     <form class="search-form" action="/search" method="get" role="search">
@@ -16,7 +16,7 @@
 
   {{ if .Query }}
     {{ if .Posts }}
-      {{ template "partials/post-list.html" . }}
+      {{ template "partials/list-with-sidebar.html" . }}
     {{ else }}
     <div class="empty-state">
       {{ template "partials/seal.html" "无" }}

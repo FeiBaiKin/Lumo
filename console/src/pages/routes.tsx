@@ -3,15 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, Skeleton } from "@/components/ui/states";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { ThemesPage } from "@/pages/appearance/themes";
 import { CommentsPage } from "@/pages/content/comments";
 import { PagesPage } from "@/pages/content/pages";
 import { PostsPage } from "@/pages/content/posts";
 import { MediaPage } from "@/pages/media/media";
 import { ProfilePage } from "@/pages/profile";
-import { SettingsPage } from "@/pages/settings/settings";
 import { AboutPage } from "@/pages/system/about";
-import { PluginsPage } from "@/pages/system/plugins";
 import { CategoriesPage } from "@/pages/taxonomy/categories";
 import { TagsPage } from "@/pages/taxonomy/tags";
 import { RolesPage } from "@/pages/users/roles";
@@ -40,6 +37,25 @@ const ContentEditor = lazy(() =>
  */
 const MenusPage = lazy(() =>
   import("@/pages/appearance/menus").then((m) => ({ default: m.MenusPage })),
+);
+
+/**
+ * 表单重的三页也按需加载：站点设置、主题（内含主题设置）、插件（内含插件设置）。
+ *
+ * 它们共用同一套表单引擎（17 种控件），而引擎里为了重复条目的拖动排序引入了
+ * motion 的 Reorder（约 133 KB）。把这三页拆出去之后，拖动引擎只跟着表单走，
+ * 不会挂在每一次打开后台的首屏包上。
+ */
+const SettingsPage = lazy(() =>
+  import("@/pages/settings/settings").then((m) => ({
+    default: m.SettingsPage,
+  })),
+);
+const ThemesPage = lazy(() =>
+  import("@/pages/appearance/themes").then((m) => ({ default: m.ThemesPage })),
+);
+const PluginsPage = lazy(() =>
+  import("@/pages/system/plugins").then((m) => ({ default: m.PluginsPage })),
 );
 
 /** 按需加载页面的占位：与真实页面同为「页头 + 主体」两段，加载完不跳。 */
@@ -140,7 +156,7 @@ export const APP_ROUTES = [
   { path: "media", element: MediaPage },
 
   // ---- 外观 ----
-  { path: "themes", element: ThemesPage },
+  { path: "themes", element: () => <LazyPage element={<ThemesPage />} /> },
   { path: "menus", element: () => <LazyPage element={<MenusPage />} /> },
 
   // ---- 用户 ----
@@ -149,12 +165,15 @@ export const APP_ROUTES = [
   { path: "profile", element: ProfilePage },
 
   // ---- 设置 ----
-  { path: "settings", element: SettingsPage },
-  { path: "settings/:group", element: SettingsPage },
+  { path: "settings", element: () => <LazyPage element={<SettingsPage />} /> },
+  {
+    path: "settings/:group",
+    element: () => <LazyPage element={<SettingsPage />} />,
+  },
 
   // ---- 系统 ----
   { path: "about", element: AboutPage },
-  { path: "plugins", element: PluginsPage },
+  { path: "plugins", element: () => <LazyPage element={<PluginsPage />} /> },
   {
     path: "logs",
     element: () => (

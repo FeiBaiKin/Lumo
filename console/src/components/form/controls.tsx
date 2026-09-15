@@ -29,7 +29,16 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { CheckboxRow, Switch } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, ImageOff, ImagePlus, Plus, X } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  GripVertical,
+  ImageOff,
+  ImagePlus,
+  Plus,
+  X,
+} from "lucide-react";
+import { Reorder, useDragControls } from "motion/react";
 import {
   type ReactNode,
   createContext,
@@ -595,10 +604,14 @@ function ListControl({ path, value, error, disabled, onChange }: ControlProps) {
 }
 
 /**
- * 对象数组：每个条目是一个嵌套表单。
+ * 对象数组：每个条目是一个嵌套表单，条目之间可以拖动排序。
  *
- * 用于「一组结构相同的配置」，如多条转发规则。条目名与字段说明由
+ * 用于「一组结构相同的配置」，如首页模块、多条转发规则。条目名与字段说明由
  * `x-item-label` 与 `items.properties` 提供，引擎本身不认识任何具体字段。
+ *
+ * 排序用拖动（与「菜单」页同一套 motion Reorder）：条目数可能十几个，
+ * 一组上下小箭头在那种长度下要按很多次；手柄同时是可聚焦的按钮，
+ * 聚焦后按 ↑ ↓ 也能排序，键盘用户不掉队。
  */
 function RepeaterControl({
   path,
@@ -614,52 +627,48 @@ function RepeaterControl({
   const itemLabel = schema["x-item-label"] ?? "一项";
   const update = (next: unknown[]) => onChange(next);
 
+  /** 上下移动一条。拖动之外的入口：键盘操作与拖动失败时的兜底。 */
+  function move(from: number, to: number) {
+    if (to < 0 || to >= items.length) {
+      return;
+    }
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    update(next);
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      {items.map((item, index) => {
-        const values =
-          item && typeof item === "object" && !Array.isArray(item)
-            ? (item as Record<string, unknown>)
-            : {};
-        return (
-          <Inset
-            /*
-             * 下标作 key 在这里是安全的：条目是纯数据对象（服务端存的是普通 JSON，
-             * 没有 id），而每个子控件都是完全受控的。加一个合成 id 反而会破坏提交 ——
-             * 服务端按 additionalProperties: false 校验，多一个键就整组存不进去。
-             */
+      <Reorder.Group
+        axis="y"
+        values={items}
+        // 长度对不上说明拖拽期间列表变过（删了一条），宁可这次不生效
+        onReorder={(next) => next.length === items.length && update(next)}
+        className="flex flex-col gap-3"
+      >
+        {items.map((item, index) => (
+          <RepeaterItem
             // biome-ignore lint/suspicious/noArrayIndexKey: 纯数据对象，无稳定标识可用
             key={index}
-          >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-sm font-medium text-ink">
-                {itemLabel} {index + 1}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                disabled={disabled}
-                onClick={() => update(items.filter((_, i) => i !== index))}
-                aria-label={`删除${itemLabel} ${index + 1}`}
-                className="hover:text-danger"
-              >
-                <X aria-hidden="true" />
-              </Button>
-            </div>
-            {renderGroup({
-              basePath: `${path}.${index}`,
-              schema: itemSchema,
-              values,
-              disabled,
-              onChange: (nextValues) => {
-                const next = [...items];
-                next[index] = nextValues;
-                update(next);
-              },
-            })}
-          </Inset>
-        );
-      })}
+            index={index}
+            label={itemLabel}
+            item={item}
+            itemSchema={itemSchema}
+            basePath={`${path}.${index}`}
+            disabled={disabled}
+            renderGroup={renderGroup}
+            onChange={(nextValues) => {
+              const next = [...items];
+              next[index] = nextValues;
+              update(next);
+            }}
+            onRemove={() => update(items.filter((_, i) => i !== index))}
+            onMove={(direction) => move(index, index + direction)}
+          />
+        ))}
+      </Reorder.Group>
+
       <Button
         variant="secondary"
         size="sm"
@@ -672,6 +681,97 @@ function RepeaterControl({
       </Button>
       <ErrorLine path={path} error={error} />
     </div>
+  );
+}
+
+/** 一个可拖动的条目。 */
+function RepeaterItem({
+  index,
+  label,
+  item,
+  itemSchema,
+  basePath,
+  disabled,
+  renderGroup,
+  onChange,
+  onRemove,
+  onMove,
+}: {
+  index: number;
+  label: string;
+  item: unknown;
+  itemSchema: GroupSchema;
+  basePath: string;
+  disabled: boolean;
+  renderGroup: RenderGroup;
+  onChange: (values: Record<string, unknown>) => void;
+  onRemove: () => void;
+  onMove: (direction: -1 | 1) => void;
+}) {
+  // 拖动只从手柄发起：条目里全是输入框，整条可拖会把选词与光标一起抢走
+  const controls = useDragControls();
+  const values =
+    item && typeof item === "object" && !Array.isArray(item)
+      ? (item as Record<string, unknown>)
+      : {};
+
+  return (
+    <Reorder.Item
+      value={item}
+      dragListener={false}
+      dragControls={controls}
+      className="list-none"
+    >
+      <Inset>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={disabled}
+              onPointerDown={(event) => {
+                if (!disabled) {
+                  controls.start(event);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  onMove(-1);
+                } else if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  onMove(1);
+                }
+              }}
+              aria-label={`拖动${label} ${index + 1} 调整顺序，按上下方向键也可以`}
+              title="拖动排序（聚焦后用 ↑ ↓ 也行）"
+              className="transition-ui flex size-6 cursor-grab touch-none items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+            >
+              <GripVertical aria-hidden="true" className="size-4" />
+            </button>
+            <span className="text-sm font-medium text-ink">
+              {label} {index + 1}
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={disabled}
+            onClick={onRemove}
+            aria-label={`删除${label} ${index + 1}`}
+            className="hover:text-danger"
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </div>
+        {renderGroup({
+          basePath,
+          schema: itemSchema,
+          values,
+          disabled,
+          onChange,
+        })}
+      </Inset>
+    </Reorder.Item>
   );
 }
 

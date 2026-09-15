@@ -194,6 +194,8 @@ type ThemeContext struct {
 	Settings map[string]map[string]any
 	// AssetsBase 是本主题静态资源的访问前缀，如 /themes/ink/static。
 	AssetsBase string
+	// AssetsVersion 是静态资源指纹，模板挂在 URL 上做缓存失效（见 Loaded.AssetVersion）。
+	AssetsVersion string
 }
 
 // PostView 是注入模板的内容视图。

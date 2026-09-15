@@ -12,6 +12,7 @@ import {
   initialValues,
   isVisible,
   labelFor,
+  orderedFields,
   sectionsOf,
   validateGroup,
 } from "@/components/form/schema";
@@ -344,7 +345,11 @@ export function SchemaFormFields({
       onChange: onGroupChange,
     }) => (
       <div className="@container flex flex-col gap-4">
-        {Object.entries(groupSchema.properties ?? {})
+        {/*
+          字段顺序走 orderedFields 而不是 Object.entries：声明来自 YAML 时键序会丢，
+          嵌套对象（重复条目的每一条）里的顺序因此会变成 map 的随机序。
+        */}
+        {orderedFields(groupSchema)
           .filter(([, field]) => isVisible(field["x-show-if"], groupValues))
           .map(([key, field]) => {
             const path = `${basePath}.${key}`;

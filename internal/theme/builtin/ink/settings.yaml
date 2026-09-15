@@ -1,5 +1,9 @@
 # 主题设置声明，走统一表单 Schema（agent.md §5）。
 # Console 用与站点设置完全相同的表单引擎渲染这里的内容。
+#
+# 分组名是**存储键**，改一个名字等于把站长填过的值丢掉，故只增不改。
+# 2026-09-15 新增 homepage / listing / footer 三组：其中 layout 里的 indexMode、showCover
+# 与 footerText 搬去了新分组，三者的旧值会在下一次保存该组时消失（本项目尚无生产站点）。
 groups:
   - name: appearance
     label: 外观
@@ -8,6 +12,7 @@ groups:
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
       type: object
+      x-order: [colorScheme, seal, contentWidth, showMeta, showReadingTime, webFont, motion]
       additionalProperties: false
       properties:
         colorScheme:
@@ -53,24 +58,190 @@ groups:
       webFont: true
       motion: true
 
-  - name: layout
-    label: 版式
-    description: 首页与列表的呈现方式。
+  - name: homepage
+    label: 首页
+    description: 首页由若干模块自上而下拼成。拖动可以调整先后，删掉即不显示。
+    order: 5
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      x-order: [modules, showIntro]
+      additionalProperties: false
+      properties:
+        modules:
+          type: array
+          title: 首页模块
+          x-widget: repeater
+          x-item-label: 模块
+          description: 从上到下就是首页上的先后顺序；拖动条目左侧的手柄可以调整。每个模块的参数只对它自己生效
+          items:
+            type: object
+            additionalProperties: false
+            required: [type]
+            # 条目里字段多，顺序必须显式给：不然「模块」这个类型选择器会掉到最下面
+            x-order: [type, title, source, term, count, columns, style, menu, text]
+            properties:
+              type:
+                type: string
+                title: 模块
+                enum: [carousel, notice, featured, categories, latest, popular, tags, links]
+                enumNames: [轮播图, 公告条, 精选卡片, 分类导航, 最新文章, 热门文章, 标签云, 友情链接]
+                x-widget: select
+              title:
+                type: string
+                title: 区块标题
+                maxLength: 32
+                description: 留空则用模块的默认标题；公告条没有标题
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [carousel, featured, categories, latest, popular, tags, links]
+              text:
+                type: string
+                title: 公告内容
+                maxLength: 200
+                x-widget: textarea
+                x-rows: 2
+                description: 纯文本，不解析 HTML
+                x-show-if: { field: type, op: eq, value: notice }
+              source:
+                type: string
+                title: 取哪些内容
+                enum: [pinned, recent, category, tag]
+                enumNames: [置顶文章, 最新文章, 某个分类, 某个标签]
+                x-widget: select
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [carousel, featured]
+              term:
+                type: string
+                title: 分类或标签标识
+                maxLength: 128
+                description: 填分类或标签的 slug（在分类 / 标签页的地址栏里能看到）
+                x-show-if:
+                  field: source
+                  op: in
+                  value: [category, tag]
+              count:
+                type: integer
+                title: 条数
+                minimum: 1
+                maximum: 60
+                x-unit: 条
+                description: 轮播与精选一般 3–9 条，标签云可以到二三十
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [carousel, featured, categories, latest, popular, tags]
+              columns:
+                type: integer
+                title: 每行几个
+                minimum: 2
+                maximum: 4
+                x-unit: 列
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [featured, latest, popular]
+              style:
+                type: string
+                title: 展示方式
+                enum: ["", grid, masonry, list]
+                enumNames: [跟随「列表与卡片」, 网格, 瀑布流, 列表]
+                x-widget: select
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [featured, latest, popular]
+              menu:
+                type: string
+                title: 用哪个菜单
+                maxLength: 64
+                description: 填菜单的标识（slug）。条目在「菜单」页里维护
+                x-show-if: { field: type, op: eq, value: links }
+        showIntro:
+          type: boolean
+          title: 顶部显示站点简介
+          description: 用「站点设置」里的站点描述，只在首页第一屏出现
+    defaults:
+      modules:
+        - {type: carousel, count: 5, source: pinned}
+        - {type: featured, title: 精选, count: 4, source: recent, columns: 2, style: grid}
+        - {type: categories, title: 分类, count: 6}
+        - {type: latest, title: 最新文章, count: 9, columns: 3, style: ""}
+        - {type: popular, title: 热门, count: 5, style: list}
+        - {type: tags, title: 标签, count: 24}
+      showIntro: false
+
+  - name: listing
+    label: 列表与卡片
+    description: 分类、标签、归档、搜索这些页面上的文章列表长什么样；首页模块没单独指定时也用它。
     order: 10
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
       type: object
+      x-order: [listStyle, columns, showCover, coverRatio, excerpt, showSidebar, categoryLabel]
       additionalProperties: false
       properties:
-        indexMode:
+        listStyle:
           type: string
-          title: 首页形态
-          enum: [list, excerpt]
+          title: 展示方式
+          enum: [grid, masonry, list]
+          enumNames: [网格, 瀑布流, 列表]
           x-widget: select
-          description: list 只列标题与日期；excerpt 额外显示摘要
+          description: 网格是等高卡片；瀑布流保留封面原始比例、错落排列；列表是一行一篇、信息最密
+        columns:
+          type: integer
+          title: 每行几个
+          minimum: 2
+          maximum: 4
+          x-unit: 列
+          description: 列表方式下不生效
         showCover:
           type: boolean
-          title: 列表显示封面图
+          title: 显示封面图
+          description: 关掉后卡片只剩文字。文章自己没有封面时本来就不留空位——一块灰底比没有图更难看
+        coverRatio:
+          type: string
+          title: 封面比例
+          enum: ["16/9", "4/3", "1/1"]
+          enumNames: ["16:9 宽幅", "4:3 常规", "1:1 方形"]
+          x-widget: select
+          description: 网格方式下强制裁成这个比例；瀑布流保留原比例，此项不生效
+        excerpt:
+          type: string
+          title: 摘要
+          enum: [none, one, two, three]
+          enumNames: [不显示, 一行, 两行, 三行]
+          x-widget: select
+        showSidebar:
+          type: boolean
+          title: 列表页显示侧栏
+          description: 分类、标签、归档、搜索与作者页右侧的栏目（站点简介、热门文章、标签、最新评论）。首页不受影响——首页是模块堆出来的
+        categoryLabel:
+          type: boolean
+          title: 卡片上显示分类
+          description: 卡片是链接，分类标签会做成不可点的纯文字，避免一个卡片里套两个链接
+    defaults:
+      listStyle: grid
+      columns: 3
+      showCover: true
+      coverRatio: "16/9"
+      excerpt: two
+      showSidebar: true
+      categoryLabel: true
+
+  - name: layout
+    label: 导航
+    description: 页眉上的主导航与账户入口。
+    order: 20
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      x-order: [primaryMenu, showAccountEntry]
+      additionalProperties: false
+      properties:
         primaryMenu:
           type: string
           title: 主导航菜单
@@ -80,28 +251,24 @@ groups:
           type: boolean
           title: 页眉显示账户入口
           description: 匿名时显示「登录」（站点开放注册时另加「注册」），已登录时显示你的显示名。关掉后 /account 仍可直接用地址访问
-        footerText:
-          type: string
-          title: 页脚文字
-          maxLength: 500
-          x-widget: textarea
-          description: 支持备案号一类的纯文本，不解析 HTML
     defaults:
-      indexMode: excerpt
-      showCover: false
       primaryMenu: primary
       showAccountEntry: true
-      footerText: ""
 
   - name: content
     label: 内容
     description: 文章页的附加元素。
-    order: 20
+    order: 30
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
       type: object
+      x-order: [showToc, showRelated, relatedCount, showPrevNext, showComments, showAuthor]
       additionalProperties: false
       properties:
+        showToc:
+          type: boolean
+          title: 显示文章目录
+          description: 正文里的二级与三级标题会收进右侧目录；标题太少（不足三个）时不显示
         showRelated:
           type: boolean
           title: 显示相关文章
@@ -110,6 +277,9 @@ groups:
           title: 相关文章条数
           minimum: 1
           maximum: 12
+        showPrevNext:
+          type: boolean
+          title: 显示上一篇 / 下一篇
         showComments:
           type: boolean
           title: 显示评论
@@ -117,7 +287,69 @@ groups:
           type: boolean
           title: 文末显示作者信息
     defaults:
+      showToc: true
       showRelated: true
       relatedCount: 3
+      showPrevNext: true
       showComments: true
       showAuthor: true
+
+  - name: footer
+    label: 页脚
+    description: 页脚的文字、备案信息与社交链接。
+    order: 40
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      x-order: [footerText, copyright, icp, icpLink, socials]
+      additionalProperties: false
+      properties:
+        footerText:
+          type: string
+          title: 页脚文案
+          maxLength: 500
+          x-widget: textarea
+          x-rows: 2
+          description: 显示在页脚最上方的整段文字，不解析 HTML
+        copyright:
+          type: string
+          title: 版权行
+          maxLength: 200
+          description: 留空则自动写成「© 年份 站点标题」。写 {year} 会替换成当前年份
+        icp:
+          type: string
+          title: 备案号
+          maxLength: 64
+          description: 例如「京ICP备12345678号」。留空则不显示
+        icpLink:
+          type: string
+          title: 备案号链接
+          maxLength: 200
+          description: 留空则不链接，工信部要求真实站点加上它
+        socials:
+          type: array
+          title: 社交链接
+          x-widget: repeater
+          x-item-label: 链接
+          description: 显示在页脚的图标行。图标按名字自动挑，填不出图标的会退化成一个圆点
+          items:
+            type: object
+            additionalProperties: false
+            required: [label]
+            x-order: [label, url]
+            properties:
+              label:
+                type: string
+                title: 名称
+                maxLength: 32
+                description: 如 github、x、rss、weibo、bilibili
+              url:
+                type: string
+                title: 地址
+                maxLength: 300
+    defaults:
+      footerText: ""
+      copyright: ""
+      icp: ""
+      icpLink: ""
+      socials: []

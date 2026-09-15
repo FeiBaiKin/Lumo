@@ -7,7 +7,9 @@
 */ -}}
 <!doctype html>
 <html lang="{{ with .Site.Language }}{{ . }}{{ else }}zh-CN{{ end }}"
-      data-scheme="{{ with .Theme.Settings.appearance.colorScheme }}{{ . }}{{ else }}auto{{ end }}">
+      data-scheme="{{ with .Theme.Settings.appearance.colorScheme }}{{ . }}{{ else }}auto{{ end }}"
+      {{- /* 封面比例由「列表与卡片」定，CSS 按这个属性挑 aspect-ratio。 */}}
+      data-cover-ratio="{{ with .Theme.Settings.listing.coverRatio }}{{ . }}{{ else }}16/9{{ end }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -34,9 +36,9 @@
   放在 theme.css 之前，@font-face 声明先就位。站长可在主题设置里关掉它。
   */}}
   {{ with .Theme.Settings.appearance }}{{ if .webFont }}
-  <link rel="stylesheet" href="{{ $.Theme.AssetsBase }}/fonts/display-font.css">
+  <link rel="stylesheet" href="{{ $.Theme.AssetsBase }}/fonts/display-font.css?v={{ $.Theme.AssetsVersion }}">
   {{ end }}{{ end }}
-  <link rel="stylesheet" href="{{ .Theme.AssetsBase }}/theme.css">
+  <link rel="stylesheet" href="{{ .Theme.AssetsBase }}/theme.css?v={{ .Theme.AssetsVersion }}">
   {{- /*
   站长能改的配色只有一个值：主题色。悬停、活动、淡底与暗色下的提亮全部
   由 theme.css 从它算出来（见那里的 --seal 一节），所以这里注入的是 --theme 而不是 --seal。
@@ -69,20 +71,20 @@
   复制按钮是功能不是装饰，站长关掉动效不该把它一起关掉。
   没有这段脚本时代码块依然完整可读，丢的只是三个便利按钮。
   */}}
-  <script defer src="{{ .Theme.AssetsBase }}/code.js"></script>
+  <script defer src="{{ .Theme.AssetsBase }}/code.js?v={{ .Theme.AssetsVersion }}"></script>
 
   {{- /*
   二级菜单交互。与 code.js 一样**不受** appearance.motion 管辖：
   站长关掉动效总闸之后，菜单仍然必须能展开——导航是功能不是装饰。
   没有这段脚本时二级菜单就是一列摊开的可点链接，页面依然完整可用。
   */ -}}
-  <script defer src="{{ .Theme.AssetsBase }}/nav.js"></script>
+  <script defer src="{{ .Theme.AssetsBase }}/nav.js?v={{ .Theme.AssetsVersion }}"></script>
 
   {{- /*
   账户弹窗。同样是**不受** appearance.motion 管辖的一段：登录是功能不是装饰。
   没有这段脚本时，页眉的「登录」「注册」就是两个普通链接，走的是页面上那套表单。
   */ -}}
-  <script defer src="{{ .Theme.AssetsBase }}/auth.js"></script>
+  <script defer src="{{ .Theme.AssetsBase }}/auth.js?v={{ .Theme.AssetsVersion }}"></script>
 
   {{- /*
   页眉的账户菜单。同样**不受** appearance.motion 管辖：它装的是个人中心、
@@ -90,17 +92,30 @@
   没有这段脚本时头像就是一个指向 /account 的普通链接，菜单里的每一项在那一页上都有。
   只有已登录访客的页面上才有它要找的那个触发器，匿名页上它什么都不做。
   */ -}}
-  <script defer src="{{ .Theme.AssetsBase }}/account-menu.js"></script>
+  <script defer src="{{ .Theme.AssetsBase }}/account-menu.js?v={{ .Theme.AssetsVersion }}"></script>
+
+  {{- /*
+  轮播图（首页模块）。**不受** appearance.motion 管辖：翻页是功能不是装饰，
+  关掉动效只让它不用平滑滚动，不该让轮播变成一张不动的图。
+  页面上没有轮播时它什么都不做。
+  */ -}}
+  <script defer src="{{ .Theme.AssetsBase }}/carousel.js?v={{ .Theme.AssetsVersion }}"></script>
+
+  {{- /*
+  文章目录。与轮播同理：没有它时文章照样能读，只是少了一张地图。
+  它自己决定要不要显示（标题不足三个就保持隐藏）。
+  */ -}}
+  <script defer src="{{ .Theme.AssetsBase }}/toc.js?v={{ .Theme.AssetsVersion }}"></script>
 
   {{- /*
   动效（阶段 8）：GSAP + ScrollTrigger + Lenis 全部自托管，defer 加载、不阻塞渲染。
   脚本自己检查 prefers-reduced-motion；这里的开关是站长的总闸。
   */}}
   {{ with .Theme.Settings.appearance }}{{ if .motion }}
-  <script defer src="{{ $.Theme.AssetsBase }}/vendor/gsap.min.js"></script>
-  <script defer src="{{ $.Theme.AssetsBase }}/vendor/ScrollTrigger.min.js"></script>
-  <script defer src="{{ $.Theme.AssetsBase }}/vendor/lenis.min.js"></script>
-  <script defer src="{{ $.Theme.AssetsBase }}/motion.js"></script>
+  <script defer src="{{ $.Theme.AssetsBase }}/vendor/gsap.min.js?v={{ $.Theme.AssetsVersion }}"></script>
+  <script defer src="{{ $.Theme.AssetsBase }}/vendor/ScrollTrigger.min.js?v={{ $.Theme.AssetsVersion }}"></script>
+  <script defer src="{{ $.Theme.AssetsBase }}/vendor/lenis.min.js?v={{ $.Theme.AssetsVersion }}"></script>
+  <script defer src="{{ $.Theme.AssetsBase }}/motion.js?v={{ $.Theme.AssetsVersion }}"></script>
   {{ end }}{{ end }}
 </body>
 </html>

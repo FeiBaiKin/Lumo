@@ -1,7 +1,7 @@
 {{ template "layouts/base.html" . }}
 
 {{ define "main" }}
-<div class="wrap">
+<div class="wrap wrap--wide">
   {{- /* 页头的印：盖上分类名的第一个字。printf 的精度按字符数截取，中文安全。 */ -}}
   <header class="archive-header has-seal">
     {{ template "partials/seal.html" (printf "%.1s" .Category.Name) }}
@@ -13,6 +13,6 @@
     </div>
   </header>
 
-  {{ template "partials/post-list.html" . }}
+  {{ template "partials/list-with-sidebar.html" . }}
 </div>
 {{ end }}

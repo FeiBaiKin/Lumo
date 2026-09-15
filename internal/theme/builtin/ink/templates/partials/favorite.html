@@ -42,4 +42,4 @@
   */ -}}
   <span class="favorite-count" data-favorite-count role="status"{{ if not $count }} hidden{{ end }}>{{ $count }} 人收藏</span>
 </div>
-<script src="{{ .Theme.AssetsBase }}/favorite.js" defer></script>
+<script src="{{ .Theme.AssetsBase }}/favorite.js?v={{ .Theme.AssetsVersion }}" defer></script>

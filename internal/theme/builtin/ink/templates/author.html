@@ -1,7 +1,7 @@
 {{ template "layouts/base.html" . }}
 
 {{ define "main" }}
-<div class="wrap">
+<div class="wrap wrap--wide">
   <header class="archive-header author-header">
     {{- /* 作者有头像用头像，没有就盖一枚写着名字首字的印。 */ -}}
     {{ with .Author.AvatarURL }}<img class="avatar avatar-lg" src="{{ . }}" alt="" loading="lazy">{{ else }}{{ template "partials/seal.html" (printf "%.1s" .Author.DisplayName) }}{{ end }}
@@ -13,6 +13,6 @@
     </div>
   </header>
 
-  {{ template "partials/post-list.html" . }}
+  {{ template "partials/list-with-sidebar.html" . }}
 </div>
 {{ end }}

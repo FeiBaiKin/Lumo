@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -28,6 +30,9 @@ type Loaded struct {
 	FS fs.FS
 	// Static 是 static 子目录的文件系统；主题没有 static 时为 nil。
 	Static fs.FS
+	// AssetVersion 是静态资源的内容指纹，模板把它挂在资源 URL 的查询串上。
+	// 主题文件一变它就变，浏览器的 1 小时缓存因此不会在改版后继续端出旧样式。
+	AssetVersion string
 	// Templates 是模板名列表（主题自己提供的）。
 	Templates []string
 
@@ -239,9 +244,39 @@ func loadFS(name string, fsys fs.FS, dir string, builtin bool) (*Loaded, error) 
 	if staticFS, err := fs.Sub(fsys, DirStatic); err == nil {
 		if _, statErr := fs.Stat(staticFS, "."); statErr == nil {
 			loaded.Static = staticFS
+			loaded.AssetVersion = assetVersion(staticFS)
 		}
 	}
 	return loaded, nil
+}
+
+// assetVersion 给静态资源算一个随文件变化的版本号。
+//
+// 主题的静态资源带 1 小时的缓存头。没有版本号时，主题升级或「恢复出厂」之后
+// 浏览器会在最长一小时内继续用旧的 CSS —— HTML 已经是新版、样式还是上一版，
+// 看上去就像主题坏了。把版本号挂在 URL 上，文件一变 URL 就变，缓存自然失效。
+//
+// 用「路径 + 大小 + 修改时间」而不是文件内容：静态目录里有 3.8 MB 的字体切片，
+// 为了算个版本号把它们全读一遍，启动会明显变慢，而这三样足以捕捉任何一次改动。
+func assetVersion(staticFS fs.FS) string {
+	hash := fnv.New32a()
+	// 遍历失败就地返回、由调用方丢弃：版本号只用于缓存失效，
+	// 拿不到完整清单时最坏的结果是浏览器多缓存一会儿 —— 与没有这个字段时一样。
+	_ = fs.WalkDir(staticFS, ".", func(p string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, statErr := entry.Info()
+		if statErr != nil {
+			return statErr
+		}
+		fmt.Fprintf(hash, "%s|%d|%d\n", p, info.Size(), info.ModTime().UnixNano())
+		return nil
+	})
+	return strconv.FormatUint(uint64(hash.Sum32()), 36)
 }
 
 // Active 返回当前启用的主题。
