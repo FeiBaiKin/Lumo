@@ -43,15 +43,16 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  ChevronDown,
-  ChevronUp,
   ExternalLink,
   GripVertical,
+  IndentDecrease,
+  IndentIncrease,
   ListTree,
   Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
+import { Reorder, useDragControls } from "motion/react";
 import { useMemo, useState } from "react";
 
 /**
@@ -60,6 +61,12 @@ import { useMemo, useState } from "react";
  * 条目树**整体替换**式保存（agent.md §8）：菜单是一次性编辑、一次性保存的表单，
  * 逐条 diff 要处理移动、重排、删除与重建的交叉情形，出错概率远大于收益。
  * 界面上因此没有「保存这一条」—— 只有一个「保存菜单」。
+ *
+ * 排序用**拖动**：手柄只在同一层级内排序（一级与一级之间、子项与子项之间），
+ * 跨层级改结构走「缩进 / 提升」两个按钮。这么分工是因为跨级拖动要处理
+ * 「拖进谁的下面、落在第几个」这类歧义，成功率低而返回键只有 Ctrl+Z 没有撤销栈；
+ * 同级拖动则没有歧义。手柄本身是可聚焦的按钮，聚焦后按 ↑ ↓ 也能排序，
+ * 不把键盘用户挡在外面（拖动用的是 motion 的 Reorder，Console 里已有的依赖）。
  *
  * 站内条目（文章 / 页面 / 分类 / 标签）的地址**不落库、读取时解析**：
  * 记录改名或改 slug 后菜单自动跟随，指向已删除或未发布记录的条目
@@ -615,26 +622,73 @@ function ItemTreeEditor({ menu, editable }: { menu: Menu; editable: boolean }) {
     change((prev) => moveInTree(prev, key, direction));
   }
 
-  function renderLevel(list: DraftItem[], depth: number): React.ReactNode {
+  /**
+   * 接收某一层级拖动后的新顺序。
+   *
+   * 只按 key 重新排，不用 Reorder 给的那组对象：拖拽过程中树本身没变，
+   * 但期间任何一次 setState 都会让这些对象变成上一次渲染的快照，
+   * 直接采用会把那次编辑悄悄丢掉。长度对不上就整层不动，宁可这次拖动不生效。
+   */
+  function setLevelOrder(parentKey: string | null, orderedKeys: string[]) {
+    const reorder = (level: DraftItem[]): DraftItem[] => {
+      const byKey = new Map(level.map((item) => [item.key, item]));
+      const next = orderedKeys
+        .map((key) => byKey.get(key))
+        .filter((item): item is DraftItem => item !== undefined);
+      return next.length === level.length ? next : level;
+    };
+    if (parentKey === null) {
+      change(reorder);
+      return;
+    }
+    change((prev) =>
+      updateTree(prev, parentKey, (item) => ({
+        ...item,
+        children: reorder(item.children),
+      })),
+    );
+  }
+
+  function renderLevel(
+    list: DraftItem[],
+    depth: number,
+    parentKey: string | null,
+  ): React.ReactNode {
     return (
-      <ul className={cn("flex flex-col gap-2", depth > 1 && "mt-2 ml-6")}>
-        {list.map((item) => (
-          <li key={item.key}>
-            <ItemRow
-              item={item}
-              depth={depth}
-              editable={editable}
-              onChange={(changes) => patch(item.key, changes)}
-              onRemove={() => remove(item.key)}
-              onAddChild={() => addChild(item.key)}
-              onMove={(direction) => move(item.key, direction)}
-            />
+      <Reorder.Group
+        as="ul"
+        axis="y"
+        values={list}
+        onReorder={(next) =>
+          setLevelOrder(
+            parentKey,
+            next.map((item) => (item as DraftItem).key),
+          )
+        }
+        className={cn("flex flex-col gap-2", depth > 1 && "mt-2 ml-6")}
+      >
+        {list.map((item, index) => (
+          <ItemRow
+            key={item.key}
+            item={item}
+            depth={depth}
+            editable={editable}
+            // 首个同级条目没有可依附的对象；顶层条目也无从「提升」
+            canIndent={depth < MAX_DEPTH && index > 0}
+            canOutdent={depth > 1}
+            onChange={(changes) => patch(item.key, changes)}
+            onRemove={() => remove(item.key)}
+            onAddChild={() => addChild(item.key)}
+            onMove={(direction) => move(item.key, direction)}
+            onIndent={() => change((prev) => indentInTree(prev, item.key))}
+            onOutdent={() => change((prev) => outdentInTree(prev, item.key))}
+          >
             {item.children.length > 0
-              ? renderLevel(item.children, depth + 1)
+              ? renderLevel(item.children, depth + 1, item.key)
               : null}
-          </li>
+          </ItemRow>
         ))}
-      </ul>
+      </Reorder.Group>
     );
   }
 
@@ -728,7 +782,7 @@ function ItemTreeEditor({ menu, editable }: { menu: Menu; editable: boolean }) {
             </p>
           </div>
         ) : (
-          renderLevel(items, 1)
+          renderLevel(items, 1, null)
         )}
       </div>
     </div>
@@ -740,196 +794,252 @@ function ItemRow({
   item,
   depth,
   editable,
+  canIndent,
+  canOutdent,
   onChange,
   onRemove,
   onAddChild,
   onMove,
+  onIndent,
+  onOutdent,
+  children,
 }: {
   item: DraftItem;
   depth: number;
   editable: boolean;
+  canIndent: boolean;
+  canOutdent: boolean;
   onChange: (changes: Partial<DraftItem>) => void;
   onRemove: () => void;
   onAddChild: () => void;
   onMove: (direction: -1 | 1) => void;
+  onIndent: () => void;
+  onOutdent: () => void;
+  children?: React.ReactNode;
 }) {
+  // 拖动只从手柄发起：这一行里有输入框，整行可拖会把选词与光标一起抢走
+  const controls = useDragControls();
+
   return (
-    <Inset>
-      <div className="flex flex-wrap items-start gap-2">
-        {/* 上下移动。用按钮而不是纯图标：它需要可聚焦、可用键盘操作 */}
-        <div className="flex flex-col items-center gap-0.5 pt-0.5">
-          <button
-            type="button"
-            onClick={() => onMove(-1)}
-            disabled={!editable}
-            aria-label={`把「${item.label || "未命名"}」上移`}
-            className="transition-ui flex size-5 items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink disabled:opacity-40"
-          >
-            <ChevronUp aria-hidden="true" className="size-3.5" />
-          </button>
-          <GripVertical
-            aria-hidden="true"
-            className="size-3.5 text-ink-subtle"
-          />
-          <button
-            type="button"
-            onClick={() => onMove(1)}
-            disabled={!editable}
-            aria-label={`把「${item.label || "未命名"}」下移`}
-            className="transition-ui flex size-5 items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink disabled:opacity-40"
-          >
-            <ChevronDown aria-hidden="true" className="size-3.5" />
-          </button>
-        </div>
-
-        <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[1fr_10rem]">
-          <div className="flex flex-col gap-1">
-            <label className="sr-only" htmlFor={`label-${item.key}`}>
-              条目标题
-            </label>
-            <Input
-              id={`label-${item.key}`}
-              value={item.label}
+    <Reorder.Item
+      as="li"
+      value={item}
+      dragListener={false}
+      dragControls={controls}
+      className="list-none"
+    >
+      <Inset>
+        <div className="flex flex-wrap items-start gap-2">
+          {/*
+            手柄做成按钮：它要能聚焦、能用键盘排序。
+            这里不是「图标按钮」，是一个可拖的把手 —— 光标形状必须跟着变，
+            否则站长不会想到这东西能拖。
+          */}
+          <div className="flex flex-col items-center gap-0.5 pt-0.5">
+            <button
+              type="button"
               disabled={!editable}
-              placeholder="显示在导航上的文字"
-              onChange={(e) => onChange({ label: e.target.value })}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="sr-only" htmlFor={`type-${item.key}`}>
-              条目类型
-            </label>
-            <Select
-              value={item.type}
-              disabled={!editable}
-              onValueChange={(value) =>
-                // 换类型时把另一套字段清空：留着旧值会让服务端
-                // 同时收到 url 与 targetId，而它只认其中一套。
-                onChange({
-                  type: value as DraftItem["type"],
-                  targetId: null,
-                  url: "",
-                })
-              }
+              onPointerDown={(event) => {
+                if (editable) {
+                  controls.start(event);
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  onMove(-1);
+                } else if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  onMove(1);
+                }
+              }}
+              aria-label={`拖动「${item.label || "未命名"}」调整顺序，按上下方向键也可以`}
+              title="拖动排序（聚焦后用 ↑ ↓ 也行）"
+              className="transition-ui flex size-6 cursor-grab touch-none items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
             >
-              <SelectTrigger id={`type-${item.key}`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(TYPE_META).map(([type, meta]) => (
-                  <SelectItem key={type} value={type}>
-                    {meta.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              <GripVertical aria-hidden="true" className="size-4" />
+            </button>
           </div>
 
-          {item.type === "custom" ? (
-            <div className="sm:col-span-2">
-              <label className="sr-only" htmlFor={`url-${item.key}`}>
-                链接地址
+          <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-[1fr_10rem]">
+            <div className="flex flex-col gap-1">
+              <label className="sr-only" htmlFor={`label-${item.key}`}>
+                条目标题
               </label>
               <Input
-                id={`url-${item.key}`}
-                value={item.url}
+                id={`label-${item.key}`}
+                value={item.label}
                 disabled={!editable}
-                placeholder="https://example.com 或 /about"
-                onChange={(e) => onChange({ url: e.target.value })}
+                placeholder="显示在导航上的文字"
+                onChange={(e) => onChange({ label: e.target.value })}
               />
             </div>
-          ) : (
-            <TargetPicker item={item} editable={editable} onChange={onChange} />
-          )}
-        </div>
 
-        {editable ? (
-          <div className="flex items-center gap-0.5">
-            {depth < MAX_DEPTH ? (
+            <div className="flex flex-col gap-1">
+              <label className="sr-only" htmlFor={`type-${item.key}`}>
+                条目类型
+              </label>
+              <Select
+                value={item.type}
+                disabled={!editable}
+                onValueChange={(value) =>
+                  // 换类型时把另一套字段清空：留着旧值会让服务端
+                  // 同时收到 url 与 targetId，而它只认其中一套。
+                  onChange({
+                    type: value as DraftItem["type"],
+                    targetId: null,
+                    url: "",
+                  })
+                }
+              >
+                <SelectTrigger id={`type-${item.key}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(TYPE_META).map(([type, meta]) => (
+                    <SelectItem key={type} value={type}>
+                      {meta.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {item.type === "custom" ? (
+              <div className="sm:col-span-2">
+                <label className="sr-only" htmlFor={`url-${item.key}`}>
+                  链接地址
+                </label>
+                <Input
+                  id={`url-${item.key}`}
+                  value={item.url}
+                  disabled={!editable}
+                  placeholder="https://example.com 或 /about"
+                  onChange={(e) => onChange({ url: e.target.value })}
+                />
+              </div>
+            ) : (
+              <TargetPicker
+                item={item}
+                editable={editable}
+                onChange={onChange}
+              />
+            )}
+          </div>
+
+          {editable ? (
+            <div className="flex items-center gap-0.5">
+              {/*
+              层级用按钮改，不用拖。跨级拖动要判断「拖进谁的下面、落在第几个」，
+              拖歪了没有撤销栈可退；按钮则是「成为上一项的子条目 / 回到上一级」，
+              结果唯一。
+            */}
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={onAddChild}
-                aria-label={`在「${item.label || "未命名"}」下加子条目`}
-                title="加子条目"
+                disabled={!canIndent}
+                onClick={onIndent}
+                aria-label={`把「${item.label || "未命名"}」缩进为上一项的子条目`}
+                title="缩进（成为上一项的子条目）"
               >
-                <Plus aria-hidden="true" />
+                <IndentIncrease aria-hidden="true" />
               </Button>
-            ) : null}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onRemove}
-              aria-label={`删除条目「${item.label || "未命名"}」`}
-              title="删除"
-              className="hover:text-danger"
-            >
-              <Trash2 aria-hidden="true" />
-            </Button>
-          </div>
-        ) : null}
-      </div>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={!canOutdent}
+                onClick={onOutdent}
+                aria-label={`把「${item.label || "未命名"}」提升到上一级`}
+                title="提升（回到上一级）"
+              >
+                <IndentDecrease aria-hidden="true" />
+              </Button>
+              {depth < MAX_DEPTH ? (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onAddChild}
+                  aria-label={`在「${item.label || "未命名"}」下加子条目`}
+                  title="加子条目"
+                >
+                  <Plus aria-hidden="true" />
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onRemove}
+                aria-label={`删除条目「${item.label || "未命名"}」`}
+                title="删除"
+                className="hover:text-danger"
+              >
+                <Trash2 aria-hidden="true" />
+              </Button>
+            </div>
+          ) : null}
+        </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 pl-7">
-        {/*
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 pl-7">
+          {/*
           开关用显式 id + htmlFor 关联，而不是把控件包在 label 里。
           Radix 的 Switch 渲染的是 button 而非 input，包在 label 里时
           「标签与控件是否关联」在 DOM 上看不出来。
         */}
-        <div className="flex items-center gap-2 text-xs text-ink-muted">
-          <Switch
-            id={`visible-${item.key}`}
-            checked={item.visible}
-            disabled={!editable}
-            onCheckedChange={(checked) => onChange({ visible: checked })}
-          />
-          <label
-            htmlFor={`visible-${item.key}`}
-            className="cursor-pointer select-none"
-          >
-            前台可见
-          </label>
-        </div>
-
-        <CheckboxRow
-          id={`blank-${item.key}`}
-          checked={item.target === "_blank"}
-          disabled={!editable}
-          onCheckedChange={(checked) =>
-            onChange({ target: checked ? "_blank" : "" })
-          }
-          label={<span className="text-xs text-ink-muted">新窗口打开</span>}
-          className="px-0 py-0 hover:bg-transparent"
-        />
-
-        {item.target === "_blank" ? (
           <div className="flex items-center gap-2 text-xs text-ink-muted">
-            <label htmlFor={`rel-${item.key}`} className="whitespace-nowrap">
-              rel
-            </label>
-            <Input
-              id={`rel-${item.key}`}
-              value={item.rel}
+            <Switch
+              id={`visible-${item.key}`}
+              checked={item.visible}
               disabled={!editable}
-              placeholder="noopener noreferrer"
-              onChange={(e) => onChange({ rel: e.target.value })}
-              className="h-7 w-48 text-xs"
+              onCheckedChange={(checked) => onChange({ visible: checked })}
             />
-            <span className="whitespace-nowrap text-ink-subtle">
-              留空时前台自动补 noopener
-            </span>
+            <label
+              htmlFor={`visible-${item.key}`}
+              className="cursor-pointer select-none"
+            >
+              前台可见
+            </label>
           </div>
-        ) : null}
 
-        {item.type !== "custom" && item.targetId ? (
-          <span className="flex items-center gap-1 text-xs text-ink-subtle">
-            <ExternalLink aria-hidden="true" className="size-3" />
-            地址由系统解析
-          </span>
-        ) : null}
-      </div>
-    </Inset>
+          <CheckboxRow
+            id={`blank-${item.key}`}
+            checked={item.target === "_blank"}
+            disabled={!editable}
+            onCheckedChange={(checked) =>
+              onChange({ target: checked ? "_blank" : "" })
+            }
+            label={<span className="text-xs text-ink-muted">新窗口打开</span>}
+            className="px-0 py-0 hover:bg-transparent"
+          />
+
+          {item.target === "_blank" ? (
+            <div className="flex items-center gap-2 text-xs text-ink-muted">
+              <label htmlFor={`rel-${item.key}`} className="whitespace-nowrap">
+                rel
+              </label>
+              <Input
+                id={`rel-${item.key}`}
+                value={item.rel}
+                disabled={!editable}
+                placeholder="noopener noreferrer"
+                onChange={(e) => onChange({ rel: e.target.value })}
+                className="h-7 w-48 text-xs"
+              />
+              <span className="whitespace-nowrap text-ink-subtle">
+                留空时前台自动补 noopener
+              </span>
+            </div>
+          ) : null}
+
+          {item.type !== "custom" && item.targetId ? (
+            <span className="flex items-center gap-1 text-xs text-ink-subtle">
+              <ExternalLink aria-hidden="true" className="size-3" />
+              地址由系统解析
+            </span>
+          ) : null}
+        </div>
+      </Inset>
+      {children}
+    </Reorder.Item>
   );
 }
 
@@ -1056,5 +1166,57 @@ function moveInTree(
   return list.map((item) => ({
     ...item,
     children: moveInTree(item.children, key, direction),
+  }));
+}
+
+/**
+ * 把条目缩进为**上一个同级条目**的子项。
+ *
+ * 依附上一个同级而不是「缩进成一个新父级」：菜单里没有中间层这种东西，
+ * 能当父级的只有已经存在的条目。首个同级条目没有可依附的对象，原样返回。
+ */
+function indentInTree(list: DraftItem[], key: string): DraftItem[] {
+  const index = list.findIndex((item) => item.key === key);
+  if (index > 0) {
+    const moved = list[index] as DraftItem;
+    const prev = list[index - 1] as DraftItem;
+    const next = [...list];
+    next.splice(index, 1);
+    next[index - 1] = { ...prev, children: [...prev.children, moved] };
+    return next;
+  }
+  return list.map((item) => ({
+    ...item,
+    children: indentInTree(item.children, key),
+  }));
+}
+
+/**
+ * 把条目提升一级，紧跟在原父条目之后。
+ *
+ * 「之后」而不是「之前」：提升一项通常是想让它和前父级平级、排在它旁边，
+ * 插到父级之前会把它推到父级的父级上面去，越提升越靠前，很快就找不到东西了。
+ */
+function outdentInTree(list: DraftItem[], key: string): DraftItem[] {
+  const index = list.findIndex((item) =>
+    item.children.some((child) => child.key === key),
+  );
+  if (index >= 0) {
+    const parent = list[index] as DraftItem;
+    const moved = parent.children.find((child) => child.key === key);
+    if (!moved) {
+      return list;
+    }
+    const next = [...list];
+    next[index] = {
+      ...parent,
+      children: parent.children.filter((child) => child.key !== key),
+    };
+    next.splice(index + 1, 0, moved);
+    return next;
+  }
+  return list.map((item) => ({
+    ...item,
+    children: outdentInTree(item.children, key),
   }));
 }

@@ -377,6 +377,11 @@ func flatten(nodes []menuItemInput) ([]Item, []int, error) {
 			if len(items) >= maxItems {
 				return huma.Error400BadRequest("条目数超过上限 " + strconv.Itoa(maxItems))
 			}
+			// 同级内的次序。写入路径一直是「整棵删掉重建」，读取时靠新 id 也能得到
+			// 同样的顺序，position 因此长期是空转的一列（全是 0）——但它的语义写在
+			// 迁移里（「同级排序，越小越靠前」），留着一列永远为 0 的排序字段，
+			// 下一次有人手工改库或写下新的读取路径时就会踩空。
+			item.Position = i
 			// DFS 序保证父项总是先于子项出现，故父项下标可以直接写位置值。
 			items = append(items, item)
 			parents = append(parents, parent)

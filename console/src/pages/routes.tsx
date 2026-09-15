@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { EmptyState, Skeleton } from "@/components/ui/states";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import { MenusPage } from "@/pages/appearance/menus";
 import { ThemesPage } from "@/pages/appearance/themes";
 import { CommentsPage } from "@/pages/content/comments";
 import { PagesPage } from "@/pages/content/pages";
@@ -32,6 +31,30 @@ const ContentEditor = lazy(() =>
   import("@/pages/content/editor").then((m) => ({ default: m.ContentEditor })),
 );
 
+/**
+ * 菜单页也按需加载。
+ *
+ * 它引入 motion 的 `Reorder` 做拖动排序，而 motion 会把整套拖拽与布局动画引擎
+ * 一起带进包里（minify 后约 133 KB）。菜单是偶尔才改一次的东西，
+ * 不该让每一天的每一次打开后台都先下载它 —— 与内容编辑器同一个理由。
+ */
+const MenusPage = lazy(() =>
+  import("@/pages/appearance/menus").then((m) => ({ default: m.MenusPage })),
+);
+
+/** 按需加载页面的占位：与真实页面同为「页头 + 主体」两段，加载完不跳。 */
+function PageFallback() {
+  return (
+    <div className="flex flex-col" aria-busy="true">
+      <span className="sr-only">正在载入</span>
+      <div className="h-page-header border-line border-b bg-surface" />
+      <div className="flex flex-col gap-4 p-0 md:p-4">
+        <Skeleton className="h-64 w-full" />
+      </div>
+    </div>
+  );
+}
+
 /** 编辑器加载中的占位。用骨架屏而不是转圈：高度与真实编辑器接近，加载完不跳。 */
 function EditorFallback() {
   return (
@@ -52,6 +75,11 @@ function LazyEditor({ kind }: { kind: "post" | "page" }) {
       <ContentEditor kind={kind} />
     </Suspense>
   );
+}
+
+/** 按需加载的一页（见上面 MenusPage 的说明）。 */
+function LazyPage({ element }: { element: React.ReactNode }) {
+  return <Suspense fallback={<PageFallback />}>{element}</Suspense>;
 }
 
 /**
@@ -113,7 +141,7 @@ export const APP_ROUTES = [
 
   // ---- 外观 ----
   { path: "themes", element: ThemesPage },
-  { path: "menus", element: MenusPage },
+  { path: "menus", element: () => <LazyPage element={<MenusPage />} /> },
 
   // ---- 用户 ----
   { path: "users", element: UsersPage },
