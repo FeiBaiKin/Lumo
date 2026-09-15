@@ -57,23 +57,24 @@ tasks:
       - golangci-lint run
 
   test:
-    desc: 运行 Go 测试（未设 LUMO_TEST_DSN 时自动跳过集成测试）
+    desc: 运行 Go 测试（用例已于 2026-09-15 清空，现在每个包报 no test files 后退出 0）
     cmds:
       - go test -tags {{.BUILD_TAGS}} ./... {{.CLI_ARGS}}
 
   test:integration:
-    desc: 运行集成测试（需先设 LUMO_TEST_DSN；库名必须含 test，护栏会拒绝其他库）
+    desc: 运行集成测试（需先设 LUMO_TEST_DSN；用例已清空，此任务当前是空跑）
     preconditions:
       - sh: '{{if .LUMO_TEST_DSN}}exit 0{{else}}exit 1{{end}}'
         msg: |
           未设置 LUMO_TEST_DSN。集成测试会清空目标库的 public schema，
           故不提供默认值以避免误连。示例（PowerShell）：
             $env:LUMO_TEST_DSN = "postgres://用户:口令@127.0.0.1:5432/你的_test库?sslmode=disable"
+          另：自动核对库名含 test 的护栏已随用例删除，库名现在只能自己核对。
     cmds:
       - go test -tags {{.BUILD_TAGS}} -count=1 ./... {{.CLI_ARGS}}
 
   test:cover:
-    desc: 运行测试并生成覆盖率报告
+    desc: 运行测试并生成覆盖率报告（用例已清空，现在只会报 0.0%）
     cmds:
       - go test -tags {{.BUILD_TAGS}} -coverprofile=coverage.out ./...
       - go tool cover -func=coverage.out
@@ -144,7 +145,7 @@ tasks:
       - npm run typecheck
 
   console:test:
-    desc: 运行 Console 单元测试（Vitest）
+    desc: 运行 Console 单元测试（Vitest；用例已清空，当前零用例通过）
     dir: "{{.CONSOLE_DIR}}"
     cmds:
       - npm run test
@@ -159,7 +160,7 @@ tasks:
       - task: build
 
   check:
-    desc: 提交前自检：格式化 + vet + lint + 测试
+    desc: 提交前自检：格式化 + vet + lint（末尾的 test 已无用例，目前只是空跑）
     cmds:
       - task: fmt
       - task: vet
