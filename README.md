@@ -307,6 +307,13 @@ deploy/            Dockerfile（源码构建）、Dockerfile.goreleaser（发布
                    docker-compose.yml、.env.example
 ```
 
+## 参与贡献
+
+开发环境、代码约定与提交规范见 [CONTRIBUTING.md](./CONTRIBUTING.md)；
+参与前请先读一遍[行为准则](./CODE_OF_CONDUCT.md)。
+
+发现安全问题请走 [SECURITY.md](./SECURITY.md) 里的私有报告通道，不要开公开 Issue。
+
 ## 许可证
 
 [GPL-3.0](./LICENSE)
