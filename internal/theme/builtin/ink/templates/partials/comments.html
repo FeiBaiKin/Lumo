@@ -4,11 +4,31 @@
 访客提交走 Public 平面的 REST 接口，故表单由 JS 提交而非原生 form——
 原生提交后浏览器会跳到一个 JSON 响应页。无 JS 时表单按 hidden 处理，
 不给用户一个点了没反应的按钮。
+
+表单有四种形态，各自对应一种真实状态（与 favorite.html 同一套处置）：
+
+  已登录        —— 只有一个内容框。称呼与邮箱一律取账号里的，
+                   服务端的 resolveAuthor 本来就不看请求里的这两项（见 createBody 的注释），
+                   前台再摆出来就是两个填了也不算数的框。
+  未登录 + 允许访客 —— 称呼、邮箱、主页照旧；邮箱是否必填看站点设置。
+  未登录 + 不允许访客 —— 不渲染表单，给一个登录入口。
+  站点关掉评论    —— 不渲染表单；已有的评论仍然显示（内容不该因为关了评论就消失），
+                   一条都没有时整块不渲染。
+
+设置取自各分组的 Public 白名单（见 internal/comment/settings.go 的 Public 一行，
+那里写明了「前台要据此决定是否渲染评论框、是否显示邮箱字段」）。
 */ -}}
 {{ $post := .Post }}
 {{ $tree := .Find.Comments.Tree $post.ID }}
 {{ $count := .Find.Comments.Count $post.ID }}
 
+{{ $enabled := .Setting "comment" "enabled" }}
+{{ $allowGuest := .Setting "comment" "allowAnonymous" }}
+{{ $requireEmail := .Setting "comment" "requireEmail" }}
+{{ $me := .CurrentUser }}
+{{ $canPost := and $enabled (or $me $allowGuest) }}
+
+{{ if or $enabled $tree }}
 <section class="comments" id="comments">
   <h2 class="comments-title">{{ if $count }}{{ $count }} 条评论{{ else }}评论{{ end }}</h2>
 
@@ -16,25 +36,36 @@
   <ol class="comment-list">
     {{ template "partials/comment-nodes.html" $tree }}
   </ol>
-  {{ else }}
+  {{ else if $canPost }}
+  {{- /* 「来说两句」是一句邀请。发不了言的时候它就成了空话，那时什么都不说。 */ -}}
   <p class="empty">还没有评论，来说两句。</p>
   {{ end }}
 
+  {{ if $canPost }}
   {{- /* 字段名与 internal/comment 的请求体一致：name / email / url / content / website2。 */ -}}
-  <form class="comment-form" id="comment-form" hidden data-post-id="{{ $post.ID }}">
+  <form class="comment-form" id="comment-form" hidden data-post-id="{{ $post.ID }}"
+        {{- if $me }} data-authed="1"{{ end }}
+        {{- if and $requireEmail (not $me) }} data-require-email="1"{{ end }}>
+
+    {{ if $me }}
+    {{- /* 用 $me 而不是 .：if 块里的点仍是页面上下文。显示名留空时退回用户名。 */ -}}
+    <p class="comment-identity">以 <span class="comment-identity-name">{{ or $me.DisplayName $me.Username }}</span> 的身份发表</p>
+    {{ else }}
     <p class="comment-form-row">
       <label for="c-name">称呼</label>
       <input id="c-name" name="name" type="text" required maxlength="64" autocomplete="nickname">
     </p>
     <p class="comment-form-row">
       <label for="c-email">邮箱</label>
-      <input id="c-email" name="email" type="email" maxlength="254" autocomplete="email">
+      <input id="c-email" name="email" type="email"{{ if $requireEmail }} required{{ end }} maxlength="254" autocomplete="email">
       <span class="hint">不会公开，仅用于回复通知</span>
     </p>
     <p class="comment-form-row">
       <label for="c-url">主页</label>
       <input id="c-url" name="url" type="url" maxlength="512" autocomplete="url">
     </p>
+    {{ end }}
+
     <p class="comment-form-row">
       <label for="c-content">评论</label>
       <textarea id="c-content" name="content" required rows="4" maxlength="10000"></textarea>
@@ -49,5 +80,18 @@
       <span class="comment-status" role="status" aria-live="polite"></span>
     </p>
   </form>
+  {{ else if $enabled }}
+  {{- /*
+  只剩「登录后才能发」这一种情形（评论关掉时上面那个 if 已经把整块拦掉了）。
+  链接带 next 回到本页，data-auth-tab 让 auth.js 就地开登录弹窗；
+  没有 JS 时它就是一个普通链接。与收藏按钮的未登录形态是同一处理。
+  */ -}}
+  <p class="comment-locked">
+    本站只接受登录后发表的评论。<a href="/login?next={{ .Path }}" data-auth-tab="login">登录</a>
+  </p>
+  {{ end }}
 </section>
+{{ if $canPost }}
 <script src="{{ .Theme.AssetsBase }}/comments.js?v={{ .Theme.AssetsVersion }}" defer></script>
+{{ end }}
+{{ end }}

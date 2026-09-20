@@ -16,6 +16,9 @@
   var status = form.querySelector(".comment-status");
   var button = form.querySelector("button[type=submit]");
   var postId = form.dataset.postId;
+  // 两个由模板写死的开关：谁在发言、访客要不要留邮箱。
+  var authed = form.dataset.authed === "1";
+  var requireEmail = form.dataset.requireEmail === "1";
 
   function setStatus(message, state) {
     if (!status) return;
@@ -63,21 +66,33 @@
     event.preventDefault();
 
     var data = new FormData(form);
-    var payload = {
-      content: (data.get("content") || "").trim(),
-      name: (data.get("name") || "").trim(),
-    };
-    var email = (data.get("email") || "").trim();
-    var url = (data.get("url") || "").trim();
+    var payload = { content: (data.get("content") || "").trim() };
     var honeypot = data.get("website2") || "";
-    // 可选字段留空时不发送：空串过不了服务端的 format:"email" 校验。
-    if (email) payload.email = email;
-    if (url) payload.url = url;
     if (honeypot) payload.website2 = honeypot;
 
-    if (!payload.content || !payload.name) {
-      setStatus("请填写称呼与评论内容。", "error");
+    if (!payload.content) {
+      setStatus("请填写评论内容。", "error");
       return;
+    }
+
+    // 已登录时表单里根本没有称呼、邮箱与主页这三个字段：服务端改用账号信息，
+    // 请求里带上也不会被采用（见 internal/comment 的 resolveAuthor）。
+    if (!authed) {
+      var name = (data.get("name") || "").trim();
+      var email = (data.get("email") || "").trim();
+      var url = (data.get("url") || "").trim();
+      if (!name) {
+        setStatus("请填写称呼。", "error");
+        return;
+      }
+      if (requireEmail && !email) {
+        setStatus("请填写邮箱。", "error");
+        return;
+      }
+      payload.name = name;
+      // 可选字段留空时不发送：空串过不了服务端的 format:"email" 校验。
+      if (email) payload.email = email;
+      if (url) payload.url = url;
     }
 
     button.disabled = true;

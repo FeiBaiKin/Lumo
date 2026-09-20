@@ -2465,6 +2465,38 @@ a.comment-author:hover {
   border-top: 1px solid var(--line);
 }
 
+/*
+ * 已登录时顶替「称呼 / 邮箱 / 主页」三行的那一句。
+ *
+ * 它要回答的是「凭什么不用填名字」，所以把名字写出来，而不是只说一句「已登录」。
+ * 名字用正文色加半档字重与周围的次要色拉开——那是这一行里唯一的信息。
+ */
+.comment-identity {
+  margin: 0 0 var(--s4);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+.comment-identity-name {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/*
+ * 只收登录用户的评论时，表单原来的位置上留这一句。
+ * 上边框照搬 .comment-form 的，好让它和表单占同一个位置、同一条分界线——
+ * 它就是那张表单此刻的形态。
+ */
+.comment-locked {
+  margin-top: var(--s6);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+.comment-locked a {
+  color: var(--seal);
+}
+
 /* 标签始终可见，不用 placeholder 代替：填完字后 placeholder 就消失了。
    行距归标签与说明自己的外边距管（见上方 .field-label / .field-hint） */
 .comment-form-row {
