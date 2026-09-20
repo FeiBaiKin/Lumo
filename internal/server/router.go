@@ -55,6 +55,11 @@ type Options struct {
 	// 仅供没有装配主题模块的场景（路由骨架测试、未来的纯 API 模式）使用：
 	// 正常运行时根路径是访客前台，由 theme 模块接管。
 	FallbackRootToConsole bool
+	// InstallRedirect 非空时（首次安装向导模式）把站点入口重定向到该地址。
+	//
+	// 站长此时打开浏览器应当看到安装向导，而不是一个登不进去的登录页。
+	// 拦的只是入口，/console/assets/* 照常提供 —— 向导自己也跑在这个 SPA 里。
+	InstallRedirect string
 }
 
 // 请求体上限的兜底默认值，仅在调用方未提供时生效。
@@ -119,14 +124,39 @@ func NewRouter(opts *Options) (root chi.Router, planes *api.Planes) {
 
 	// Console SPA。根路径不在这里注册：阶段 4 起它属于主题渲染的访客前台，
 	// 由 theme 模块在全部模块注册之后挂载（见 serve.go）。
-	mountCanonical(root, console.MountPath, console.Handler())
-	if opts.FallbackRootToConsole {
-		root.Get("/", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, console.MountPath, http.StatusFound)
-		})
+	consoleHandler := console.Handler()
+	if opts.InstallRedirect != "" {
+		consoleHandler = redirectEntry(consoleHandler, console.MountPath, opts.InstallRedirect)
+		root.Get("/", redirectTo(opts.InstallRedirect))
+	}
+	mountCanonical(root, console.MountPath, consoleHandler)
+	if opts.InstallRedirect == "" && opts.FallbackRootToConsole {
+		root.Get("/", redirectTo(console.MountPath))
 	}
 
 	return root, planes
+}
+
+// redirectTo 返回一个恒定跳转到 target 的处理器。
+func redirectTo(target string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target, http.StatusFound)
+	}
+}
+
+// redirectEntry 把 Console 的入口请求指向别处，静态资源照常放行。
+//
+// 只认 /console 与 /console/ 两个路径：向导自己跑在这个 SPA 里，
+// 一刀切重定向会让 /console/assets/* 也被拦掉，向导自己都打不开。
+func redirectEntry(next http.Handler, mountPath, target string) http.Handler {
+	bare := strings.TrimSuffix(mountPath, "/")
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == mountPath || r.URL.Path == bare {
+			http.Redirect(w, r, target, http.StatusFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // requestLogger 记录每个请求的方法、路径、状态码与耗时。

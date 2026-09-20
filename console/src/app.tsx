@@ -6,14 +6,25 @@ import { LoginPage } from "@/pages/login";
 import { NoConsoleAccessPage } from "@/pages/no-access";
 import { NotFoundPage } from "@/pages/not-found";
 import { APP_ROUTES } from "@/pages/routes";
+import { Suspense, lazy } from "react";
 import type { RouteObject } from "react-router";
 import { Navigate, useLocation } from "react-router";
 
 /**
+ * 安装向导按需加载。
+ *
+ * 它只在站点第一次装起来之前用得上，装完之后再也不会被访问；
+ * 静态引入却会让**每一次**打开后台都多下载一份向导的代码。
+ */
+const InstallPage = lazy(() =>
+  import("@/pages/install").then((m) => ({ default: m.InstallPage })),
+);
+
+/**
  * 路由装配。
  *
- * 两层：`/login` 独立成页（无外壳），其余全部经 `RequireAuth` 进 `AppShell`。
- * 守卫放在路由层而不是各页面里 —— 新增页面时忘了加守卫是很容易犯的错，
+ * 两层：`/login` 与 `/install` 独立成页（无外壳、无守卫），其余全部经 `RequireAuth`
+ * 进 `AppShell`。守卫放在路由层而不是各页面里 —— 新增页面时忘了加守卫是很容易犯的错，
  * 而那样的错意味着整个页面在未登录时可用。
  *
  * 页面的路径与组件在 `pages/routes.tsx` 集中登记；本文件只管守卫与外壳，
@@ -78,6 +89,16 @@ export function appRoutes(): RouteObject[] {
 
   return [
     { path: "/login", element: <LoginPage /> },
+    // 安装向导同样绕开守卫：站点还没装好时没有任何账号可以登录，
+    // 放进下面那一层只会被 RequireAuth 弹回登录页。
+    {
+      path: "/install",
+      element: (
+        <Suspense fallback={<FullPageLoading label="正在加载安装向导" />}>
+          <InstallPage />
+        </Suspense>
+      ),
+    },
     {
       element: (
         <RequireAuth>

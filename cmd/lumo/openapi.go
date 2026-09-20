@@ -14,6 +14,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/database"
+	"github.com/FeiBaiKin/lumo/internal/install"
 	"github.com/FeiBaiKin/lumo/internal/logging"
 	"github.com/FeiBaiKin/lumo/internal/server"
 	"github.com/FeiBaiKin/lumo/internal/version"
@@ -63,7 +64,14 @@ func runOpenAPI(args []string) error {
 		MaxUploadSize: cfg.Server.MaxUploadSize,
 	})
 	application := app.New(&app.Options{Config: cfg, DB: db, Logger: logger, Router: planes})
-	if regErr := registerAPI(core, planes, application, logger); regErr != nil {
+	// 安装向导的端点也要进规范：Console 的 TS 类型从它生成，缺了就只能手写。
+	installer := install.New(install.Options{
+		Config:  cfg,
+		DataDir: cfg.DataDir,
+		Logger:  logger,
+		Version: version.Get().Version,
+	})
+	if regErr := registerAPI(core, planes, application, installer, logger); regErr != nil {
 		return regErr
 	}
 

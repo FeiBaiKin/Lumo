@@ -107,7 +107,7 @@ func Default() Config {
 	}
 }
 
-// Load 按「默认值 → 配置文件 → 环境变量」的顺序装配配置并校验。
+// Load 按「默认值 → 配置文件 → 环境变量 → 安装向导产物」的顺序装配配置并校验。
 //
 // path 为空时按约定依次尝试 ./config.yaml、./config.yml；文件不存在不算错误，
 // 因为「仅靠环境变量运行」是容器部署的常见形态。
@@ -125,6 +125,11 @@ func Load(path string) (Config, error) {
 	}
 
 	if err := applyEnv(&cfg, os.Getenv); err != nil {
+		return Config{}, err
+	}
+	// 安装产物最后读：要先知道 LUMO_DATA_DIR 才找得到那个文件，
+	// 而它只补环境变量没给的值（见 applyInstallState）。
+	if err := applyInstallState(&cfg); err != nil {
 		return Config{}, err
 	}
 	if err := cfg.Validate(); err != nil {
@@ -344,10 +349,18 @@ func (c *Config) DataSubdir(name string) string {
 // RedactedDSN 返回去掉口令的 DSN，供日志输出使用。
 // 无法解析时返回固定占位串，绝不回落到原始 DSN，以免口令泄漏进日志。
 func (c *Config) RedactedDSN() string {
-	if c.Database.DSN == "" {
+	return RedactDSN(c.Database.DSN)
+}
+
+// RedactDSN 脱敏任意连接串。
+//
+// 与 Config.RedactedDSN 同源：安装向导手里只有一条待验证的候选连接串，
+// 还没有落成配置，但同样不能把口令写进日志与接口响应。
+func RedactDSN(dsn string) string {
+	if dsn == "" {
 		return ""
 	}
-	u, err := url.Parse(c.Database.DSN)
+	u, err := url.Parse(dsn)
 	if err != nil {
 		return "(无法解析的 DSN)"
 	}

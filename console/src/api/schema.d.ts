@@ -1366,6 +1366,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/install/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 执行安装
+         * @description 建表、创建初始管理员、写入站点设置，并保存安装信息。成功后向导关闭，服务自动重启进入正常模式。
+         */
+        post: operations["install-apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/install/database/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 测试数据库连接
+         * @description 用给定参数连一次目标库，回报版本、编码与库里已有的用户数。
+         */
+        post: operations["install-test-database"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/install/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询安装状态
+         * @description 报告向导是否仍然可用，以及各项前置检查的结果。
+         */
+        get: operations["install-status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/public/categories": {
         parameters: {
             query?: never;
@@ -1747,6 +1807,23 @@ export interface components {
             name: string;
             version: string;
         };
+        AdminInput: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @description 小写字母、数字与连字符 */
+            username: string;
+        };
+        ApplyInput: {
+            admin: components["schemas"]["AdminInput"];
+            database: components["schemas"]["DatabaseInput"];
+            site: components["schemas"]["SiteInput"];
+        };
+        ApplyResult: {
+            adminCreated: boolean;
+            externalUrl?: string;
+            steps: components["schemas"]["Step"][] | null;
+        };
         AuthorView: {
             avatarUrl: string;
             displayName: string;
@@ -1878,6 +1955,12 @@ export interface components {
             /** @description 原密码 */
             oldPassword: string;
         };
+        Check: {
+            detail: string;
+            key: string;
+            label: string;
+            ok: boolean;
+        };
         Comment: {
             /** @description 仅 Console 可见 */
             authorEmail: string;
@@ -1951,6 +2034,38 @@ export interface components {
             /** @description 角色名列表，至少一个 */
             roles?: string[] | null;
             username: string;
+        };
+        DatabaseInfo: {
+            database: string;
+            encoding: string;
+            /** Format: int64 */
+            existingUsers: number;
+            /** Format: int64 */
+            latencyMs: number;
+            serverVersion: string;
+            user: string;
+        };
+        DatabaseInput: {
+            /** @description 完整连接串；填了就忽略下面各项 */
+            dsn?: string;
+            /** @description 主机地址，例如 127.0.0.1 */
+            host?: string;
+            /** @description 数据库名 */
+            name?: string;
+            /** @description 口令 */
+            password?: string;
+            /**
+             * Format: int64
+             * @description 端口，默认 5432
+             */
+            port?: number;
+            /**
+             * @description TLS 模式
+             * @enum {string}
+             */
+            sslMode?: "disable" | "prefer" | "require" | "verify-ca" | "verify-full";
+            /** @description 用户名 */
+            user?: string;
         };
         EnabledInputBody: {
             enabled: boolean;
@@ -2680,6 +2795,12 @@ export interface components {
         SettingsListBody: {
             items: components["schemas"]["SettingsGroupView"][] | null;
         };
+        SiteInput: {
+            /** @description 站点名称 */
+            title?: string;
+            /** @description 对外访问地址，例如 https://example.com */
+            url?: string;
+        };
         StateOutputBody: {
             /**
              * Format: int64
@@ -2709,6 +2830,19 @@ export interface components {
         StatusBody: {
             /** @description true 为停用 */
             disabled: boolean;
+        };
+        StatusView: {
+            checks: components["schemas"]["Check"][] | null;
+            dataDir: string;
+            installed: boolean;
+            version: string;
+        };
+        Step: {
+            detail?: string;
+            /** Format: int64 */
+            durationMs: number;
+            key: string;
+            label: string;
         };
         Tag: {
             /** @description 展示颜色，如 #3b82f6；空串表示主题默认 */
@@ -2819,6 +2953,7 @@ export interface components {
         };
         User: {
             avatarUrl: string;
+            bannerUrl: string;
             bio: string;
             /** Format: date-time */
             createdAt: string;
@@ -8133,6 +8268,155 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "install-apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "install-test-database": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DatabaseInput"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseInfo"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "install-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusView"];
+                };
+            };
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };

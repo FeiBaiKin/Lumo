@@ -8,6 +8,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/database"
+	"github.com/FeiBaiKin/lumo/internal/install"
 )
 
 // coreStack 是核心自带的认证与管理能力。
@@ -29,7 +30,7 @@ func newCoreStack(db *database.DB, secureCookies bool, logger *slog.Logger) *cor
 //
 // 是自由函数而非 coreStack 的方法：coreStack 现在只是 auth.Core 的别名，
 // Go 不允许为别名定义方法（方法必须与被别名的类型同包）。
-func registerAPI(c *auth.Core, planes *api.Planes, application *app.App, logger *slog.Logger) error {
+func registerAPI(c *auth.Core, planes *api.Planes, application *app.App, installer *install.Service, logger *slog.Logger) error {
 	// 认证端点：登录走免认证注册面，其余走强制认证注册面。
 	auth.NewHandler(c.Service, c.Sessions, c.Tokens, logger).
 		Register(planes.ConsolePublic(), planes.Console())
@@ -46,6 +47,13 @@ func registerAPI(c *auth.Core, planes *api.Planes, application *app.App, logger 
 	// 侧边栏菜单。挂在核心而不是某个模块下：它汇总的是全部模块的声明，
 	// 而模块清单要到下一行才装配完，故这里传的是取值函数而不是一份快照。
 	console.NewNavHandler(application.Navigation).Register(planes.Console())
+
+	// 安装向导的端点挂在根 API 上（无前缀、无鉴权中间件）：它要在数据库可用之前就能应答。
+	// 正常模式下这几个端点同样注册，只是一律返回「站点已完成安装」—— 规范的稳定性优先于
+	// 端点的存在性，Console 的 TS 类型正是从这份规范生成的。
+	if installer != nil {
+		install.NewHandler(installer, logger).Register(planes.API())
+	}
 
 	return application.Register(modules()...)
 }

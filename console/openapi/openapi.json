@@ -70,6 +70,79 @@
         ],
         "type": "object"
       },
+      "AdminInput": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "maxLength": 254,
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "type": "string"
+          },
+          "username": {
+            "description": "小写字母、数字与连字符",
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "password"
+        ],
+        "type": "object"
+      },
+      "ApplyInput": {
+        "additionalProperties": false,
+        "properties": {
+          "admin": {
+            "$ref": "#/components/schemas/AdminInput"
+          },
+          "database": {
+            "$ref": "#/components/schemas/DatabaseInput"
+          },
+          "site": {
+            "$ref": "#/components/schemas/SiteInput"
+          }
+        },
+        "required": [
+          "database",
+          "site",
+          "admin"
+        ],
+        "type": "object"
+      },
+      "ApplyResult": {
+        "additionalProperties": false,
+        "properties": {
+          "adminCreated": {
+            "type": "boolean"
+          },
+          "externalUrl": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "steps",
+          "adminCreated"
+        ],
+        "type": "object"
+      },
       "AuthorView": {
         "additionalProperties": false,
         "properties": {
@@ -408,6 +481,30 @@
         ],
         "type": "object"
       },
+      "Check": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "ok",
+          "detail"
+        ],
+        "type": "object"
+      },
       "Comment": {
         "additionalProperties": false,
         "properties": {
@@ -614,6 +711,84 @@
           "email",
           "password"
         ],
+        "type": "object"
+      },
+      "DatabaseInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "database": {
+            "type": "string"
+          },
+          "encoding": {
+            "type": "string"
+          },
+          "existingUsers": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "latencyMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "serverVersion": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverVersion",
+          "database",
+          "user",
+          "encoding",
+          "latencyMs",
+          "existingUsers"
+        ],
+        "type": "object"
+      },
+      "DatabaseInput": {
+        "additionalProperties": false,
+        "properties": {
+          "dsn": {
+            "description": "完整连接串；填了就忽略下面各项",
+            "type": "string"
+          },
+          "host": {
+            "description": "主机地址，例如 127.0.0.1",
+            "type": "string"
+          },
+          "name": {
+            "description": "数据库名",
+            "type": "string"
+          },
+          "password": {
+            "description": "口令",
+            "type": "string"
+          },
+          "port": {
+            "description": "端口，默认 5432",
+            "format": "int64",
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sslMode": {
+            "description": "TLS 模式",
+            "enum": [
+              "disable",
+              "prefer",
+              "require",
+              "verify-ca",
+              "verify-full"
+            ],
+            "type": "string"
+          },
+          "user": {
+            "description": "用户名",
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "EnabledInputBody": {
@@ -2712,6 +2887,22 @@
         ],
         "type": "object"
       },
+      "SiteInput": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "description": "站点名称",
+            "maxLength": 100,
+            "type": "string"
+          },
+          "url": {
+            "description": "对外访问地址，例如 https://example.com",
+            "maxLength": 255,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "StateOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -2767,6 +2958,60 @@
         },
         "required": [
           "disabled"
+        ],
+        "type": "object"
+      },
+      "StatusView": {
+        "additionalProperties": false,
+        "properties": {
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/Check"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "dataDir": {
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "installed",
+          "version",
+          "dataDir",
+          "checks"
+        ],
+        "type": "object"
+      },
+      "Step": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "durationMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "durationMs"
         ],
         "type": "object"
       },
@@ -3087,6 +3332,9 @@
           "avatarUrl": {
             "type": "string"
           },
+          "bannerUrl": {
+            "type": "string"
+          },
           "bio": {
             "type": "string"
           },
@@ -3135,6 +3383,7 @@
           "displayName",
           "avatarUrl",
           "bio",
+          "bannerUrl",
           "disabled",
           "createdAt",
           "updatedAt"
@@ -11003,6 +11252,182 @@
         "summary": "启用或停用用户",
         "tags": [
           "users"
+        ]
+      }
+    },
+    "/api/v1/install/apply": {
+      "post": {
+        "description": "建表、创建初始管理员、写入站点设置，并保存安装信息。成功后向导关闭，服务自动重启进入正常模式。",
+        "operationId": "install-apply",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyResult"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "执行安装",
+        "tags": [
+          "install"
+        ]
+      }
+    },
+    "/api/v1/install/database/test": {
+      "post": {
+        "description": "用给定参数连一次目标库，回报版本、编码与库里已有的用户数。",
+        "operationId": "install-test-database",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatabaseInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseInfo"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "测试数据库连接",
+        "tags": [
+          "install"
+        ]
+      }
+    },
+    "/api/v1/install/status": {
+      "get": {
+        "description": "报告向导是否仍然可用，以及各项前置检查的结果。",
+        "operationId": "install-status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "查询安装状态",
+        "tags": [
+          "install"
         ]
       }
     },

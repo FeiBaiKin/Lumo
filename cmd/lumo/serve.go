@@ -21,6 +21,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/database"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
+	"github.com/FeiBaiKin/lumo/internal/install"
 	"github.com/FeiBaiKin/lumo/internal/logging"
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/server"
@@ -33,6 +34,9 @@ import (
 //
 // 生命周期：配置 → 数据库 → 路由与认证栈 → 模块装配 → 迁移 → 播种与模块启动 → 对外服务。
 // 迁移必须在模块启动之前：Start 是模块第一次被允许访问数据库的时机。
+//
+// 没有数据库连接信息时先走安装向导（见 install.go），装完带着写好的配置回到这里
+// 重来一轮 —— 站长不必再手动重启进程。
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	configPath := fs.String("config", "", "配置文件路径，默认按序尝试 ./config.yaml、./config.yml")
@@ -43,23 +47,40 @@ func runServe(args []string) error {
 		return err
 	}
 
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		return err
-	}
-	// 命令行参数优先级最高，覆盖配置文件与环境变量。
-	if *addr != "" {
-		cfg.Server.Addr = *addr
-	}
-	if *noMigrate {
-		cfg.Database.AutoMigrate = false
-	}
+	for {
+		cfg, err := config.Load(*configPath)
+		if err != nil {
+			return err
+		}
+		// 命令行参数优先级最高，覆盖配置文件与环境变量。
+		if *addr != "" {
+			cfg.Server.Addr = *addr
+		}
+		if *noMigrate {
+			cfg.Database.AutoMigrate = false
+		}
 
-	logger := logging.New(os.Stdout, logging.Options{
-		Level:  cfg.Log.Level,
-		Format: cfg.Log.Format,
-	})
+		logger := logging.New(os.Stdout, logging.Options{
+			Level:  cfg.Log.Level,
+			Format: cfg.Log.Format,
+		})
 
+		if cfg.Database.DSN == "" {
+			installed, installErr := runInstallServe(cfg, logger)
+			if installErr != nil {
+				return installErr
+			}
+			if !installed {
+				return nil
+			}
+			continue
+		}
+		return runSite(cfg, logger, *debugSQL)
+	}
+}
+
+// runSite 是配置齐备时的正常启动路径。
+func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) error {
 	info := version.Get()
 	logger.Info("启动 Lumo",
 		slog.String("version", info.Version),
@@ -84,7 +105,7 @@ func runServe(args []string) error {
 	if dsnErr := cfg.RequireDSN(); dsnErr != nil {
 		return dsnErr
 	}
-	db, err := database.Open(ctx, cfg.Database, *debugSQL)
+	db, err := database.Open(ctx, cfg.Database, debugSQL)
 	if err != nil {
 		return err
 	}
@@ -132,8 +153,17 @@ func runServe(args []string) error {
 	// 而 account 在取不到 core 时会自行退化为「只装配迁移与设置声明」。
 	application.Provide(auth.CoreKey, core)
 
+	// 正常模式下安装向导已经关闭，但仍要注册那组端点：一是规范里得有它们
+	// （Console 的类型从规范生成），二是给「已安装」一个明确的 409 而不是 404。
+	installer := install.New(install.Options{
+		Config:  cfg,
+		DataDir: dataDir,
+		Logger:  logger,
+		Version: info.Version,
+	})
+
 	// 核心端点与全部功能模块，与 openapi 命令共用同一条注册路径（见 core.go）。
-	if regErr := registerAPI(core, planes, application, logger); regErr != nil {
+	if regErr := registerAPI(core, planes, application, installer, logger); regErr != nil {
 		return regErr
 	}
 

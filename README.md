@@ -55,8 +55,38 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 
 访问 http://127.0.0.1:8080 —— 根路径由主题渲染的访客前台接管，后台在 `/console/`。
 
+手边还没有数据库时，可以跳过上面那行 `export` 直接 `./lumo serve`：程序会进入
+**安装向导**，在浏览器里填完连接信息、站点名与管理员账号就装好了（见下一节）。
+
 其余配置项可复制 `config.example.yaml` 为 `config.yaml` 后修改，
 或用 `LUMO_*` 环境变量覆盖；优先级为 默认值 < 配置文件 < 环境变量 < 命令行参数。
+
+## 部署到 Linux 服务器
+
+发布包是单个静态二进制，目标机器上不需要 Go、Node 或 Docker：
+
+```bash
+tar -xf lumo_<版本>_linux_amd64.tar
+cd lumo_<版本>_linux_amd64
+./lumo serve
+```
+
+首次启动会打印一条日志给出向导地址（默认 `http://127.0.0.1:8080/console/install`），
+在浏览器里走完四步即可：数据库连接 → 站点信息 → 管理员账号 → 执行安装。
+「测试连接」会回报目标库真实的版本、编码与已有用户数；数据库里若已有 Lumo 站点，
+它会明确告诉你这是在**接管**而不是新建。
+
+装完服务会自己重启进入正常模式并永久关闭向导（再次调用安装接口返回 409），
+**不需要手动重启进程**。前端产物已编译进二进制，`data/` 下的主题、上传、缓存等
+目录在首次启动时自动建好。
+
+数据库连接串保存在 `data/install.json`（权限 `0600`，含口令），**备份时请连
+`data/` 一起备份**。
+
+凭据要由编排系统统管时（systemd、Kubernetes、Ansible 等），预先设好
+`LUMO_DATABASE_DSN` 再启动就能跳过向导 —— 它的优先级高于向导写入的值；
+这种情形下用 `lumo admin create-user -username … -email … -role super-admin`
+创建第一个管理员（口令从终端读取，需要 TTY）。
 
 ## Docker 部署
 
