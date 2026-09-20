@@ -13,6 +13,9 @@ Copyright (C) 2026 FeiBaiKin
 如果 AGPL-3.0 的条款不适用于你的场景，可以另行获取商业授权，
 详见 [COMMERCIAL.md](./COMMERCIAL.md)。
 
+本例外只授予代码上的权利，**不授予任何商标权利**——「Lumo」名称与标识的使用规则见
+[商标政策](./TRADEMARK.md)。写给主题与插件作者的实用说明见 [THEMES.md](./THEMES.md)。
+
 ---
 
 ## 中文
