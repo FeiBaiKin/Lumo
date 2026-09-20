@@ -1,16 +1,27 @@
 {{- /*
 列表页的版式：左边文章列表，右边侧栏。
 
-只有列表页有侧栏。首页没有——首页是模块堆出来的，把侧栏塞进去会让
-「模块自上而下」这条规则出现一个例外，而例外是这类模块化首页最难维护的地方。
+首页不走这里——首页是模块堆出来的，把侧栏塞进去会让「模块自上而下」
+这条规则出现一个例外，而例外是这类模块化首页最难维护的地方。
 */ -}}
-<div class="list-layout{{ if not .Theme.Settings.listing.showSidebar }} no-aside{{ end }}">
+{{ $sb := .Theme.Settings.sidebar }}
+{{- /*
+先数一遍有几个小组件会出现在列表页：全被设成「仅文章页」时右边会空一大块，
+那比干脆没有侧栏更难看。数不出来就退回单栏。
+*/ -}}
+{{ $visible := 0 }}
+{{ range $w := $sb.widgets }}
+  {{- $want := default "all" $w.scope -}}
+  {{- if or (eq $want "all") (eq $want "list") }}{{ $visible = add $visible 1 }}{{ end -}}
+{{ end }}
+{{ $side := and $sb.showOnList (gt $visible 0) }}
+<div class="list-layout{{ if not $side }} no-aside{{ end }}">
   <div class="list-main">
     {{ template "partials/post-list.html" . }}
   </div>
-  {{ if .Theme.Settings.listing.showSidebar }}
-  <aside class="list-aside" aria-label="侧栏">
-    {{ template "partials/sidebar.html" . }}
+  {{ if $side }}
+  <aside class="list-aside{{ if $sb.sticky }} is-sticky{{ end }}" aria-label="侧边栏">
+    {{ template "partials/sidebar.html" (dict "Page" . "Scope" "list") }}
   </aside>
   {{ end }}
 </div>

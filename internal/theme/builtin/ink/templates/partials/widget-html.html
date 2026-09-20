@@ -1,0 +1,14 @@
+{{- /*
+自定义内容：站长填什么就输出什么，包括 HTML。
+
+不做净化是有意的：改得了主题设置的只有管理员（themes:manage 只在管理员角色里），
+而管理员本来就持有 content:unsafe_html——能在正文里写脚本的人，在这里多一个入口
+并不扩大他的能力。换成编辑能改主题设置的那天，这里必须跟着改。
+*/ -}}
+{{ $w := .W }}
+{{ with $w.text }}
+<section class="side-block">
+  {{ with $w.title }}<h2 class="side-title">{{ . }}</h2>{{ end }}
+  <div class="side-html">{{ safeHTML . }}</div>
+</section>
+{{ end }}

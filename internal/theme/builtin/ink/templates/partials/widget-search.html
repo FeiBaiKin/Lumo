@@ -1,0 +1,19 @@
+{{- /*
+搜索框：一条横线加一枚印。
+
+表单本身是原生 GET，与搜索页用的是同一个：关掉 JavaScript 也能用，
+这是本主题对所有表单的要求。提交键做成方印，是把主题既有的插图系统
+（空状态、404、归档页头都在用）用到唯一一个动作上，而不是新造一个装饰。
+*/ -}}
+{{ $w := .W }}
+<section class="side-block">
+  <h2 class="side-title">{{ default "搜索" $w.title }}</h2>
+  <form class="side-search" action="/search" method="get" role="search">
+    <label for="side-q-{{ .Index }}" class="visually-hidden">搜索站内内容</label>
+    <input id="side-q-{{ .Index }}" name="q" type="search" placeholder="关键词"
+           maxlength="100" autocomplete="off">
+    <button class="side-search-seal" type="submit" aria-label="搜索">
+      {{ template "partials/seal.html" "搜" }}
+    </button>
+  </form>
+</section>

@@ -3290,11 +3290,48 @@ html.auth-open {
    ================================================================== */
 
 :root {
-  /* 首页与列表页的容器比正文宽：三列卡片塞进 36 字的正文宽度里，每张只剩 200px */
-  --shell-wide: min(72rem, 100%);
+  /*
+   * 侧栏宽度：有一个下限，再跟着正文栏宽往上走。
+   *
+   * 原先是写死的 17rem。两个毛病：默认太窄，卡片扣掉内边距只剩十三个汉字，
+   * 文章标题基本都要折两行；而且站长把正文栏宽从 36 字调到 48 字之后它纹丝不动，
+   * 页面越宽，侧栏看起来越像一条缝。
+   *
+   * 系数取 0.45 而不是 1：侧栏放的是标题、标签与评论摘要，不是长文，
+   * 没有理由跟着正文等比例长。下限 20rem 保证 36 字那档也有十六七个字宽。
+   *
+   * 加宽只让外壳跟着变宽，不挤主列——主列的宽度由 --shell 定，与这里无关。
+   */
+  --sidebar-w: max(20rem, calc(var(--measure) * 0.45));
+  /*
+   * 带侧栏页面（首页、列表页、挂了侧栏的文章页）的外壳：正文外壳 + 侧栏 + 两者的间距。
+   *
+   * 原先写死成 min(72rem, 100%)。写死的后果是站长在「外观」里把正文栏宽从 36 字
+   * 调到 44 字之后，文章页跟着变宽，分类页纹丝不动——同一个站的两种页面对不上，
+   * 而「正文栏宽」这个设置看起来只管了一半的页面。现在两处都从同一个式子推出来。
+   *
+   * 首页没有侧栏，用同一个宽度是为了让它与列表页左右边界对齐：
+   * 从首页点进分类页，页面不该整体横向跳一下。
+   */
+  --shell-wide: min(calc(var(--shell) + var(--sidebar-w) + var(--s6)), 100%);
 }
 
 .wrap--wide {
+  max-width: var(--shell-wide);
+}
+
+/*
+ * 页眉与页脚跟最宽的那种页面对齐。
+ *
+ * 它们原先用 --shell（正文外壳）：那时文章页是单栏，两者正好对齐，代价是
+ * 首页与列表页比它宽一截，刊名于是悬在内容左边缘往里一百多像素的位置。
+ * 文章页也挂上侧栏之后，再用 --shell 就连那一种对齐都保不住。
+ *
+ * 改成跟 --shell-wide 走：带侧栏的页面严丝合缝；站长关掉侧栏时是页眉比正文宽，
+ * 那是常见做法，比刊名缩在正文里侧好。
+ */
+.site-header .wrap,
+.site-footer .wrap {
   max-width: var(--shell-wide);
 }
 
@@ -3830,7 +3867,7 @@ html.auth-open {
 
 .list-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 17rem;
+  grid-template-columns: minmax(0, 1fr) var(--sidebar-w);
   gap: var(--s6);
   align-items: start;
 }
@@ -3839,11 +3876,19 @@ html.auth-open {
 }
 
 .list-aside {
-  position: sticky;
-  top: calc(3.5rem + var(--s4));
   display: flex;
   flex-direction: column;
   gap: var(--s5);
+}
+
+/*
+ * 跟随滚动是个开关（sidebar.sticky），不是默认。
+ * 小组件堆到比一屏还高时，sticky 会把超出视口的那几个永久顶在屏幕外面——
+ * 站长加满十个小组件的那天，最下面的两个就再也滚不到了。
+ */
+.list-aside.is-sticky {
+  position: sticky;
+  top: calc(3.5rem + var(--s4));
 }
 
 .side-block {
@@ -4041,13 +4086,278 @@ html.auth-open {
   color: var(--seal);
 }
 
+/* ---------- 侧栏小组件 ---------- */
+
+/*
+ * 小组件的内容排在 17rem 减去两侧内边距、约 13 个汉字宽的一列里。
+ * 这个宽度决定了这一节所有的取舍：标题最多两行，日期另起一行，
+ * 数量靠右对齐——没有哪一行还能塞下第二样东西。
+ */
+
+.side-posts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: side-rank;
+}
+
+.side-post {
+  padding: var(--s3) 0;
+  counter-increment: side-rank;
+}
+.side-post:first-child {
+  padding-top: 0;
+}
+.side-post:last-child {
+  padding-bottom: 0;
+}
+.side-post + .side-post {
+  border-top: 1px solid var(--line);
+}
+
+.side-post-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  text-decoration: none;
+}
+.side-post-title:hover {
+  color: var(--seal);
+}
+
+.side-post-date {
+  display: block;
+  margin-top: var(--s1);
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 序号只给热门榜：那里的 1、2、3 是按评论数排出来的名次，本身是信息。
+ * 最新文章按时间排，编号只会让人以为那也是排名。
+ */
+.side-posts.is-ranked .side-post {
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  column-gap: var(--s2);
+}
+.side-posts.is-ranked .side-post::before {
+  content: counter(side-rank);
+  grid-row: 1;
+  color: var(--fg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-ui);
+}
+.side-posts.is-ranked .side-post > * {
+  grid-column: 2;
+}
+
+/* 缩略图：图占满两行，标题与日期在右侧叠起来 */
+.side-posts.is-thumb .side-post {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  column-gap: var(--s3);
+  align-items: start;
+}
+.side-posts.is-thumb .side-post-title,
+.side-posts.is-thumb .side-post-date {
+  grid-column: 2;
+}
+/* 名次与缩略图同时开时让名次退场：两样都摆上，右边只剩七八个字的标题 */
+.side-posts.is-thumb.is-ranked .side-post::before {
+  display: none;
+}
+
+.side-post-thumb {
+  grid-area: 1 / 1 / span 2 / 2;
+  overflow: hidden;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: var(--corner-card);
+}
+.side-post-thumb img,
+.side-post-thumb .seal {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.side-post-thumb img {
+  object-fit: cover;
+}
+
+/* 分类、归档、友链：左边名字右边数量，一行一个 */
+.side-terms {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.side-terms li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+}
+.side-terms li + li {
+  border-top: 1px solid var(--line);
+}
+.side-terms li:first-child {
+  padding-top: 0;
+}
+.side-terms li:last-child {
+  padding-bottom: 0;
+}
+.side-terms a {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  font-size: var(--fs-sm);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-terms a:hover {
+  color: var(--seal);
+}
+
+/* 数字右对齐要等宽字形，否则「9 篇」与「12 篇」的个位对不齐 */
+.side-count {
+  flex: none;
+  color: var(--fg-subtle);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 友链没有数量，条目之间也不必画线：它们是一组同类项，不是一张清单 */
+.side-terms--plain li {
+  padding: var(--s1) 0;
+}
+.side-terms--plain li + li {
+  border-top: 0;
+}
+
+/*
+ * 搜索：一条横线，一枚印。
+ *
+ * 原先这里是「浏览器原生输入框 + 实心按钮」。前台的输入框样式是按类名挂的
+ * （见 .field-input 那一组），侧栏这个不在名单里，于是露出了浏览器默认控件——
+ * 一个灰底圆角框，跟它旁边的方印与衬线标题隔着一个世界。
+ *
+ * 没有把它补进那份名单，是因为标准输入框在这里依然是「哪个网站都长这样」的东西。
+ * 侧栏通篇只有这一个可操作的控件，那就让它说主题自己的话：横线是纸，提交键是印。
+ * 印不是为这里新画的，它本来就在空状态、404 与归档页头上用着，这次只是用在动作上。
+ */
+.side-search {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding-bottom: var(--s2);
+  border-bottom: 1px solid var(--line-strong);
+  transition: border-color var(--t-fast) var(--ease-out);
+}
+
+/*
+ * 焦点落进来时整条线变色并加粗一像素。
+ * 加粗是留给分不清蓝与灰的人的第二个信号——焦点不能只靠颜色说话。
+ * 用 box-shadow 叠出那一像素，改 border-width 会让整行跳一下。
+ */
+.side-search:focus-within {
+  border-bottom-color: var(--seal);
+  box-shadow: 0 1px 0 0 var(--seal);
+}
+
+.side-search input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s1) 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  appearance: none;
+}
+.side-search input::placeholder {
+  color: var(--fg-subtle);
+}
+/* 焦点由整条底线表达，输入框自己不必再画第二个框 */
+.side-search input:focus {
+  outline: none;
+}
+/* Chrome 给 type=search 配的那个叉：它和印挨在一起，是两个动作挤在一处 */
+.side-search input::-webkit-search-cancel-button {
+  display: none;
+}
+
+/* 印占 2.25rem，按钮撑到 2.75rem——手指点的是按钮，眼睛看的是印 */
+.side-search-seal {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.side-search-seal .seal {
+  width: 2.25rem;
+  height: 2.25rem;
+  opacity: 0.7;
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+/* 光标悬上去、或者光标正在输入框里时，印落实 */
+.side-search-seal:hover .seal,
+.side-search:focus-within .seal {
+  opacity: 1;
+}
+.side-search-seal:focus-visible {
+  border-radius: var(--corner-seal);
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+
+/* 自定义内容：站长自己写的 HTML，只负责把它约束在侧栏的字号与宽度里 */
+.side-html {
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  overflow-wrap: anywhere;
+}
+.side-html > :first-child {
+  margin-top: 0;
+}
+.side-html > :last-child {
+  margin-bottom: 0;
+}
+.side-html img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--corner-card);
+}
+.side-html a {
+  color: var(--seal);
+}
+
 /* ---------- 窄屏 ---------- */
 
 @media (max-width: 68rem) {
   .list-layout {
     grid-template-columns: minmax(0, 1fr);
   }
-  .list-aside {
+  /*
+   * 单栏之后侧栏在正文底下，再跟随滚动就会粘住半个屏幕。
+   * 选择器要带上 .is-sticky：只写 .list-aside 压不过上面那条同样带类名的规则。
+   */
+  .list-aside.is-sticky {
     position: static;
   }
   .cards--grid {

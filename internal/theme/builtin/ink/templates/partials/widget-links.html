@@ -1,0 +1,18 @@
+{{- /*
+友情链接。条目来自一个菜单（在「菜单」页里维护），与首页的友链模块同一个来源：
+友链与导航条目的结构一样，多建一张表换来的只是「不跟导航混在一起」。
+*/ -}}
+{{ $page := .Page }}{{ $w := .W }}
+{{ $items := $page.Find.Menus.Get $w.menu }}
+{{ if $items }}
+<section class="side-block">
+  <h2 class="side-title">{{ default "友情链接" $w.title }}</h2>
+  <ul class="side-terms side-terms--plain">
+    {{ range $items }}
+    <li>
+      <a href="{{ .URL }}"{{ with .Target }} target="{{ . }}"{{ end }}{{ with .Rel }} rel="{{ . }}"{{ end }}>{{ .Label }}</a>
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}

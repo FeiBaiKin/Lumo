@@ -1,53 +1,27 @@
 {{- /*
-列表页侧栏。
+侧栏：按「主题设置 → 侧边栏」里的小组件自上而下拼出来。
 
-只出现在分类 / 标签 / 归档 / 搜索 / 作者这些列表页上（见 list-with-sidebar.html）。
-首页没有侧栏：首页是模块堆出来的，热门与标签在首页是模块，不重复放第二遍。
+分派写成 if 链而不是「按名字查模板」，与首页模块同一个理由：模板里没有
+按名字取模板这一步，而分支是固定的十种，漏掉一种会在打开页面时立刻发现。
+
+入参 dict：Page 整页上下文 / Scope 当前页属于哪一类（list / post）
 */ -}}
-<section class="side-block">
-  <h2 class="side-title">{{ .Site.Title }}</h2>
-  {{ with .Site.Description }}<p class="side-text">{{ . }}</p>{{ end }}
-  <p class="side-links">
-    <a href="/feed.xml">订阅</a>
-    <a href="/sitemap.xml">站点地图</a>
-  </p>
-</section>
-
-{{ $popular := .Find.Posts.Popular 5 }}
-{{ if $popular }}
-<section class="side-block">
-  <h2 class="side-title">热门文章</h2>
-  <ol class="rank-list">
-    {{ range $popular }}<li><a href="{{ .URL }}">{{ .Title }}</a></li>{{ end }}
-  </ol>
-</section>
-{{ end }}
-
-{{ $cloud := .Find.Tags.Cloud 24 }}
-{{ if $cloud }}
-<section class="side-block">
-  <h2 class="side-title">标签</h2>
-  <p class="cloud">
-    {{ range $cloud }}<a class="tag" href="{{ .URL }}" style="--tag-h: {{ .Hue }}">{{ .Name }}</a>{{ end }}
-  </p>
-</section>
-{{ end }}
-
-{{ $comments := .Find.Comments.Recent 5 }}
-{{ if $comments }}
-<section class="side-block">
-  <h2 class="side-title">最新评论</h2>
-  <ul class="side-comments">
-    {{ range $comments }}
-    <li class="side-comment">
-      <p class="side-comment-meta">
-        <span class="side-comment-author">{{ .AuthorName }}</span>
-        <span class="side-comment-on">评</span>
-        <a href="{{ .PostURL }}">{{ .PostTitle }}</a>
-      </p>
-      <div class="side-comment-body">{{ .ContentHTML }}</div>
-    </li>
+{{ $page := .Page }}{{ $scope := .Scope }}
+{{ range $index, $w := $page.Theme.Settings.sidebar.widgets }}
+  {{- /* 没填出现位置的按「所有页面」算：漏填不该让小组件凭空消失。 */ -}}
+  {{ $want := default "all" $w.scope }}
+  {{ if or (eq $want "all") (eq $want $scope) }}
+    {{ $ctx := dict "Page" $page "W" $w "Index" $index "Scope" $scope }}
+    {{ if eq $w.type "about" }}{{ template "partials/widget-about.html" $ctx }}
+    {{ else if eq $w.type "search" }}{{ template "partials/widget-search.html" $ctx }}
+    {{ else if eq $w.type "posts" }}{{ template "partials/widget-posts.html" $ctx }}
+    {{ else if eq $w.type "related" }}{{ template "partials/widget-posts.html" $ctx }}
+    {{ else if eq $w.type "categories" }}{{ template "partials/widget-categories.html" $ctx }}
+    {{ else if eq $w.type "archives" }}{{ template "partials/widget-archives.html" $ctx }}
+    {{ else if eq $w.type "tags" }}{{ template "partials/widget-tags.html" $ctx }}
+    {{ else if eq $w.type "comments" }}{{ template "partials/widget-comments.html" $ctx }}
+    {{ else if eq $w.type "links" }}{{ template "partials/widget-links.html" $ctx }}
+    {{ else if eq $w.type "html" }}{{ template "partials/widget-html.html" $ctx }}
     {{ end }}
-  </ul>
-</section>
+  {{ end }}
 {{ end }}

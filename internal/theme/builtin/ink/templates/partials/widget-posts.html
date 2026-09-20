@@ -1,0 +1,71 @@
+{{- /*
+侧栏的文章列表：「文章列表」与「相关文章」共用这一个模板，两者只差在取数上。
+
+相关文章要当前文章的 ID，列表页上没有，那时整块不渲染——设置里给它选了
+「所有页面」也一样，与其在分类页挂一个空壳，不如让它自己消失。
+
+序号只给热门：热门是按评论数排出来的名次，1、2、3 本身是信息。最新与相关
+按时间排，编号只会让人以为那是排名。两者共用 ol（时间序也是序），
+差别交给 is-ranked 这个修饰类，序号显示与否是呈现的事。
+
+入参 dict：Page 整页上下文 / W 小组件参数 / Index 序号
+*/ -}}
+{{ $page := .Page }}{{ $w := .W }}
+{{ $type := $w.type }}
+{{ $count := default 5 $w.count }}
+{{ $source := default "recent" $w.source }}
+
+{{- /*
+先取「最新」占位再按来源改写，与首页模块同一个写法：模板变量的类型由第一次
+赋值定下，起头必须是一个真正返回文章列表的调用。多取一次的代价是零，
+Finder 在同一请求内按 key 缓存。
+*/ -}}
+{{ $posts := $page.Find.Posts.Recent $count }}
+{{ $render := true }}
+{{ if eq $type "related" }}
+  {{ if $page.Post }}{{ $posts = $page.Find.Posts.Related $page.Post.ID $count }}
+  {{ else }}{{ $render = false }}{{ end }}
+{{ else if eq $source "popular" }}{{ $posts = $page.Find.Posts.Popular $count }}
+{{ else if eq $source "pinned" }}{{ $posts = $page.Find.Posts.Pinned $count }}
+{{ else if eq $source "category" }}{{ $posts = $page.Find.Posts.ByCategory $w.term $count }}
+{{ else if eq $source "tag" }}{{ $posts = $page.Find.Posts.ByTag $w.term $count }}
+{{ end }}
+
+{{ if and $render $posts }}
+{{ $ranked := and (ne $type "related") (eq $source "popular") }}
+{{ $thumb := $w.thumb }}
+{{ $title := $w.title }}
+{{ if not $title }}
+  {{ if eq $type "related" }}{{ $title = "相关文章" }}
+  {{ else if eq $source "popular" }}{{ $title = "热门文章" }}
+  {{ else if eq $source "pinned" }}{{ $title = "置顶文章" }}
+  {{ else }}{{ $title = "最新文章" }}{{ end }}
+{{ end }}
+<section class="side-block">
+  <h2 class="side-title">{{ $title }}</h2>
+  <ol class="side-posts{{ if $ranked }} is-ranked{{ end }}{{ if $thumb }} is-thumb{{ end }}">
+    {{ range $posts }}
+    <li class="side-post">
+      {{- /*
+      没有封面的那几篇盖一枚印，不留空格也不铺灰底：缩略图这一列要是时有时无，
+      列表就会参差；而灰色占位块看起来像图挂了。印是本主题的插图系统，
+      盖的是标题的第一个字（printf 的精度按字符数截取，中文安全）。
+      */ -}}
+      {{ if $thumb }}
+      <span class="side-post-thumb">
+        {{- with .CoverURL }}
+        <img src="{{ . }}" alt="" loading="lazy" decoding="async">
+        {{- else }}
+        {{ template "partials/seal.html" (printf "%.1s" .Title) }}
+        {{- end }}
+      </span>
+      {{ end }}
+      <a class="side-post-title" href="{{ .URL }}">{{ .Title }}</a>
+      {{ if not .PublishedAt.IsZero }}
+      <time class="side-post-date" datetime="{{ date "rfc3339" .PublishedAt }}">{{ date "date" .PublishedAt }}</time>
+      {{ end }}
+    </li>
+    {{ end }}
+  </ol>
+</section>
+{{ end }}

@@ -1,0 +1,10 @@
+{{- /* 站点简介：站名、描述与两个订阅入口。内容全部来自「站点设置」，没有自己的参数。 */ -}}
+{{ $page := .Page }}{{ $w := .W }}
+<section class="side-block">
+  <h2 class="side-title">{{ default $page.Site.Title $w.title }}</h2>
+  {{ with $page.Site.Description }}<p class="side-text">{{ . }}</p>{{ end }}
+  <p class="side-links">
+    <a href="/feed.xml">订阅</a>
+    <a href="/sitemap.xml">站点地图</a>
+  </p>
+</section>

@@ -4,6 +4,8 @@
 # 分组名是**存储键**，改一个名字等于把站长填过的值丢掉，故只增不改。
 # 2026-09-15 新增 homepage / listing / footer 三组：其中 layout 里的 indexMode、showCover
 # 与 footerText 搬去了新分组，三者的旧值会在下一次保存该组时消失（本项目尚无生产站点）。
+# 2026-09-20 新增 sidebar 组：listing.showSidebar 搬去 sidebar.showOnList，旧值同样在
+# 下一次保存 listing 组时消失。侧栏内容从写死的四块改成站长可增删排序的小组件。
 groups:
   - name: appearance
     label: 外观
@@ -183,7 +185,7 @@ groups:
     schema:
       $schema: https://json-schema.org/draft/2020-12/schema
       type: object
-      x-order: [listStyle, columns, showCover, coverRatio, excerpt, showSidebar, categoryLabel]
+      x-order: [listStyle, columns, showCover, coverRatio, excerpt, categoryLabel]
       additionalProperties: false
       properties:
         listStyle:
@@ -217,10 +219,6 @@ groups:
           enum: [none, one, two, three]
           enumNames: [不显示, 一行, 两行, 三行]
           x-widget: select
-        showSidebar:
-          type: boolean
-          title: 列表页显示侧栏
-          description: 分类、标签、归档、搜索与作者页右侧的栏目（站点简介、热门文章、标签、最新评论）。首页不受影响——首页是模块堆出来的
         categoryLabel:
           type: boolean
           title: 卡片上显示分类
@@ -231,8 +229,129 @@ groups:
       showCover: true
       coverRatio: "16/9"
       excerpt: two
-      showSidebar: true
       categoryLabel: true
+
+  - name: sidebar
+    label: 侧边栏
+    # 这一组与「首页」同构：那边是模块自上而下堆出首页，这边是小组件自上而下堆出侧栏。
+    # 两处刻意用同一套交互（repeater + 拖动排序 + 参数条件显隐），站长只需要学一次。
+    order: 15
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      x-order: [showOnList, showOnPost, sticky, widgets]
+      additionalProperties: false
+      properties:
+        showOnList:
+          type: boolean
+          title: 列表页显示侧边栏
+          description: 分类、标签、归档、搜索与作者页。首页不受影响——首页是模块堆出来的
+        showOnPost:
+          type: boolean
+          title: 文章页显示侧边栏
+          description: 单篇文章与独立页面。无论开关与否，正文栏宽都严格等于「外观」里设定的字数
+        sticky:
+          type: boolean
+          title: 侧边栏跟随滚动
+          description: 小组件多到比一屏还高时建议关掉，否则底部的小组件会滚不到
+        widgets:
+          type: array
+          title: 小组件
+          x-widget: repeater
+          x-item-label: 小组件
+          description: 从上到下就是前台的先后顺序。拖动条目左侧的手柄可以调整，删掉即不显示；每个小组件的参数只对它自己生效
+          items:
+            type: object
+            additionalProperties: false
+            required: [type]
+            # 与首页模块同理：条目里字段多，顺序必须显式给，否则类型选择器会掉到最下面
+            x-order: [type, scope, title, source, term, count, thumb, by, menu, text]
+            properties:
+              type:
+                type: string
+                title: 小组件
+                enum: [about, search, posts, related, categories, tags, comments, archives, links, html]
+                enumNames: [站点简介, 搜索框, 文章列表, 相关文章, 分类导航, 标签云, 最新评论, 归档, 友情链接, 自定义内容]
+                x-widget: select
+              scope:
+                type: string
+                title: 出现在
+                enum: [all, list, post]
+                enumNames: [所有页面, 仅列表页, 仅文章页]
+                x-widget: select
+                description: 「相关文章」只有文章页取得到内容，选「所有页面」时它在列表页会自己隐藏
+              title:
+                type: string
+                title: 区块标题
+                maxLength: 32
+                description: 留空则用小组件的默认标题
+              source:
+                type: string
+                title: 取哪些文章
+                enum: [recent, popular, pinned, category, tag]
+                enumNames: [最新文章, 热门文章, 置顶文章, 某个分类, 某个标签]
+                x-widget: select
+                x-show-if: { field: type, op: eq, value: posts }
+              term:
+                type: string
+                title: 分类或标签标识
+                maxLength: 128
+                description: 填分类或标签的 slug（在分类 / 标签页的地址栏里能看到）
+                x-show-if:
+                  field: source
+                  op: in
+                  value: [category, tag]
+              count:
+                type: integer
+                title: 条数
+                minimum: 1
+                maximum: 30
+                x-unit: 条
+                description: 侧栏只有十几个字宽，五到八条最不占地方
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [posts, related, categories, tags, comments, archives]
+              thumb:
+                type: boolean
+                title: 显示缩略图
+                description: 每条前面加一张小方图。侧栏窄，开了之后标题基本都会折成两行
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [posts, related]
+              by:
+                type: string
+                title: 归档方式
+                enum: [month, year]
+                enumNames: [按月, 按年]
+                x-widget: select
+                x-show-if: { field: type, op: eq, value: archives }
+              menu:
+                type: string
+                title: 用哪个菜单
+                maxLength: 64
+                description: 填菜单的标识（slug）。条目在「菜单」页里维护
+                x-show-if: { field: type, op: eq, value: links }
+              text:
+                type: string
+                title: 内容
+                maxLength: 2000
+                x-widget: textarea
+                x-rows: 4
+                description: 按填入的内容原样输出，可以写 HTML。只有管理员改得了主题设置，而管理员本来就能在正文里写 HTML，所以这里不另做净化
+                x-show-if: { field: type, op: eq, value: html }
+    defaults:
+      showOnList: true
+      showOnPost: true
+      sticky: true
+      widgets:
+        - {type: about, scope: all}
+        - {type: search, scope: all}
+        - {type: posts, scope: all, source: popular, title: 热门文章, count: 5}
+        - {type: related, scope: post, title: 相关文章, count: 5}
+        - {type: tags, scope: all, title: 标签, count: 24}
+        - {type: comments, scope: all, title: 最新评论, count: 5}
 
   - name: layout
     label: 导航

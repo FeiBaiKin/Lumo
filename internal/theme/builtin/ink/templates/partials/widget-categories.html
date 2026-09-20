@@ -1,0 +1,17 @@
+{{- /* 分类导航：一行一个分类，右侧是它下面的文章数。 */ -}}
+{{ $page := .Page }}{{ $w := .W }}
+{{ $count := default 12 $w.count }}
+{{ $cats := $page.Find.Categories.All }}
+{{ if $cats }}
+<section class="side-block">
+  <h2 class="side-title">{{ default "分类" $w.title }}</h2>
+  <ul class="side-terms">
+    {{ range first $count $cats }}
+    <li>
+      <a href="{{ .URL }}">{{ .Name }}</a>
+      <span class="side-count">{{ .Count }}</span>
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}

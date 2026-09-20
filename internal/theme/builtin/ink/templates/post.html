@@ -16,133 +16,157 @@
 {{- /* 阅读进度线：由 motion.js 驱动，没有 JS 时它是一条宽度为零的线，不可见。 */ -}}
 <div class="reading-progress" aria-hidden="true"></div>
 
-<div class="wrap">
-  <article class="article">
-    {{- /* 封面在最前面，靠 CSS 的负边距铺满卡片顶端，只留上两角的圆角。 */ -}}
-    {{ with $post.CoverURL }}
-    <figure class="article-cover">
-      <img src="{{ . }}" alt="" loading="lazy" decoding="async">
-    </figure>
-    {{ end }}
+{{- /*
+侧栏出现在文章页时，版式与列表页用的是同一套（list-layout / list-main / list-aside），
+外壳也换成同一个宽度：从分类页点进一篇文章，两边的侧栏落在同一条竖线上。
+正文栏宽不受影响——.prose 自己限死在站长设的字数上，外壳变宽只是把侧栏让出来。
 
-    <header class="article-header" data-motion="title">
-      <h1 class="article-title">{{ $post.Title }}</h1>
-      {{ with $post.Excerpt }}<p class="article-lede">{{ . }}</p>{{ end }}
-    </header>
+先数一遍有几个小组件会出现在文章页：一个都没有时不留空栏。
+*/ -}}
+{{ $sb := .Theme.Settings.sidebar }}
+{{ $visible := 0 }}
+{{ range $w := $sb.widgets }}
+  {{- $want := default "all" $w.scope -}}
+  {{- if or (eq $want "all") (eq $want "post") }}{{ $visible = add $visible 1 }}{{ end -}}
+{{ end }}
+{{ $side := and $sb.showOnPost (gt $visible 0) }}
 
-    {{ if $appearance.showMeta }}
-    <aside class="article-aside" aria-label="文章信息" data-motion="aside">
-      {{ if not $post.PublishedAt.IsZero }}
-      <div class="aside-row">
-        <span class="aside-key">发表</span>
-        <time datetime="{{ date "rfc3339" $post.PublishedAt }}">{{ date "chinese" $post.PublishedAt }}</time>
-      </div>
+<div class="wrap{{ if $side }} wrap--wide{{ end }}">
+  <div class="list-layout{{ if not $side }} no-aside{{ end }}">
+    <div class="list-main">
+      <article class="article">
+        {{- /* 封面在最前面，靠 CSS 的负边距铺满卡片顶端，只留上两角的圆角。 */ -}}
+        {{ with $post.CoverURL }}
+        <figure class="article-cover">
+          <img src="{{ . }}" alt="" loading="lazy" decoding="async">
+        </figure>
+        {{ end }}
+
+        <header class="article-header" data-motion="title">
+          <h1 class="article-title">{{ $post.Title }}</h1>
+          {{ with $post.Excerpt }}<p class="article-lede">{{ . }}</p>{{ end }}
+        </header>
+
+        {{ if $appearance.showMeta }}
+        <aside class="article-aside" aria-label="文章信息" data-motion="aside">
+          {{ if not $post.PublishedAt.IsZero }}
+          <div class="aside-row">
+            <span class="aside-key">发表</span>
+            <time datetime="{{ date "rfc3339" $post.PublishedAt }}">{{ date "chinese" $post.PublishedAt }}</time>
+          </div>
+          {{ end }}
+          {{ with $post.Author }}
+          <div class="aside-row">
+            <span class="aside-key">作者</span>
+            <a href="{{ .URL }}" rel="author">{{ .DisplayName }}</a>
+          </div>
+          {{ end }}
+          {{ if $post.Categories }}
+          <div class="aside-row">
+            <span class="aside-key">分类</span>
+            <span>{{ range $i, $c := $post.Categories }}{{ if $i }}、{{ end }}<a href="/categories/{{ $c.Slug }}">{{ $c.Name }}</a>{{ end }}</span>
+          </div>
+          {{ end }}
+          {{ if and $appearance.showReadingTime $post.ReadingTime }}
+          <div class="aside-row">
+            <span class="aside-key">篇幅</span>
+            <span>{{ $post.WordCount }} 字 · {{ $post.ReadingTime }} 分钟</span>
+          </div>
+          {{ end }}
+        </aside>
+        {{ end }}
+
+        {{- /*
+        目录。由 toc.js 从正文的 h2/h3 里生成，标题不足三个时它自己保持隐藏。
+        做成前端生成而不是服务端算：正文已经是渲染好的 HTML，服务端再解析一遍只为
+        列个目录，等于让每次打开文章页都多走一次 HTML 解析；而这件事浏览器做得更好。
+        */ -}}
+        {{ if $content.showToc }}
+        <nav class="article-toc" data-toc aria-label="文章目录" hidden>
+          <p class="toc-title">目录</p>
+          <ul class="toc-list" data-toc-list></ul>
+        </nav>
+        {{ end }}
+
+        {{- /* 正文是服务端渲染好的 HTML，主题只消费不加工。 */ -}}
+        <div class="prose">{{ safeHTML $post.Content }}</div>
+
+        {{ if $post.Tags }}
+        <p class="article-tags">
+          {{ range $post.Tags }}<a class="tag" href="{{ .URL }}" style="--tag-h: {{ .Hue }}">{{ .Name }}</a>{{ end }}
+        </p>
+        {{ end }}
+
+        {{- /*
+        收藏按钮。站点没装配收藏模块时整块不渲染——那时点它必然报错。
+        位置在标签之后、作者卡片之前：读完正文抬手就能够到，
+        又不至于挤在正文与标签之间把那两者拆开。
+        */ -}}
+        {{ if .Find.Favorites.Enabled }}
+          {{ template "partials/favorite.html" . }}
+        {{ end }}
+
+        {{ if $content.showAuthor }}
+          {{ with $post.Author }}
+          <section class="article-author">
+            {{ with .AvatarURL }}<img class="avatar" src="{{ . }}" alt="" loading="lazy">{{ end }}
+            <div>
+              <p class="author-name"><a href="{{ .URL }}" rel="author">{{ .DisplayName }}</a></p>
+              {{ with .Bio }}<p class="author-bio">{{ . }}</p>{{ end }}
+            </div>
+          </section>
+          {{ end }}
+        {{ end }}
+      </article>
+
+      {{ if $content.showPrevNext }}
+        {{ $adjacent := .Find.Posts.Adjacent $post.ID $post.PublishedAt }}
+        {{ if or $adjacent.Prev $adjacent.Next }}
+        <nav class="article-adjacent" aria-label="上一篇与下一篇">
+          {{ with $adjacent.Prev }}
+          <a class="adjacent-item adjacent-prev" href="{{ .URL }}">
+            <span class="adjacent-label">上一篇</span>
+            <span class="adjacent-title">{{ .Title }}</span>
+          </a>
+          {{ else }}<span class="adjacent-item is-empty"></span>{{ end }}
+          {{ with $adjacent.Next }}
+          <a class="adjacent-item adjacent-next" href="{{ .URL }}">
+            <span class="adjacent-label">下一篇</span>
+            <span class="adjacent-title">{{ .Title }}</span>
+          </a>
+          {{ end }}
+        </nav>
+        {{ end }}
       {{ end }}
-      {{ with $post.Author }}
-      <div class="aside-row">
-        <span class="aside-key">作者</span>
-        <a href="{{ .URL }}" rel="author">{{ .DisplayName }}</a>
-      </div>
+
+      {{ if $content.showRelated }}
+        {{ $related := .Find.Posts.Related $post.ID (default 3 $content.relatedCount) }}
+        {{ if $related }}
+        <section class="related">
+          <h2 class="section-title">相关文章</h2>
+          <ul class="related-list">
+            {{ range $related }}
+            <li>
+              <a href="{{ .URL }}">{{ .Title }}</a>
+              {{ if not .PublishedAt.IsZero }}
+              <time datetime="{{ date "rfc3339" .PublishedAt }}">{{ date "date" .PublishedAt }}</time>
+              {{ end }}
+            </li>
+            {{ end }}
+          </ul>
+        </section>
+        {{ end }}
       {{ end }}
-      {{ if $post.Categories }}
-      <div class="aside-row">
-        <span class="aside-key">分类</span>
-        <span>{{ range $i, $c := $post.Categories }}{{ if $i }}、{{ end }}<a href="/categories/{{ $c.Slug }}">{{ $c.Name }}</a>{{ end }}</span>
-      </div>
+
+      {{ if $content.showComments }}
+      {{ template "partials/comments.html" . }}
       {{ end }}
-      {{ if and $appearance.showReadingTime $post.ReadingTime }}
-      <div class="aside-row">
-        <span class="aside-key">篇幅</span>
-        <span>{{ $post.WordCount }} 字 · {{ $post.ReadingTime }} 分钟</span>
-      </div>
-      {{ end }}
+    </div>
+    {{ if $side }}
+    <aside class="list-aside{{ if $sb.sticky }} is-sticky{{ end }}" aria-label="侧边栏">
+      {{ template "partials/sidebar.html" (dict "Page" . "Scope" "post") }}
     </aside>
     {{ end }}
-
-    {{- /*
-    目录。由 toc.js 从正文的 h2/h3 里生成，标题不足三个时它自己保持隐藏。
-    做成前端生成而不是服务端算：正文已经是渲染好的 HTML，服务端再解析一遍只为
-    列个目录，等于让每次打开文章页都多走一次 HTML 解析；而这件事浏览器做得更好。
-    */ -}}
-    {{ if $content.showToc }}
-    <nav class="article-toc" data-toc aria-label="文章目录" hidden>
-      <p class="toc-title">目录</p>
-      <ul class="toc-list" data-toc-list></ul>
-    </nav>
-    {{ end }}
-
-    {{- /* 正文是服务端渲染好的 HTML，主题只消费不加工。 */ -}}
-    <div class="prose">{{ safeHTML $post.Content }}</div>
-
-    {{ if $post.Tags }}
-    <p class="article-tags">
-      {{ range $post.Tags }}<a class="tag" href="{{ .URL }}" style="--tag-h: {{ .Hue }}">{{ .Name }}</a>{{ end }}
-    </p>
-    {{ end }}
-
-    {{- /*
-    收藏按钮。站点没装配收藏模块时整块不渲染——那时点它必然报错。
-    位置在标签之后、作者卡片之前：读完正文抬手就能够到，
-    又不至于挤在正文与标签之间把那两者拆开。
-    */ -}}
-    {{ if .Find.Favorites.Enabled }}
-      {{ template "partials/favorite.html" . }}
-    {{ end }}
-
-    {{ if $content.showAuthor }}
-      {{ with $post.Author }}
-      <section class="article-author">
-        {{ with .AvatarURL }}<img class="avatar" src="{{ . }}" alt="" loading="lazy">{{ end }}
-        <div>
-          <p class="author-name"><a href="{{ .URL }}" rel="author">{{ .DisplayName }}</a></p>
-          {{ with .Bio }}<p class="author-bio">{{ . }}</p>{{ end }}
-        </div>
-      </section>
-      {{ end }}
-    {{ end }}
-  </article>
-
-  {{ if $content.showPrevNext }}
-    {{ $adjacent := .Find.Posts.Adjacent $post.ID $post.PublishedAt }}
-    {{ if or $adjacent.Prev $adjacent.Next }}
-    <nav class="article-adjacent" aria-label="上一篇与下一篇">
-      {{ with $adjacent.Prev }}
-      <a class="adjacent-item adjacent-prev" href="{{ .URL }}">
-        <span class="adjacent-label">上一篇</span>
-        <span class="adjacent-title">{{ .Title }}</span>
-      </a>
-      {{ else }}<span class="adjacent-item is-empty"></span>{{ end }}
-      {{ with $adjacent.Next }}
-      <a class="adjacent-item adjacent-next" href="{{ .URL }}">
-        <span class="adjacent-label">下一篇</span>
-        <span class="adjacent-title">{{ .Title }}</span>
-      </a>
-      {{ end }}
-    </nav>
-    {{ end }}
-  {{ end }}
-
-  {{ if $content.showRelated }}
-    {{ $related := .Find.Posts.Related $post.ID (default 3 $content.relatedCount) }}
-    {{ if $related }}
-    <section class="related">
-      <h2 class="section-title">相关文章</h2>
-      <ul class="related-list">
-        {{ range $related }}
-        <li>
-          <a href="{{ .URL }}">{{ .Title }}</a>
-          {{ if not .PublishedAt.IsZero }}
-          <time datetime="{{ date "rfc3339" .PublishedAt }}">{{ date "date" .PublishedAt }}</time>
-          {{ end }}
-        </li>
-        {{ end }}
-      </ul>
-    </section>
-    {{ end }}
-  {{ end }}
-
-  {{ if $content.showComments }}
-  {{ template "partials/comments.html" . }}
-  {{ end }}
+  </div>
 </div>
 {{ end }}

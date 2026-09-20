@@ -1,0 +1,20 @@
+{{- /* 最新评论：谁在哪篇文章下说了什么。ContentHTML 已在服务端转义并富化过。 */ -}}
+{{ $page := .Page }}{{ $w := .W }}
+{{ $comments := $page.Find.Comments.Recent (default 5 $w.count) }}
+{{ if $comments }}
+<section class="side-block">
+  <h2 class="side-title">{{ default "最新评论" $w.title }}</h2>
+  <ul class="side-comments">
+    {{ range $comments }}
+    <li class="side-comment">
+      <p class="side-comment-meta">
+        <span class="side-comment-author">{{ .AuthorName }}</span>
+        <span class="side-comment-on">评</span>
+        <a href="{{ .PostURL }}">{{ .PostTitle }}</a>
+      </p>
+      <div class="side-comment-body">{{ .ContentHTML }}</div>
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}

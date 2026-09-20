@@ -1,0 +1,18 @@
+{{- /* 归档：按月或按年列出，右侧是该区间的文章数。 */ -}}
+{{ $page := .Page }}{{ $w := .W }}
+{{ $count := default 12 $w.count }}
+{{ $entries := $page.Find.Archives.ByMonth }}
+{{ if eq (default "month" $w.by) "year" }}{{ $entries = $page.Find.Archives.ByYear }}{{ end }}
+{{ if $entries }}
+<section class="side-block">
+  <h2 class="side-title">{{ default "归档" $w.title }}</h2>
+  <ul class="side-terms">
+    {{ range first $count $entries }}
+    <li>
+      <a href="{{ .URL }}">{{ .Label }}</a>
+      <span class="side-count">{{ .Count }}</span>
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}

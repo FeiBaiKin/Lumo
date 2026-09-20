@@ -1,0 +1,11 @@
+{{- /* 标签云。色相由标签自己带（TermView.Hue），与文章页、首页的标签是同一套底色。 */ -}}
+{{ $page := .Page }}{{ $w := .W }}
+{{ $cloud := $page.Find.Tags.Cloud (default 24 $w.count) }}
+{{ if $cloud }}
+<section class="side-block">
+  <h2 class="side-title">{{ default "标签" $w.title }}</h2>
+  <p class="cloud">
+    {{ range $cloud }}<a class="tag" href="{{ .URL }}" style="--tag-h: {{ .Hue }}">{{ .Name }}</a>{{ end }}
+  </p>
+</section>
+{{ end }}

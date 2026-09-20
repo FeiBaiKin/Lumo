@@ -3,18 +3,41 @@
 {{ define "main" }}
 {{ $post := .Post }}
 
-{{- /* 独立页面不显示日期与分类：关于页、联系页上的「三年前发表」只会让人误解。 */ -}}
-<div class="wrap">
-  <article class="article page">
-    <header class="article-header">
-      <h1 class="article-title">{{ $post.Title }}</h1>
-    </header>
+{{- /*
+独立页面不显示日期与分类：关于页、联系页上的「三年前发表」只会让人误解。
 
-    <div class="prose">{{ safeHTML $post.Content }}</div>
-  </article>
+侧栏与文章页共用一个开关（sidebar.showOnPost）与同一套版式：
+关于页要不要挂热门文章是站长的偏好，主题不替他决定，但不该让同为内容页的
+两种页面在宽度上对不齐。
+*/ -}}
+{{ $sb := .Theme.Settings.sidebar }}
+{{ $visible := 0 }}
+{{ range $w := $sb.widgets }}
+  {{- $want := default "all" $w.scope -}}
+  {{- if or (eq $want "all") (eq $want "post") }}{{ $visible = add $visible 1 }}{{ end -}}
+{{ end }}
+{{ $side := and $sb.showOnPost (gt $visible 0) }}
 
-  {{ if .Theme.Settings.content.showComments }}
-  {{ template "partials/comments.html" . }}
-  {{ end }}
+<div class="wrap{{ if $side }} wrap--wide{{ end }}">
+  <div class="list-layout{{ if not $side }} no-aside{{ end }}">
+    <div class="list-main">
+      <article class="article page">
+        <header class="article-header">
+          <h1 class="article-title">{{ $post.Title }}</h1>
+        </header>
+
+        <div class="prose">{{ safeHTML $post.Content }}</div>
+      </article>
+
+      {{ if .Theme.Settings.content.showComments }}
+      {{ template "partials/comments.html" . }}
+      {{ end }}
+    </div>
+    {{ if $side }}
+    <aside class="list-aside{{ if $sb.sticky }} is-sticky{{ end }}" aria-label="侧边栏">
+      {{ template "partials/sidebar.html" (dict "Page" . "Scope" "post") }}
+    </aside>
+    {{ end }}
+  </div>
 </div>
 {{ end }}
