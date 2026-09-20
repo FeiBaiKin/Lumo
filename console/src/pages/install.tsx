@@ -27,6 +27,7 @@ import {
   EyeOff,
   Globe,
   Loader2,
+  PackageCheck,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -65,7 +66,12 @@ const STEPS = [
     hint: "你登录后台的身份",
     icon: ShieldCheck,
   },
-  { key: "apply", title: "执行安装", hint: "建表、写配置、完成", icon: Check },
+  {
+    key: "apply",
+    title: "执行安装",
+    hint: "建表、写配置、完成",
+    icon: PackageCheck,
+  },
 ] as const;
 
 type StepKey = (typeof STEPS)[number]["key"];
@@ -910,7 +916,9 @@ function AdminStep({
         </Field>
       </div>
 
-      <FieldDescription>口令至少 8 位，建议 12 位以上。</FieldDescription>
+      <FieldDescription>
+        建议 12 位以上，混用大小写字母、数字与符号。
+      </FieldDescription>
     </>
   );
 }
