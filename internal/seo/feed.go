@@ -8,8 +8,10 @@ import (
 
 // rss 是 RSS 2.0 文档。
 type rss struct {
-	XMLName xml.Name   `xml:"rss"`
-	Version string     `xml:"version,attr"`
+	XMLName xml.Name `xml:"rss"`
+	Version string   `xml:"version,attr"`
+	// XMLNSDC 声明 dc 前缀，item 的 dc:creator 用到它；缺了整篇 RSS 就不是合法 XML。
+	XMLNSDC string     `xml:"xmlns:dc,attr"`
 	Channel rssChannel `xml:"channel"`
 }
 
@@ -78,6 +80,9 @@ const (
 	rfc3339 = time.RFC3339
 )
 
+// nsDublinCore 是 dc:creator 所属的 Dublin Core 命名空间。
+const nsDublinCore = "http://purl.org/dc/elements/1.1/"
+
 // feedMeta 是生成订阅源所需的站点信息。
 type feedMeta struct {
 	Title       string
@@ -116,7 +121,7 @@ func renderRSS(meta *feedMeta, entries []Entry) ([]byte, error) {
 		}
 		ch.Items = append(ch.Items, item)
 	}
-	return marshal(rss{Version: "2.0", Channel: ch})
+	return marshal(rss{Version: "2.0", XMLNSDC: nsDublinCore, Channel: ch})
 }
 
 // renderAtom 生成 Atom 1.0 文档。
