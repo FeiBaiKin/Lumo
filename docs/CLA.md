@@ -51,7 +51,7 @@ DCO 只证明代码来源合法，并不授予再授权的权利。
 在你的第一个 Pull Request 描述中加入下面这行：
 
 ```
-我已阅读并同意 Lumo 的 CLA（CLA.md）。
+我已阅读并同意 Lumo 的 CLA（docs/CLA.md）。
 签署：你的姓名或 GitHub 用户名 <邮箱>
 ```
 
