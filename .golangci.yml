@@ -53,6 +53,14 @@ linters:
         - style
       disabled-checks:
         - whyNoLint
+      settings:
+        hugeParam:
+          # 默认阈值 80 字节，对本项目的配置与输入结构体过于激进：
+          # config.Config（216B）、install.Options（264B）、ApplyInput（184B）
+          # 这些都只在启动或一次安装请求里复制一次，几百字节没有可测量的代价。
+          # 而按值传对 config.Config 反而是保证——被调方改不了调用方的配置。
+          # 阈值提到 512，真正巨大的结构体仍然会被抓出来。
+          sizeThreshold: 512
 
   exclusions:
     generated: lax
