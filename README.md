@@ -176,12 +176,16 @@ dump 里有口令哈希与会话 / 令牌哈希，按密钥对待：不要放公
 React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 外观 / 用户 / 设置 / 系统，
 另有个人中心（资料、改密码、访问令牌）。块编辑器（TipTap v3）与 Markdown 编辑器（Milkdown 7，
 语法集与服务端 goldmark + GFM 对齐）产出同一对字段；站点设置与主题设置共用同一套通用表单引擎
-（JSON Schema 子集 + `x-widget`，17 种控件）；命令面板 Ctrl/⌘ K；明暗双主题默认跟随系统。
+（JSON Schema 子集 + `x-widget`，18 种控件）；命令面板 Ctrl/⌘ K；明暗双主题默认跟随系统。
 权限只决定入口显示与否，真正的拦截始终在服务端。
 
 前端未构建时后端仍可启动，`/console/` 返回构建提示，不影响 API 开发。
 
 ## 主题
+
+> 要写主题请直接看 **[主题开发文档](./docs/theme-development.md)**：
+> 上下文字段、Finder、模板函数、设置声明与打包安装的完整参考。
+> 本节只是概览。
 
 主题是一个 zip 包，后台「外观 → 主题」上传即切换：
 
@@ -194,8 +198,8 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 └── screenshot.png      # 可选
 ```
 
-**必需模板只有四个**：`index.html`、`post.html`、`page.html`、`404.html`。另有十个可选模板
-（分类 / 标签 / 归档 / 搜索 / 作者，以及登录 / 注册 / 找回密码 / 重置密码 / 账户页），
+**必需模板只有四个**：`index.html`、`post.html`、`page.html`、`404.html`。另有十一个可选模板
+（分类 / 标签 / 归档 / 搜索 / 作者，登录 / 注册 / 找回密码 / 重置密码 / 账户页，以及我的收藏），
 缺省时**整页回退**到内置主题「墨 Ink」，不会报错或渲染空白。
 模板可用数据：路由上下文（`.Site` / `.Post` / `.Posts` / `.Pagination` / `.Theme.Settings` 等）
 与只读 Finder 函数（`{{ .Find.Posts.Recent 5 }}`、`.Find.Categories.Tree`、`.Find.Menus.Get "primary"` 等）。
