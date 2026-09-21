@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"html/template"
 	"time"
 
 	"github.com/FeiBaiKin/lumo/internal/content"
@@ -51,6 +52,8 @@ type Context struct {
 	Description string
 	// Canonical 是本页的绝对地址；站点未配置对外地址时为相对路径。
 	Canonical string
+	// SEO 是本页的 SEO 派生信息，由 Renderer 按站点设置与本页内容算好。
+	SEO SEOContext
 	// Path 是当前请求路径。
 	Path string
 
@@ -196,6 +199,24 @@ type ThemeContext struct {
 	AssetsBase string
 	// AssetsVersion 是静态资源指纹，模板挂在 URL 上做缓存失效（见 Loaded.AssetVersion）。
 	AssetsVersion string
+}
+
+// SEOContext 是 SEO 设置与结构化数据在模板里的出口。
+//
+// 主题不必自己去 .Public.seo 里挖那几项再做回落：标题后缀、默认描述、
+// 默认分享图的优先级规则是站点行为，不该由每个主题各写一遍。
+type SEOContext struct {
+	// TitleSuffix 是 SEO 设置里的标题后缀，主题拼在 <title> 之后。
+	TitleSuffix string
+	// Image 是本页分享图的绝对地址；内容没有封面时回落到默认分享图。
+	Image string
+	// TwitterSite 是站点的 Twitter 账号（含 @），为空则不渲染 twitter:site。
+	TwitterSite string
+	// JSONLD 是本页的 schema.org 结构化数据，已序列化；没有数据时为空。
+	//
+	// 类型是 template.JS，模板里直接输出进 <script type="application/ld+json">。
+	// 内容经 encoding/json 序列化，其中的尖括号与 & 已转成 Unicode 转义形式。
+	JSONLD template.JS
 }
 
 // PostView 是注入模板的内容视图。

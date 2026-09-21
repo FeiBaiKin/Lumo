@@ -18,6 +18,7 @@ const (
 	pathPosts      = "/posts/"
 	pathCategories = "/categories/"
 	pathTags       = "/tags/"
+	pathSearch     = "/search"
 )
 
 // cacheTTL 是 sitemap 与订阅源的进程内缓存时长。
@@ -292,31 +293,87 @@ const (
 	keyType    = "@type"
 )
 
-// buildJSONLD 组装 schema.org 的 Article 结构化数据。
-func buildJSONLD(meta *Meta, entry *Entry, site SiteInfo) map[string]any {
+// Article 是构造 Article 结构化数据所需的信息。
+//
+// 独立于 Entry：主题渲染时手里已经有内容视图，不该为了一段 JSON-LD 再查一次库。
+type Article struct {
+	Title       string
+	Description string
+	Canonical   string
+	Image       string
+	AuthorName  string
+	SiteTitle   string
+	// PublishedAt 与 UpdatedAt 是 RFC 3339 字符串，空则不输出对应字段。
+	PublishedAt string
+	UpdatedAt   string
+}
+
+// ArticleJSONLD 组装 schema.org 的 Article 结构化数据。
+func ArticleJSONLD(a Article) map[string]any {
 	doc := map[string]any{
 		keyContext:         "https://schema.org",
 		keyType:            "Article",
-		"headline":         entry.Title,
-		"mainEntityOfPage": map[string]any{keyType: "WebPage", "@id": meta.Canonical},
-		"description":      meta.Description,
+		"headline":         a.Title,
+		"mainEntityOfPage": map[string]any{keyType: "WebPage", "@id": a.Canonical},
+		"description":      a.Description,
 	}
-	if meta.Image != "" {
-		doc["image"] = meta.Image
+	if a.Image != "" {
+		doc["image"] = a.Image
 	}
-	if meta.PublishedAt != "" {
-		doc["datePublished"] = meta.PublishedAt
+	if a.PublishedAt != "" {
+		doc["datePublished"] = a.PublishedAt
 	}
-	if meta.UpdatedAt != "" {
-		doc["dateModified"] = meta.UpdatedAt
+	if a.UpdatedAt != "" {
+		doc["dateModified"] = a.UpdatedAt
 	}
-	if entry.AuthorName != "" {
-		doc["author"] = map[string]any{keyType: "Person", "name": entry.AuthorName}
+	if a.AuthorName != "" {
+		doc["author"] = map[string]any{keyType: "Person", "name": a.AuthorName}
 	}
-	if site.Title != "" {
-		doc["publisher"] = map[string]any{keyType: "Organization", "name": site.Title}
+	if a.SiteTitle != "" {
+		doc["publisher"] = map[string]any{keyType: "Organization", "name": a.SiteTitle}
 	}
 	return doc
+}
+
+// WebSiteJSONLD 组装站点级的 WebSite 结构化数据，供首页使用。
+//
+// 带 SearchAction：站内搜索是固定路由，声明出来搜索引擎才可能给出搜索框。
+func WebSiteJSONLD(title, siteURL, description string) map[string]any {
+	doc := map[string]any{
+		keyContext: "https://schema.org",
+		keyType:    "WebSite",
+		"name":     title,
+	}
+	if description != "" {
+		doc["description"] = description
+	}
+	if siteURL == "" {
+		return doc
+	}
+	doc["url"] = siteURL
+	doc["potentialAction"] = map[string]any{
+		keyType: "SearchAction",
+		"target": map[string]any{
+			keyType:       "EntryPoint",
+			"urlTemplate": siteURL + pathSearch + "?q={search_term_string}",
+		},
+		"query-input": "required name=search_term_string",
+	}
+	return doc
+}
+
+// buildJSONLD 组装一条内容的 Article 结构化数据。
+func buildJSONLD(meta *Meta, entry *Entry, site SiteInfo) map[string]any {
+	return ArticleJSONLD(Article{
+		Title:       entry.Title,
+		Description: meta.Description,
+		Canonical:   meta.Canonical,
+		Image:       meta.Image,
+		AuthorName:  entry.AuthorName,
+		SiteTitle:   site.Title,
+		PublishedAt: meta.PublishedAt,
+		UpdatedAt:   meta.UpdatedAt,
+	})
 }
 
 // cached 按时长缓存一份文档；生成失败不写缓存。

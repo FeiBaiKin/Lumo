@@ -3,7 +3,9 @@ package theme
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/FeiBaiKin/lumo/internal/auth"
+	"github.com/FeiBaiKin/lumo/internal/seo"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/version"
 )
@@ -95,6 +98,7 @@ func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, status int, 
 	engine := loaded.Engine()
 
 	r.fillCSRF(w, req, ctx)
+	fillSEO(ctx)
 
 	var buf bytes.Buffer
 	// 缓冲也是上限：主题是第三方代码，一个写坏的模板（如对空切片无限递归）
@@ -113,6 +117,111 @@ func (r *Renderer) Render(w http.ResponseWriter, req *http.Request, status int, 
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
+}
+
+// fillSEO 按站点设置与本页内容算出 SEO 派生信息。
+//
+// 放在 Render 里而不是 NewContext：描述与分享图要看 .Post 与 .Description，
+// 而那两项是路由在 NewContext 之后才填的。
+//
+// 取值直接来自 Public 里的 seo 分组——那四项本来就在公开白名单上
+// （见 internal/seo/settings.go 的 Public），不必再读一次设置。
+func fillSEO(ctx *Context) {
+	if ctx == nil {
+		return
+	}
+	cfg := ctx.Public[seo.GroupSEO]
+	// 后缀保留原样：它的前导空格是有意义的（后台给的示例就是「 — 我的站点」）。
+	if suffix := publicString(cfg, "titleSuffix"); strings.TrimSpace(suffix) != "" {
+		ctx.SEO.TitleSuffix = suffix
+	}
+	ctx.SEO.TwitterSite = publicTrimmed(cfg, "twitterSite")
+
+	// 描述的回落顺序：本页写了的 → SEO 默认描述 → 站点描述。
+	if ctx.Description == "" {
+		ctx.Description = firstNonEmpty(publicTrimmed(cfg, "defaultDescription"), ctx.Site.Description)
+	}
+
+	// 分享图必须是绝对地址：社交平台抓卡片时不带 referer，解析不了相对路径。
+	cover := ""
+	if ctx.Post != nil {
+		cover = ctx.Post.CoverURL
+	}
+	ctx.SEO.Image = absoluteAsset(ctx.Site.URL, firstNonEmpty(cover, publicTrimmed(cfg, "defaultImage")))
+	ctx.SEO.JSONLD = jsonLD(ctx)
+}
+
+// jsonLD 生成本页的 schema.org 结构化数据。
+//
+// 只有内容页与首页有：列表页上一段 ItemList 对搜索引擎没有增量信息，
+// 却要为每页多渲染一份 JSON。
+func jsonLD(ctx *Context) template.JS {
+	var doc map[string]any
+	switch {
+	case ctx.Post != nil && (ctx.Kind == KindPost || ctx.Kind == KindPage):
+		article := seo.Article{
+			Title:       ctx.Post.Title,
+			Description: ctx.Description,
+			Canonical:   absoluteURL(ctx.Site.URL, ctx.Post.URL),
+			Image:       ctx.SEO.Image,
+			SiteTitle:   ctx.Site.Title,
+		}
+		if ctx.Post.Author != nil {
+			article.AuthorName = ctx.Post.Author.DisplayName
+		}
+		if !ctx.Post.PublishedAt.IsZero() {
+			article.PublishedAt = ctx.Post.PublishedAt.Format(time.RFC3339)
+		}
+		if !ctx.Post.UpdatedAt.IsZero() {
+			article.UpdatedAt = ctx.Post.UpdatedAt.Format(time.RFC3339)
+		}
+		doc = seo.ArticleJSONLD(article)
+	case ctx.Kind == KindIndex:
+		doc = seo.WebSiteJSONLD(ctx.Site.Title, ctx.Site.URL, ctx.Description)
+	default:
+		return ""
+	}
+
+	// json.Marshal 默认转义 < > &，产出可以安全地放进 <script>。
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		return ""
+	}
+	return template.JS(raw) //nolint:gosec // 内容由本包构造并经 json.Marshal 转义
+}
+
+// publicString 从一个设置分组的公开值里取字符串；缺键或类型不符时为空串。
+//
+// 不做 TrimSpace：标题后缀那一项的前导空格是排版的一部分。
+func publicString(group map[string]any, key string) string {
+	v, _ := group[key].(string)
+	return v
+}
+
+// publicTrimmed 取值并去掉首尾空白，用于地址与账号这类不该带空格的项。
+func publicTrimmed(group map[string]any, key string) string {
+	return strings.TrimSpace(publicString(group, key))
+}
+
+// firstNonEmpty 返回第一个非空字符串。
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// absoluteAsset 把站内资源路径补成绝对地址；已是绝对地址或站点未配置对外地址时原样返回。
+func absoluteAsset(base, ref string) string {
+	if ref == "" || strings.Contains(ref, "://") || strings.HasPrefix(ref, "//") {
+		return ref
+	}
+	if !strings.HasPrefix(ref, "/") {
+		return ref
+	}
+	return absoluteURL(base, ref)
 }
 
 // fillCSRF 为已登录访客准备页眉表单要用的令牌。

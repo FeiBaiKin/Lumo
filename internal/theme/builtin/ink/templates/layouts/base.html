@@ -16,7 +16,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ if and .Title (ne .Title .Site.Title) }}{{ .Title }} · {{ end }}{{ .Site.Title }}</title>
+  {{- /* 标题后缀由站长在 SEO 设置里定；没填时沿用「本页标题 · 站点名」。 */}}
+  {{- $suffix := .SEO.TitleSuffix }}
+  {{- if not $suffix }}{{ $suffix = printf " · %s" .Site.Title }}{{ end }}
+  <title>{{ if and .Title (ne .Title .Site.Title) }}{{ .Title }}{{ $suffix }}{{ else }}{{ .Site.Title }}{{ end }}</title>
   {{ with .Description }}<meta name="description" content="{{ . }}">{{ end }}
   {{ with .Canonical }}<link rel="canonical" href="{{ . }}">{{ end }}
   {{ with .Site.FaviconURL }}<link rel="icon" href="{{ . }}">{{ end }}
@@ -57,7 +60,27 @@
   <meta property="og:type" content="{{ if eq .Kind "post" }}article{{ else }}website{{ end }}">
   {{ with .Canonical }}<meta property="og:url" content="{{ . }}">{{ end }}
   {{ with .Description }}<meta property="og:description" content="{{ . }}">{{ end }}
-  {{ with .Post }}{{ with .CoverURL }}<meta property="og:image" content="{{ . }}">{{ end }}{{ end }}
+  {{- /* 分享图已由服务端补成绝对地址，并在内容没有封面时回落到 SEO 设置里的默认图。 */}}
+  {{ with .SEO.Image }}<meta property="og:image" content="{{ . }}">{{ end }}
+  {{- /* og:locale 用下划线（zh_CN），与 html lang 的连字符写法不同，是 OpenGraph 的规定。 */}}
+  {{ with .Site.Language }}<meta property="og:locale" content="{{ replace . "-" "_" }}">{{ end }}
+  {{- if eq .Kind "post" }}
+  {{ with .Post }}
+  {{ if not .PublishedAt.IsZero }}<meta property="article:published_time" content="{{ date "rfc3339" .PublishedAt }}">{{ end }}
+  {{ if not .UpdatedAt.IsZero }}<meta property="article:modified_time" content="{{ date "rfc3339" .UpdatedAt }}">{{ end }}
+  {{ with .Author }}<meta property="article:author" content="{{ .DisplayName }}">{{ end }}
+  {{ end }}
+  {{- end }}
+
+  {{- /* Twitter Card：有图走大图卡片，没图退回摘要卡片。 */}}
+  <meta name="twitter:card" content="{{ if .SEO.Image }}summary_large_image{{ else }}summary{{ end }}">
+  {{ with .SEO.TwitterSite }}<meta name="twitter:site" content="{{ . }}">{{ end }}
+
+  {{- /*
+  结构化数据。由服务端按本页内容算好（文章与独立页面是 Article，首页是 WebSite），
+  列表页没有——一段 ItemList 对搜索引擎没有增量信息。
+  */}}
+  {{ with .SEO.JSONLD }}<script type="application/ld+json">{{ . }}</script>{{ end }}
 
   {{- /* 订阅源：阅读器靠这个标签自动发现。 */}}
   <link rel="alternate" type="application/rss+xml" title="{{ .Site.Title }}" href="/feed.xml">
