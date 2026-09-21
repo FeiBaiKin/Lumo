@@ -36,6 +36,7 @@
   // 桌面下拉的断点，与 theme.css 里那条 @media (min-width: 641px) 一致。
   var DESKTOP_QUERY = "(min-width: 641px)";
 
+
   function prefersReducedMotion() {
     return (
       typeof window.matchMedia === "function" &&
@@ -43,11 +44,65 @@
     );
   }
 
+  /*
+   * 窄屏把主导航收进「菜单」按钮。
+   *
+   * 与二级菜单是两件独立的事，故单独一个函数：导航项没有子项时
+   * （官网就是这样）下面那段会在 toggles 为空时提前返回，
+   * 折叠逻辑若写在它之后就永远不会启用。
+   *
+   * 断点判断整个交给 CSS：这里只标记「折叠已接管」与「当前是否展开」，
+   * 由 theme.css 的媒体查询决定这两个标记在哪个宽度上生效。JS 不碰 matchMedia——
+   * 旋转屏幕、缩放窗口、分屏都不需要它跟着算一遍，也就不存在算漏的时候。
+   * （早先的版本监听 matchMedia change 来同步状态，那是把 CSS 的活揽了过来。）
+   */
+  function initMore(nav) {
+    var btn = document.querySelector(".site-nav-more");
+    var list = btn && document.getElementById(btn.getAttribute("aria-controls"));
+    if (!btn || !list) {
+      return;
+    }
+
+    // 模板里写着 hidden：没有 JS 时按钮不出现、导航保持摊开。
+    btn.hidden = false;
+    // CSS 只在这个标记存在时才在窄屏收起导航，同样是为了没有 JS 时不误伤。
+    nav.setAttribute("data-collapsible", "");
+
+    function setExpanded(open) {
+      if (open) {
+        nav.setAttribute("data-expanded", "");
+      } else {
+        nav.removeAttribute("data-expanded");
+      }
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    setExpanded(false);
+
+    btn.addEventListener("click", function () {
+      setExpanded(!nav.hasAttribute("data-expanded"));
+    });
+
+    // Esc 收起，与二级菜单同一套手势。
+    document.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape" && event.key !== "Esc") {
+        return;
+      }
+      if (btn.getAttribute("aria-expanded") !== "true") {
+        return;
+      }
+      setExpanded(false);
+      btn.focus();
+    });
+  }
+
   function init() {
     var nav = document.querySelector(".site-nav");
     if (!nav) {
       return;
     }
+
+    initMore(nav);
 
     var toggles = Array.prototype.slice.call(
       nav.querySelectorAll(".site-nav-toggle"),

@@ -576,8 +576,9 @@ a:hover {
  * 所以这里明确指派：第一行是刊名（左）与账户入口（右）——这两样任何时候都要在；
  * 导航整条落到第二行。
  *
- * 导航本身仍然允许换行，不做成横向滚动条：滚动容器会把二级菜单裁掉，
- * 而二级菜单在这个宽度上是内嵌展开的，展开一次就得横竖都能看见。
+ * 导航不做成横向滚动条：滚动容器会把二级菜单裁掉，而二级菜单在这个宽度上
+ * 是内嵌展开的，展开一次就得横竖都能看见。改为收进「菜单」按钮，展开后是
+ * 一列纵向链接——二级菜单照旧内嵌在里面，不受裁剪。
  */
 @media (max-width: 48rem) {
   .site-subtitle {
@@ -596,6 +597,47 @@ a:hover {
 
   .site-tools {
     margin-inline-start: auto;
+  }
+
+}
+
+/*
+ * 窄屏的主导航开关。
+ *
+ * 桌面上不存在：导航在那里本来就排得下一行。按钮的形态照 .site-nav a 那一套
+ * （同样的圆角、同样的悬停底色），展开态与二级菜单的一级项同款，
+ * 免得页眉上出现第二种按钮长相。
+ */
+.site-nav-more {
+  display: none;
+  align-items: center;
+  gap: var(--s1);
+  min-height: 2.25rem;
+  padding-inline: var(--s2);
+  border: 0;
+  border-radius: var(--corner-control);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: var(--fs-base);
+  transition: color var(--t-fast) var(--ease-out),
+    background-color var(--t-fast) var(--ease-out);
+}
+
+.site-nav-more:hover {
+  background: var(--surface-active);
+  color: var(--fg);
+}
+
+.site-nav-more[aria-expanded="true"] {
+  background: var(--surface-active);
+  color: var(--fg);
+}
+
+@media (max-width: 48rem) {
+  /* :not([hidden]) —— 没有 JS 时按钮不出现，导航保持摊开。 */
+  .site-nav-more:not([hidden]) {
+    display: inline-flex;
   }
 }
 
@@ -950,6 +992,52 @@ textarea.field-input,
 
 .site-nav-toggle[aria-expanded="true"] .site-nav-chevron {
   transform: rotate(180deg);
+}
+
+/*
+ * 窄屏：主导航收进「菜单」按钮，展开后是一列。
+ *
+ * 这一段必须排在上面那些 .site-nav > ul 的基础规则**之后**：两者特异性相同，
+ * 谁在后面谁生效。写在前面的话 gap 与 padding 会被基础规则盖掉，
+ * 展开的列表间距就不是这里写的值（这是实测踩到的，不是假想）。
+ */
+@media (max-width: 48rem) {
+  /*
+   * data-collapsible 是 nav.js 盖的「折叠已接管」标记，data-expanded 是当前状态。
+   * 没有 JS 时两个都不存在，这条选择器落空，导航照旧摊开——与二级菜单的降级同理。
+   *
+   * 断点只写在这里：JS 不判断宽度，缩放窗口与旋转屏幕由这条媒体查询自己响应。
+   */
+  .site-nav[data-collapsible]:not([data-expanded]) {
+    display: none;
+  }
+
+  /*
+   * 一列而不是横向排布：几个词横着放在 375px 上仍然要折行，
+   * 而纵向每项占满宽度，触区也跟着变大。
+   */
+  .site-nav > ul {
+    flex-direction: column;
+    gap: 0;
+    padding-block: var(--s1);
+    border-top: 1px solid var(--line);
+  }
+
+  .site-nav > ul > li {
+    width: 100%;
+  }
+
+  .site-nav > ul > li > a,
+  .site-nav > ul > li > .site-nav-toggle {
+    width: 100%;
+    min-height: 2.75rem;
+    padding-inline: var(--s2);
+  }
+
+  /* 有子项的一级项：箭头推到最右，整行都是触区。 */
+  .site-nav > ul > li > .site-nav-toggle {
+    justify-content: space-between;
+  }
 }
 
 /*

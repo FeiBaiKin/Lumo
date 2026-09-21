@@ -17,7 +17,7 @@
       {{ $items := $.Find.Menus.Get . }}
       {{ if $items }}
       <nav class="site-nav" aria-label="主导航">
-        <ul>
+        <ul id="site-nav-list">
           {{- range $i, $item := $items }}
           <li{{ if $item.Children }} class="has-sub"{{ end }}>
             {{- if $item.Children }}
@@ -87,6 +87,26 @@
     */ -}}
     {{ $authPage := or (eq .Kind "login") (eq .Kind "register") (eq .Kind "forgot-password") (eq .Kind "reset-password") }}
     <div class="site-tools">
+    {{- /*
+    窄屏的主导航开关。
+
+    导航项一多，窄屏上就会折成两行甚至三行，把页眉撑得比内容还高。
+    收进一个按钮，展开后是一列纵向链接。
+
+    为什么不做成横向滚动：窄屏的二级菜单是**内嵌展开**的（见 theme.css 里
+    .site-nav-sub 的说明），滚动容器会把它裁掉——展开一次就得横竖都能看见。
+
+    默认 hidden，由 nav.js 在初始化时取消并把导航收起。方向与二级菜单一致：
+    没有 JS 时按钮不出现、导航保持摊开，即本功能加入之前的样子，一项都不会丢。
+    */ -}}
+    <button type="button" class="site-nav-more" aria-expanded="false"
+            aria-controls="site-nav-list" hidden>
+      {{- /* Lucide 的 menu。全站只用这一套图标。 */ -}}
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+           aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      菜单
+    </button>
     {{ if and .Theme.Settings.layout.showAccountEntry (not $authPage) }}
     {{- /*
     「注册」入口的三条判据，与账户模块的 registrationOpen 是同一条规则：
