@@ -5,7 +5,7 @@ Copyright (C) 2026 FeiBaiKin
 
 代码是自由的，名字不是。
 
-[AGPL-3.0](./LICENSE) 授予你使用、修改和分发**代码**的权利，但它第 7(e) 条明确允许
+[AGPL-3.0](../LICENSE) 授予你使用、修改和分发**代码**的权利，但它第 7(e) 条明确允许
 作者保留商标权利——本文就是这份保留声明。这不是为了限制你用 Lumo，而是为了让
 「Lumo」这三个字始终指向同一样东西：如果任何人都能把自己的修改版叫 Lumo，
 用户就无法判断他下载的到底是什么。
@@ -72,7 +72,7 @@ AGPL 保证你可以自由 fork、修改和再分发 Lumo，这条权利不受�
 
 Lumo's code is free. Its name is not.
 
-The [AGPL-3.0](./LICENSE) grants you rights to the **code**. Section 7(e) of that
+The [AGPL-3.0](../LICENSE) grants you rights to the **code**. Section 7(e) of that
 license expressly permits the author to decline granting rights under trademark
 law, and this document is that declination.
 

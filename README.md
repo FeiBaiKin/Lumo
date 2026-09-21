@@ -348,23 +348,23 @@ deploy/            Dockerfile（源码构建）、Dockerfile.goreleaser（发布
 
 ## 参与贡献
 
-开发环境、代码约定与提交规范见 [CONTRIBUTING.md](./CONTRIBUTING.md)；
-参与前请先读一遍[行为准则](./CODE_OF_CONDUCT.md)。
+开发环境、代码约定与提交规范见 [CONTRIBUTING.md](./docs/CONTRIBUTING.md)；
+参与前请先读一遍[行为准则](./docs/CODE_OF_CONDUCT.md)。
 
-项目采用开源 + 商业双授权，提交代码前需要签署 [CLA](./CLA.md)——
+项目采用开源 + 商业双授权，提交代码前需要签署 [CLA](./docs/CLA.md)——
 你保留自己代码的版权，授予的是许可而非所有权。
 
-发现安全问题请走 [SECURITY.md](./SECURITY.md) 里的私有报告通道，不要开公开 Issue。
+发现安全问题请走 [SECURITY.md](./docs/SECURITY.md) 里的私有报告通道，不要开公开 Issue。
 
 ## 许可证
 
-[AGPL-3.0](./LICENSE)，并附带**[插件与主题接口例外条款](./EXCEPTIONS.md)**：
+[AGPL-3.0](./LICENSE)，并附带**[插件与主题接口例外条款](./docs/EXCEPTIONS.md)**：
 通过主题模板接口或插件 API 与 Lumo 交互的独立作品不构成衍生作品，
 可以用任何许可证发布，包括闭源出售。
 
 **程序本体免费，怎么用都行**——个人站、公司站、商业媒体站、企业内部部署，
 不收费、不分成、不需要额外授权。只有把 Lumo 本身作为托管服务转售、或嵌入闭源产品
-分发，才需要[商业授权](./COMMERCIAL.md)。
+分发，才需要[商业授权](./docs/COMMERCIAL.md)。
 
-- 开发与出售主题、插件，以及规划中的主题市场：[THEMES.md](./THEMES.md)
-- 「Lumo」名称与标识的使用规则：[商标政策](./TRADEMARK.md)
+- 开发与出售主题、插件，以及规划中的主题市场：[THEMES.md](./docs/THEMES.md)
+- 「Lumo」名称与标识的使用规则：[商标政策](./docs/TRADEMARK.md)
