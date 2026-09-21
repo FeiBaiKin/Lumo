@@ -120,6 +120,10 @@ func (m *Module) Register(a *app.App) error {
 		Themes:   m.settings,
 		Logger:   m.logger,
 	})
+	// 内容时间要按站点时区渲染，时区来自站点设置，因此得等 renderer 装好再回注。
+	if m.store != nil {
+		m.store.UseTimezone(m.renderer.Location)
+	}
 	m.frontend = NewFrontend(m.renderer, m.store)
 
 	a.Provide(Name, m)

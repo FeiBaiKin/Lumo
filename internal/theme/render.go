@@ -388,10 +388,30 @@ func (r *Renderer) siteContext(ctx context.Context) SiteContext {
 	out.LogoURL = site.LogoURL
 	out.FaviconURL = site.FaviconURL
 	// 页脚年份与文章日期都该按站点时区显示，而不是按服务器所在时区。
-	if loc, err := time.LoadLocation(site.Timezone); err == nil {
-		out.Now = out.Now.In(loc)
-	}
+	// 内容自身的时间在 Store 侧换算（见 Store.UseTimezone）。
+	out.Now = out.Now.In(locationOf(site.Timezone))
 	return out
+}
+
+// locationOf 解析时区名；为空或非法时回落到 UTC。
+func locationOf(name string) *time.Location {
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}
+
+// Location 返回站点设置里的时区，供 Store 把库里的 UTC 时间戳换算成本地时间。
+func (r *Renderer) Location(ctx context.Context) *time.Location {
+	if r.settings == nil {
+		return time.UTC
+	}
+	var site settings.Site
+	if err := r.settings.Get(ctx, settings.GroupSite, &site); err != nil {
+		return time.UTC
+	}
+	return locationOf(site.Timezone)
 }
 
 // PageSize 返回前台每页条数，取自站点设置。

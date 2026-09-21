@@ -48,10 +48,31 @@ type Store struct {
 	db        *bun.DB
 	searcher  Searcher
 	favorites Favoriter
+	timezone  TimezoneFunc
 }
 
 // NewStore 构造 Store。
 func NewStore(db *bun.DB) *Store { return &Store{db: db} }
+
+// TimezoneFunc 返回站点时区。
+//
+// 库里的时间戳一律是 UTC，进模板前必须换算成站点时区：否则东八区凌晨
+// 零点到八点发布的内容，前台显示的日期会早一天。
+type TimezoneFunc func(context.Context) *time.Location
+
+// UseTimezone 注入站点时区来源；不注入时一切时间按 UTC 渲染。
+func (s *Store) UseTimezone(fn TimezoneFunc) { s.timezone = fn }
+
+// location 返回本次查询该用的时区，未注入或取不到时回落到 UTC。
+func (s *Store) location(ctx context.Context) *time.Location {
+	if s.timezone == nil {
+		return time.UTC
+	}
+	if loc := s.timezone(ctx); loc != nil {
+		return loc
+	}
+	return time.UTC
+}
 
 // Searcher 是前台搜索页需要的能力：关键词进，按相关度排好序的文章 ID 与总数出。
 //
@@ -141,7 +162,7 @@ type postRow struct {
 }
 
 // toView 把查询行转成模板视图。
-func (r *postRow) toView(author *AuthorView) PostView {
+func (r *postRow) toView(author *AuthorView, loc *time.Location) PostView {
 	view := PostView{
 		ID:         r.ID,
 		Type:       r.Type,
@@ -156,10 +177,10 @@ func (r *postRow) toView(author *AuthorView) PostView {
 		Author:     author,
 		Categories: []taxonomy.Category{},
 		Tags:       []TermView{},
-		UpdatedAt:  r.UpdatedAt,
+		UpdatedAt:  r.UpdatedAt.In(loc),
 	}
 	if r.PublishedAt.Valid {
-		view.PublishedAt = r.PublishedAt.Time
+		view.PublishedAt = r.PublishedAt.Time.In(loc)
 	}
 	if r.Content != "" {
 		text := content.StripTags(r.Content)
@@ -210,11 +231,14 @@ func (s *Store) PostsByAuthor(ctx context.Context, authorID int64, page, size in
 
 // PostsByArchive 分页返回某年（月）的文章。month 为 0 表示整年。
 func (s *Store) PostsByArchive(ctx context.Context, year, month, page, size int) ([]PostView, int, error) {
-	where := publicFilter + ` AND p.type = 'post' AND EXTRACT(YEAR FROM p.published_at) = ?`
-	args := []any{year}
+	// 年月要按站点时区取：published_at 是 timestamptz，直接 EXTRACT 走的是会话时区，
+	// 东八区凌晨发布的文章会被算进前一天所属的月份，与文章页显示的日期对不上。
+	tz := s.location(ctx).String()
+	where := publicFilter + ` AND p.type = 'post' AND EXTRACT(YEAR FROM p.published_at AT TIME ZONE ?) = ?`
+	args := []any{tz, year}
 	if month > 0 {
-		where += ` AND EXTRACT(MONTH FROM p.published_at) = ?`
-		args = append(args, month)
+		where += ` AND EXTRACT(MONTH FROM p.published_at AT TIME ZONE ?) = ?`
+		args = append(args, tz, month)
 	}
 	return s.pageQuery(ctx, where, args, page, size)
 }
@@ -375,9 +399,10 @@ func (s *Store) attach(ctx context.Context, rows []postRow) ([]PostView, error) 
 		return nil, err
 	}
 
+	loc := s.location(ctx)
 	out := make([]PostView, 0, len(rows))
 	for i := range rows {
-		view := rows[i].toView(authors[rows[i].AuthorID])
+		view := rows[i].toView(authors[rows[i].AuthorID], loc)
 		for _, t := range categories[rows[i].ID] {
 			view.Categories = append(view.Categories, taxonomy.Category{
 				ID: t.ID, Name: t.Name, Slug: t.Slug, Description: t.Description, CoverURL: t.CoverURL,
@@ -772,33 +797,34 @@ func (s *Store) GetTag(ctx context.Context, slug string) (*taxonomy.Tag, error) 
 // ArchivesByMonth 返回按月归档，新的在前。
 func (s *Store) ArchivesByMonth(ctx context.Context) ([]ArchiveEntry, error) {
 	const sqlText = `
-SELECT EXTRACT(YEAR FROM p.published_at)::int AS year,
-       EXTRACT(MONTH FROM p.published_at)::int AS month,
+SELECT EXTRACT(YEAR FROM p.published_at AT TIME ZONE ?)::int AS year,
+       EXTRACT(MONTH FROM p.published_at AT TIME ZONE ?)::int AS month,
        count(*) AS total
 FROM posts AS p
 WHERE ` + publicFilter + ` AND p.type = 'post' AND p.published_at IS NOT NULL
 GROUP BY year, month ORDER BY year DESC, month DESC`
-	return s.archives(ctx, sqlText, true)
+	tz := s.location(ctx).String()
+	return s.archives(ctx, sqlText, true, tz, tz)
 }
 
 // ArchivesByYear 返回按年归档，新的在前。
 func (s *Store) ArchivesByYear(ctx context.Context) ([]ArchiveEntry, error) {
 	const sqlText = `
-SELECT EXTRACT(YEAR FROM p.published_at)::int AS year, 0 AS month, count(*) AS total
+SELECT EXTRACT(YEAR FROM p.published_at AT TIME ZONE ?)::int AS year, 0 AS month, count(*) AS total
 FROM posts AS p
 WHERE ` + publicFilter + ` AND p.type = 'post' AND p.published_at IS NOT NULL
 GROUP BY year ORDER BY year DESC`
-	return s.archives(ctx, sqlText, false)
+	return s.archives(ctx, sqlText, false, s.location(ctx).String())
 }
 
 // archives 执行归档统计查询。
-func (s *Store) archives(ctx context.Context, sqlText string, withMonth bool) ([]ArchiveEntry, error) {
+func (s *Store) archives(ctx context.Context, sqlText string, withMonth bool, args ...any) ([]ArchiveEntry, error) {
 	var rows []struct {
 		Year  int `bun:"year"`
 		Month int `bun:"month"`
 		Total int `bun:"total"`
 	}
-	if err := s.db.NewRaw(sqlText).Scan(ctx, &rows); err != nil {
+	if err := s.db.NewRaw(sqlText, args...).Scan(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("统计归档: %w", err)
 	}
 	out := make([]ArchiveEntry, 0, len(rows))
@@ -987,13 +1013,13 @@ type commentRow struct {
 }
 
 // toView 把评论行转成模板视图。
-func (r *commentRow) toView() CommentView {
+func (r *commentRow) toView(loc *time.Location) CommentView {
 	view := CommentView{
 		ID:          r.ID,
 		AuthorName:  r.AuthorName,
 		AuthorURL:   r.AuthorURL,
 		ContentHTML: template.HTML(r.ContentHTML), //nolint:gosec // 入库前已全文转义并有限富化
-		CreatedAt:   r.CreatedAt,
+		CreatedAt:   r.CreatedAt.In(loc),
 	}
 	if r.UserID.Valid && r.PostAuthor.Valid && r.UserID.Int64 == r.PostAuthor.Int64 {
 		view.IsAuthor = true
@@ -1021,9 +1047,10 @@ func (s *Store) CommentTree(ctx context.Context, postID int64) ([]*CommentNode, 
 		return nil, fmt.Errorf("查询评论: %w", err)
 	}
 
+	loc := s.location(ctx)
 	nodes := make(map[int64]*CommentNode, len(rows))
 	for i := range rows {
-		nodes[rows[i].ID] = &CommentNode{CommentView: rows[i].toView(), Children: []*CommentNode{}}
+		nodes[rows[i].ID] = &CommentNode{CommentView: rows[i].toView(loc), Children: []*CommentNode{}}
 	}
 	roots := make([]*CommentNode, 0, len(rows))
 	for i := range rows {
@@ -1052,9 +1079,10 @@ func (s *Store) RecentComments(ctx context.Context, n int) ([]CommentView, error
 		` ORDER BY cm.created_at DESC, cm.id DESC LIMIT ?`, n).Scan(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("查询最新评论: %w", err)
 	}
+	loc := s.location(ctx)
 	out := make([]CommentView, 0, len(rows))
 	for i := range rows {
-		out = append(out, rows[i].toView())
+		out = append(out, rows[i].toView(loc))
 	}
 	return out, nil
 }
