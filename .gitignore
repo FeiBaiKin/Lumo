@@ -41,8 +41,10 @@ config.local.yaml
 /config.yml
 
 # 日志
+# 只忽略运行时产生的那些：不带前缀的 logs/ 会连 internal/logs（日志模块的源码）
+# 一起挡掉，而那是要入库的。
 *.log
-logs/
+/data/logs/
 
 # 编辑器与系统
 .idea/

@@ -292,6 +292,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询运行日志
+         * @description 按级别、时间范围与关键词查询，最新的在前。级别是**最低**级别：选 warn 会同时返回 error。扫描量有上限，触顶时 truncated 为真，这时应缩小时间范围或指定单个文件。
+         */
+        get: operations["logs-query"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/logs/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 下载日志文件
+         * @description 下载一个日志文件的原文。文件名必须是日志目录里真实存在的那些，其余一律拒绝。
+         */
+        get: operations["logs-download"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/logs/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 列出日志文件
+         * @description 按日期倒序返回日志文件，含大小与最后写入时间。
+         */
+        get: operations["logs-files"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/mail/test": {
         parameters: {
             query?: never;
@@ -2070,6 +2130,16 @@ export interface components {
         EnabledInputBody: {
             enabled: boolean;
         };
+        Entry: {
+            attrs?: {
+                [key: string]: unknown;
+            };
+            file: string;
+            level: string;
+            msg: string;
+            /** Format: date-time */
+            time: string;
+        };
         ErrorDetail: {
             /** @description 出错位置，如 body.title 或 query.page */
             location?: string;
@@ -2121,6 +2191,20 @@ export interface components {
             spec: {
                 [key: string]: unknown;
             };
+        };
+        FileInfo: {
+            day: string;
+            /** Format: date-time */
+            modTime: string;
+            name: string;
+            /** Format: int64 */
+            size: number;
+            sizeHuman: string;
+        };
+        FilesOutputBody: {
+            dir: string;
+            fileEnabled: boolean;
+            items: components["schemas"]["FileInfo"][] | null;
         };
         GroupList: {
             items: components["schemas"]["GroupView"][] | null;
@@ -2690,6 +2774,22 @@ export interface components {
              * @description 计划发布时间；未来时间为定时发布，留空立即发布
              */
             publishAt?: string;
+        };
+        QueryOutputBody: {
+            /** @description 日志是否在落盘；为假时列表必然是空的 */
+            fileEnabled: boolean;
+            items: components["schemas"]["Entry"][] | null;
+            /** Format: int64 */
+            page: number;
+            /** Format: int64 */
+            size: number;
+            /**
+             * Format: int64
+             * @description 本次扫描到的匹配条数，受扫描上限约束
+             */
+            total: number;
+            /** @description 触到扫描上限，更早的日志未纳入 */
+            truncated: boolean;
         };
         ReindexOutputBody: {
             /**
@@ -3978,6 +4078,161 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "logs-query": {
+        parameters: {
+            query?: {
+                /** @description 最低级别，留空不限 */
+                level?: "debug" | "info" | "warn" | "error";
+                /** @description 关键词，匹配消息与属性值 */
+                q?: string;
+                /** @description 起始时间，RFC 3339 */
+                from?: string;
+                /** @description 结束时间，RFC 3339 */
+                to?: string;
+                /** @description 限定单个日志文件 */
+                file?: string;
+                page?: number;
+                size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "logs-download": {
+        parameters: {
+            query: {
+                /** @description 日志文件名 */
+                file: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "logs-files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FilesOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

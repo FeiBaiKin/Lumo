@@ -76,8 +76,16 @@ type DatabaseConfig struct {
 type LogConfig struct {
 	// Level 取值 debug / info / warn / error。
 	Level string `yaml:"level"`
-	// Format 取值 text / json。
+	// Format 取值 text / json。**只作用于控制台**：写进文件的那一路一律是 JSON，
+	// 后台日志页要把每行解析成结构化字段。
 	Format string `yaml:"format"`
+	// File 为真时在控制台之外再写一份到 dataDir/logs，后台日志页读的就是它。
+	// 关掉它日志页会是空的，但 docker logs 与 journalctl 不受影响。
+	File bool `yaml:"file"`
+	// RetainDays 是日志文件保留天数，超期的在跨天时删除。
+	RetainDays int `yaml:"retainDays"`
+	// MaxSizeMB 是单个日志文件的大小上限，超过则在同一天内滚到下一个序号。
+	MaxSizeMB int `yaml:"maxSizeMB"`
 }
 
 // Default 返回内置默认配置。
@@ -100,8 +108,11 @@ func Default() Config {
 			AutoMigrate:          true,
 		},
 		Log: LogConfig{
-			Level:  "info",
-			Format: "text",
+			Level:      "info",
+			Format:     "text",
+			File:       true,
+			RetainDays: 14,
+			MaxSizeMB:  100,
 		},
 		DataDir: "./data",
 	}
@@ -191,6 +202,8 @@ func applyEnv(cfg *Config, env getenv) error {
 	ints := map[string]*int{
 		"DATABASE_MAX_OPEN_CONNS": &cfg.Database.MaxOpenConns,
 		"DATABASE_MAX_IDLE_CONNS": &cfg.Database.MaxIdleConns,
+		"LOG_RETAIN_DAYS":         &cfg.Log.RetainDays,
+		"LOG_MAX_SIZE_MB":         &cfg.Log.MaxSizeMB,
 	}
 	for key, target := range ints {
 		v := env(EnvPrefix + key)
@@ -240,6 +253,7 @@ func applyEnv(cfg *Config, env getenv) error {
 	bools := map[string]*bool{
 		"DATABASE_AUTO_MIGRATE": &cfg.Database.AutoMigrate,
 		"SECURE_COOKIES":        &cfg.Server.SecureCookies,
+		"LOG_FILE":              &cfg.Log.File,
 	}
 	for key, target := range bools {
 		v := env(EnvPrefix + key)
@@ -284,6 +298,14 @@ func (c *Config) Validate() error {
 		u, err := url.Parse(c.Server.ExternalURL)
 		if err != nil || u.Scheme == "" || u.Host == "" {
 			errs = append(errs, fmt.Errorf("server.externalUrl 不是合法的绝对 URL: %q", c.Server.ExternalURL))
+		}
+	}
+	if c.Log.File {
+		if c.Log.RetainDays < 1 {
+			errs = append(errs, fmt.Errorf("log.retainDays 至少为 1，实际 %d", c.Log.RetainDays))
+		}
+		if c.Log.MaxSizeMB < 1 {
+			errs = append(errs, fmt.Errorf("log.maxSizeMB 至少为 1，实际 %d", c.Log.MaxSizeMB))
 		}
 	}
 	if !validLevels[strings.ToLower(c.Log.Level)] {

@@ -51,8 +51,16 @@ database:
 log:
   # debug / info / warn / error（LUMO_LOG_LEVEL）
   level: info
-  # text / json（LUMO_LOG_FORMAT）
+  # text / json（LUMO_LOG_FORMAT）。只作用于控制台那一路；
+  # 写进文件的一律是 JSON，后台日志页要按字段解析。
   format: text
+  # 除控制台外再写一份到 dataDir/logs，后台「日志」页读的就是它（LUMO_LOG_FILE）。
+  # 关掉之后日志页会是空的，但 docker logs 与 journalctl 不受影响。
+  file: true
+  # 日志文件保留天数，超期的在跨天时删除（LUMO_LOG_RETAIN_DAYS）
+  retainDays: 14
+  # 单个日志文件的大小上限，超过则在同一天内滚到下一个序号（LUMO_LOG_MAX_SIZE_MB）
+  maxSizeMB: 100
 
 # 运行时工作目录，内含 themes/uploads/cache/logs/backups（LUMO_DATA_DIR）
 dataDir: ./data

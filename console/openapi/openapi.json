@@ -803,6 +803,35 @@
         ],
         "type": "object"
       },
+      "Entry": {
+        "additionalProperties": false,
+        "properties": {
+          "attrs": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "file": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "msg": {
+            "type": "string"
+          },
+          "time": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "time",
+          "level",
+          "msg",
+          "file"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "additionalProperties": false,
         "properties": {
@@ -929,6 +958,62 @@
         },
         "required": [
           "spec"
+        ],
+        "type": "object"
+      },
+      "FileInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "day": {
+            "type": "string"
+          },
+          "modTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sizeHuman": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "day",
+          "size",
+          "modTime",
+          "sizeHuman"
+        ],
+        "type": "object"
+      },
+      "FilesOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "dir": {
+            "type": "string"
+          },
+          "fileEnabled": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FileInfo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "fileEnabled",
+          "dir"
         ],
         "type": "object"
       },
@@ -2542,6 +2627,50 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "QueryOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "fileEnabled": {
+            "description": "日志是否在落盘；为假时列表必然是空的",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Entry"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "page": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "total": {
+            "description": "本次扫描到的匹配条数，受扫描上限约束",
+            "format": "int64",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "触到扫描上限，更早的日志未纳入",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "size",
+          "truncated",
+          "fileEnabled"
+        ],
         "type": "object"
       },
       "ReindexOutputBody": {
@@ -4968,6 +5097,276 @@
         "summary": "标记为垃圾",
         "tags": [
           "comments"
+        ]
+      }
+    },
+    "/api/v1/console/logs": {
+      "get": {
+        "description": "按级别、时间范围与关键词查询，最新的在前。级别是**最低**级别：选 warn 会同时返回 error。扫描量有上限，触顶时 truncated 为真，这时应缩小时间范围或指定单个文件。",
+        "operationId": "logs-query",
+        "parameters": [
+          {
+            "description": "最低级别，留空不限",
+            "explode": false,
+            "in": "query",
+            "name": "level",
+            "schema": {
+              "description": "最低级别，留空不限",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "关键词，匹配消息与属性值",
+            "explode": false,
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "description": "关键词，匹配消息与属性值",
+              "maxLength": 200,
+              "type": "string"
+            }
+          },
+          {
+            "description": "起始时间，RFC 3339",
+            "explode": false,
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "description": "起始时间，RFC 3339",
+              "type": "string"
+            }
+          },
+          {
+            "description": "结束时间，RFC 3339",
+            "explode": false,
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "description": "结束时间，RFC 3339",
+              "type": "string"
+            }
+          },
+          {
+            "description": "限定单个日志文件",
+            "explode": false,
+            "in": "query",
+            "name": "file",
+            "schema": {
+              "description": "限定单个日志文件",
+              "maxLength": 64,
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "default": 1,
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "size",
+            "schema": {
+              "default": 50,
+              "format": "int64",
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询运行日志",
+        "tags": [
+          "logs"
+        ]
+      }
+    },
+    "/api/v1/console/logs/download": {
+      "get": {
+        "description": "下载一个日志文件的原文。文件名必须是日志目录里真实存在的那些，其余一律拒绝。",
+        "operationId": "logs-download",
+        "parameters": [
+          {
+            "description": "日志文件名",
+            "explode": false,
+            "in": "query",
+            "name": "file",
+            "required": true,
+            "schema": {
+              "description": "日志文件名",
+              "maxLength": 64,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "下载日志文件",
+        "tags": [
+          "logs"
+        ]
+      }
+    },
+    "/api/v1/console/logs/files": {
+      "get": {
+        "description": "按日期倒序返回日志文件，含大小与最后写入时间。",
+        "operationId": "logs-files",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FilesOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "列出日志文件",
+        "tags": [
+          "logs"
         ]
       }
     },

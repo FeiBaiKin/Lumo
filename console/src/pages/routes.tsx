@@ -1,8 +1,4 @@
-import { PageBody, PageHeader } from "@/components/layout/page-header";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { EmptyState, Skeleton } from "@/components/ui/states";
-import { useDocumentTitle } from "@/lib/use-document-title";
+import { Skeleton } from "@/components/ui/states";
 import { CommentsPage } from "@/pages/content/comments";
 import { PagesPage } from "@/pages/content/pages";
 import { PostsPage } from "@/pages/content/posts";
@@ -13,9 +9,7 @@ import { CategoriesPage } from "@/pages/taxonomy/categories";
 import { TagsPage } from "@/pages/taxonomy/tags";
 import { RolesPage } from "@/pages/users/roles";
 import { UsersPage } from "@/pages/users/users";
-import { Construction, ScrollText } from "lucide-react";
 import { Suspense, lazy } from "react";
-import { Link } from "react-router";
 
 /**
  * 内容编辑器按需加载。
@@ -53,6 +47,9 @@ const SettingsPage = lazy(() =>
 );
 const ThemesPage = lazy(() =>
   import("@/pages/appearance/themes").then((m) => ({ default: m.ThemesPage })),
+);
+const LogsPage = lazy(() =>
+  import("@/pages/system/logs").then((m) => ({ default: m.LogsPage })),
 );
 const PluginsPage = lazy(() =>
   import("@/pages/system/plugins").then((m) => ({ default: m.PluginsPage })),
@@ -99,39 +96,6 @@ function LazyPage({ element }: { element: React.ReactNode }) {
 }
 
 /**
- * 「日志」仍是占位 —— 服务端没有日志接口，它需要先有一条读取日志的 API。
- * 在此之前不给它做一个假的页面。
- */
-function Placeholder({
-  title,
-  note,
-}: {
-  title: string;
-  note: string;
-}) {
-  useDocumentTitle(title);
-  return (
-    <>
-      <PageHeader icon={ScrollText} title={title} />
-      <PageBody>
-        <Card>
-          <EmptyState
-            icon={Construction}
-            title="这一页还没有做"
-            description={note}
-            action={
-              <Button variant="secondary" size="sm" asChild>
-                <Link to="/">返回仪表盘</Link>
-              </Button>
-            }
-          />
-        </Card>
-      </PageBody>
-    </>
-  );
-}
-
-/**
  * 路由表。
  *
  * 用数组而非手写一堆 `<Route>`：路径必须与侧边栏的页面地图一致，
@@ -174,13 +138,5 @@ export const APP_ROUTES = [
   // ---- 系统 ----
   { path: "about", element: AboutPage },
   { path: "plugins", element: () => <LazyPage element={<PluginsPage />} /> },
-  {
-    path: "logs",
-    element: () => (
-      <Placeholder
-        title="日志"
-        note="服务端尚无日志读取接口。要做这一页，得先有一条按级别与时间取日志的 API，并想清楚日志落在文件还是库里。"
-      />
-    ),
-  },
+  { path: "logs", element: () => <LazyPage element={<LogsPage />} /> },
 ];

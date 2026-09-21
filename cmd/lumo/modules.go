@@ -7,6 +7,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/content"
 	"github.com/FeiBaiKin/lumo/internal/extension"
 	"github.com/FeiBaiKin/lumo/internal/favorite"
+	"github.com/FeiBaiKin/lumo/internal/logs"
 	"github.com/FeiBaiKin/lumo/internal/mail"
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/menu"
@@ -36,11 +37,14 @@ import (
 // search 给 content 的 posts 表加索引列，须排在 content 之后，也须在 theme 之前——
 // 前台搜索页要在装配期取到它；
 // theme 读取以上全部模块的表来渲染前台，排在最后；
-// account 用 theme 的 Renderer 渲染账户页，故排在它之后。
+// account 用 theme 的 Renderer 渲染账户页，故排在它之后；
+// logs 不依赖任何模块，位置随意，放在前面是为了它的接口在规范里挨着 settings。
 func modules() []app.Module {
 	return []app.Module{
 		settings.New(),
 		mail.New(),
+		// logs 只读配置里的日志目录，不依赖任何模块，也不碰数据库。
+		logs.New(),
 		media.New(),
 		taxonomy.New(),
 		content.New(),

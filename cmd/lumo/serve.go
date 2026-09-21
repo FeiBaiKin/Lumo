@@ -60,13 +60,11 @@ func runServe(args []string) error {
 			cfg.Database.AutoMigrate = false
 		}
 
-		logger := logging.New(os.Stdout, logging.Options{
-			Level:  cfg.Log.Level,
-			Format: cfg.Log.Format,
-		})
+		logger, closeLog := newLogger(cfg)
 
 		if cfg.Database.DSN == "" {
 			installed, installErr := runInstallServe(cfg, logger)
+			closeLog()
 			if installErr != nil {
 				return installErr
 			}
@@ -75,8 +73,39 @@ func runServe(args []string) error {
 			}
 			continue
 		}
-		return runSite(cfg, logger, *debugSQL)
+		err = runSite(cfg, logger, *debugSQL)
+		closeLog()
+		return err
 	}
+}
+
+// newLogger 构造日志器，并返回退出前要调用的关闭函数。
+//
+// 控制台那一路始终在：Docker 用户看 docker logs、systemd 用户看 journalctl，
+// 断掉它等于断掉这两种部署方式的排障入口。文件那一路是后台日志页的数据来源，
+// 由 log.file 控制，默认开。
+//
+// 日志文件打不开（目录只读、磁盘满）不让启动失败：能对外服务比能记日志更要紧，
+// 退回只写控制台并把原因说清楚。
+func newLogger(cfg config.Config) (logger *slog.Logger, closeLog func()) {
+	opts := logging.Options{Level: cfg.Log.Level, Format: cfg.Log.Format}
+	if !cfg.Log.File {
+		return logging.New(os.Stdout, opts), func() {}
+	}
+
+	dir := filepath.Join(cfg.DataDir, workdir.LogsDirName)
+	rotator, err := logging.NewRotatingFile(logging.RotateOptions{
+		Dir:        dir,
+		RetainDays: cfg.Log.RetainDays,
+		MaxSizeMB:  cfg.Log.MaxSizeMB,
+	})
+	if err != nil {
+		logger := logging.New(os.Stdout, opts)
+		logger.Warn("日志文件不可用，本次只输出到控制台（后台日志页会是空的）",
+			slog.String("dir", dir), slog.Any("error", err))
+		return logger, func() {}
+	}
+	return logging.NewTee(os.Stdout, rotator, opts), func() { _ = rotator.Close() }
 }
 
 // runSite 是配置齐备时的正常启动路径。

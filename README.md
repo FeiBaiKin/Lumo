@@ -255,8 +255,13 @@ SMTP 口令与 S3 访问密钥在后台「设置 → 邮件发送 / 附件存储
 
 - `server` — 监听地址、对外地址、超时、可信代理、Secure Cookie、请求体上限
 - `database` — 连接池与启动时自动迁移（`--no-migrate` 可关）
-- `log` — 级别与格式（text / json）
+- `log` — 级别、格式（text / json）、是否同时写文件与日志的保留天数
 - `dataDir` — 运行时工作目录（`themes` / `uploads` / `cache` / `logs` / `backups`）
+
+日志默认**同时写控制台与文件**：控制台那一路保持 `log.format` 指定的格式，
+供 `docker logs` 与 `journalctl` 使用；文件那一路一律 JSON，按天切割写入
+`dataDir/logs`，默认保留 14 天，后台「系统 → 日志」读的就是它。
+不想落盘时设 `log.file: false`（或 `LUMO_LOG_FILE=false`），控制台输出不受影响。
 
 普通请求（默认 10 MiB）与 multipart 上传（默认 64 MiB）是**两条独立上限**，按内容类型区分。
 附件存储在后台「设置 → 附件存储」切换本地或 S3，密钥在同一页上填。
