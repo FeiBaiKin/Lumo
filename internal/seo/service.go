@@ -291,6 +291,7 @@ func (s *Service) BuildMeta(ctx context.Context, kind, slug string, overrides ma
 const (
 	keyContext = "@context"
 	keyType    = "@type"
+	keyName    = "name"
 )
 
 // Article 是构造 Article 结构化数据所需的信息。
@@ -309,7 +310,7 @@ type Article struct {
 }
 
 // ArticleJSONLD 组装 schema.org 的 Article 结构化数据。
-func ArticleJSONLD(a Article) map[string]any {
+func ArticleJSONLD(a *Article) map[string]any {
 	doc := map[string]any{
 		keyContext:         "https://schema.org",
 		keyType:            "Article",
@@ -327,10 +328,10 @@ func ArticleJSONLD(a Article) map[string]any {
 		doc["dateModified"] = a.UpdatedAt
 	}
 	if a.AuthorName != "" {
-		doc["author"] = map[string]any{keyType: "Person", "name": a.AuthorName}
+		doc["author"] = map[string]any{keyType: "Person", keyName: a.AuthorName}
 	}
 	if a.SiteTitle != "" {
-		doc["publisher"] = map[string]any{keyType: "Organization", "name": a.SiteTitle}
+		doc["publisher"] = map[string]any{keyType: "Organization", keyName: a.SiteTitle}
 	}
 	return doc
 }
@@ -342,7 +343,7 @@ func WebSiteJSONLD(title, siteURL, description string) map[string]any {
 	doc := map[string]any{
 		keyContext: "https://schema.org",
 		keyType:    "WebSite",
-		"name":     title,
+		keyName:    title,
 	}
 	if description != "" {
 		doc["description"] = description
@@ -364,7 +365,7 @@ func WebSiteJSONLD(title, siteURL, description string) map[string]any {
 
 // buildJSONLD 组装一条内容的 Article 结构化数据。
 func buildJSONLD(meta *Meta, entry *Entry, site SiteInfo) map[string]any {
-	return ArticleJSONLD(Article{
+	return ArticleJSONLD(&Article{
 		Title:       entry.Title,
 		Description: meta.Description,
 		Canonical:   meta.Canonical,

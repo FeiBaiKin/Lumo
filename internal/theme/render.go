@@ -159,7 +159,7 @@ func jsonLD(ctx *Context) template.JS {
 	var doc map[string]any
 	switch {
 	case ctx.Post != nil && (ctx.Kind == KindPost || ctx.Kind == KindPage):
-		article := seo.Article{
+		article := &seo.Article{
 			Title:       ctx.Post.Title,
 			Description: ctx.Description,
 			Canonical:   absoluteURL(ctx.Site.URL, ctx.Post.URL),
