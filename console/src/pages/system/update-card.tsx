@@ -272,16 +272,18 @@ export function UpdateCard() {
               在线升级在配置中被关掉了（update.enabled）。开启后可在这里检查并安装新版本。
             </Alert>
           ) : !data.canUpdate ? (
-            data.container ? (
+            // 容器里程序文件不持久，是唯一需要整段指引的情形；其余原因
+            // （目录只读、定位不到自己）一句话说清就够。
+            data.container && !data.persistent ? (
               <ContainerGuide image={data.image} hasUpdate={data.hasUpdate} />
             ) : (
               <Alert tone="warn" title="这台机器上不能就地升级">
                 {data.reason}
               </Alert>
             )
-          ) : data.container ? (
+          ) : data.container && !data.persistent ? (
             <Alert tone="warn" title="容器里的就地升级是开着的">
-              换掉的程序文件活在容器的可写层里：重启容器不丢，但
+              程序文件在容器自己的文件系统上：重启容器不丢，但
               <strong>重建</strong>
               容器（改配置、拉新镜像）会回到镜像里的版本。真退回去了这里会说出来。
             </Alert>
@@ -503,6 +505,16 @@ function VersionLine({ status }: { status: Status | undefined }) {
               : "已关闭"}
           </dd>
         </div>
+        {status.container ? (
+          <div className="flex gap-1.5">
+            <dt>部署形态</dt>
+            <dd className="text-ink">
+              {status.persistent
+                ? `容器，程序文件在挂载卷上${status.mountPoint ? `（${status.mountPoint}）` : ""}`
+                : "容器，程序文件在镜像里"}
+            </dd>
+          </div>
+        ) : null}
         {status.checkedAt ? (
           <div className="flex gap-1.5">
             <dt>最近检查</dt>

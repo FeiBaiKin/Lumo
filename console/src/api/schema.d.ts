@@ -3200,6 +3200,9 @@ export interface components {
             /** Format: int64 */
             keepBackups: number;
             latest?: components["schemas"]["Release"];
+            mountPoint?: string;
+            /** @description 程序文件是否活得比容器长 */
+            persistent: boolean;
             /** @description 是否把预发布版本算作升级目标 */
             prerelease: boolean;
             progress: components["schemas"]["UpdateProgress"];

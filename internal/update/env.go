@@ -9,9 +9,14 @@ import (
 
 // Environment 是「这份二进制能不能自己换掉自己」的判断依据。
 //
-// 三个否定条件各自对应一种真实部署：容器里换了也白换（重启回到镜像里的旧版本）、
-// 目录只读的话根本写不进去、拿不到自己的路径就无从替换。
-// 判断结果要原样告诉站长 —— 「更新按钮为什么是灰的」必须当场能答。
+// 每个否定条件都对应一种真实部署：拿不到自己的路径就无从替换、目录只读的话
+// 根本写不进去、程序文件躺在容器自己的文件系统上时换了也白换（重建容器就回到
+// 镜像里的版本）。判断结果要原样告诉站长 ——「更新按钮为什么是灰的」必须当场能答。
+//
+// 注意第三条问的是「程序文件会不会随容器消失」，**不是**「在不在容器里」。
+// 两者在官方镜像上同解，但 1Panel、宝塔的运行环境是「容器里跑挂载目录上的
+// 二进制」——文件在宿主机磁盘上，容器重建一根汗毛都不少。拿前者当后者的替身，
+// 就会把面板用户里最常见的那种装法整个挡在门外。
 type Environment struct {
 	// Executable 是当前二进制的绝对路径，已解开符号链接。
 	//
@@ -22,6 +27,11 @@ type Environment struct {
 	Dir string
 	// Container 为真表示跑在容器里。
 	Container bool
+	// Persistent 为真表示程序文件落在挂载卷上，活得比容器长。
+	// 不在容器里时恒为真（宿主机的磁盘本来就不会因为谁重建而消失）。
+	Persistent bool
+	// MountPoint 是程序文件所属的挂载点，排障时的第一手线索。
+	MountPoint string
 	// Writable 为真表示二进制所在目录可写。
 	Writable bool
 	// OS 与 Arch 是当前平台，用来挑发布资产。
@@ -53,25 +63,47 @@ func DetectEnvironment() Environment {
 	env.Executable = exe
 	env.Dir = filepath.Dir(exe)
 	env.Writable = dirWritable(env.Dir)
+
+	// 不在容器里就没有「重建」这回事，文件当然是持久的。
+	env.Persistent = !env.Container
+	if env.Container {
+		persists, point, known := persistsBeyondContainer(env.Dir)
+		env.MountPoint = point
+		// 判断不出来时按「不持久」处理：这是那两条里更保守的一边，
+		// 而站长仍有 allowInContainer 可以推翻它。
+		env.Persistent = known && persists
+	}
 	return env
 }
 
 // CanUpdate 报告能否就地升级，不能时一并给出原因。
 //
-// allowInContainer 来自配置：容器里默认不升级，但站长可以明确选择承担那个代价
-// （见 config.UpdateConfig.AllowInContainer 与 state.go 的回退检测）。
+// allowInContainer 来自配置，只对「程序文件不持久」这一条起作用：它是站长
+// 明确选择承担「重建容器就退回去」这个代价（回退检测见 state.go）。
+// 它推翻不了「目录不可写」——那是物理事实，不是策略。
 func (e Environment) CanUpdate(allowInContainer bool) (ok bool, reason string) {
 	switch {
 	case e.Err != "":
 		return false, e.Err
-	case e.Container && !allowInContainer:
-		return false, "运行在容器中：换掉的文件活在容器的可写层里，重建容器就会回到镜像里的版本。" +
-			"请改用新的镜像标签升级；确实要在容器里就地升级，开 update.allowInContainer"
+	case e.Container && !e.Persistent && !allowInContainer:
+		return false, "程序文件在容器自己的文件系统上（挂载点 " + e.mountPointLabel() +
+			"）：换掉它，重建容器时就会回到镜像里的版本。请改用新的镜像标签升级"
+	case !e.Writable && e.Container:
+		return false, "程序所在目录（" + e.Dir + "）在容器里是只读的，" +
+			"allowInContainer 也帮不上忙：请改用新的镜像标签升级"
 	case !e.Writable:
 		return false, "程序所在目录不可写（" + e.Dir + "），请改由部署脚本或包管理器升级"
 	default:
 		return true, ""
 	}
+}
+
+// mountPointLabel 是挂载点的展示值，探测不出时给一个不会读成路径的占位。
+func (e Environment) mountPointLabel() string {
+	if e.MountPoint == "" {
+		return "未知"
+	}
+	return e.MountPoint
 }
 
 // containerMarkers 是容器运行时留下的标记文件。

@@ -3637,6 +3637,13 @@
           "latest": {
             "$ref": "#/components/schemas/Release"
           },
+          "mountPoint": {
+            "type": "string"
+          },
+          "persistent": {
+            "description": "程序文件是否活得比容器长",
+            "type": "boolean"
+          },
           "prerelease": {
             "description": "是否把预发布版本算作升级目标",
             "type": "boolean"
@@ -3666,6 +3673,7 @@
           "versionComparable",
           "canUpdate",
           "container",
+          "persistent",
           "repo",
           "autoCheck",
           "checkInterval",

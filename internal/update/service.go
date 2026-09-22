@@ -109,6 +109,10 @@ type UpdateStatus struct {
 	CanUpdate bool   `json:"canUpdate"`
 	Reason    string `json:"reason,omitempty" doc:"不能就地升级的原因"`
 	Container bool   `json:"container" doc:"是否运行在容器中"`
+	// Persistent 为真表示程序文件在挂载卷上，重建容器不会把它换回去。
+	Persistent bool `json:"persistent" doc:"程序文件是否活得比容器长"`
+	// MountPoint 是程序文件所属的挂载点，容器里排障用。
+	MountPoint string `json:"mountPoint,omitempty"`
 	// Image 是容器部署该换成的镜像标签，仅在容器里且查到新版本时有值。
 	Image string `json:"image,omitempty" doc:"容器部署要换成的镜像引用"`
 	// Rollback 非空表示当前跑的版本比在线升级装过的那个旧——多半是容器被重建，
@@ -298,6 +302,8 @@ func (s *Service) Status() UpdateStatus {
 		CanUpdate:         canUpdate,
 		Reason:            reason,
 		Container:         s.env.Container,
+		Persistent:        s.env.Persistent,
+		MountPoint:        s.env.MountPoint,
 		Executable:        s.env.Executable,
 		Repo:              s.cfg.Repo,
 		AutoCheck:         s.cfg.AutoCheck,
@@ -313,7 +319,7 @@ func (s *Service) Status() UpdateStatus {
 	}
 	// 容器里给出该换成哪个标签：说「请改用新的镜像标签」而不说是哪个，
 	// 等于把站长支去翻文档。
-	if s.env.Container && latest != nil && status.HasUpdate && s.cfg.Image != "" {
+	if s.env.Container && !s.env.Persistent && latest != nil && status.HasUpdate && s.cfg.Image != "" {
 		status.Image = s.cfg.Image + ":" + latest.Version.Raw
 	}
 	status.Rollback = s.rollback
