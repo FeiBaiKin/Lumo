@@ -1,0 +1,24 @@
+{{- /*
+命令块。装这东西要敲的那几行，带一键复制。
+
+为什么单独成一个模块而不是让站长在文章里写代码块：安装命令是首页上访客
+最可能真正用到的东西，它该在第一屏够得着的地方，而不是点进某篇文章之后。
+
+复制按钮由 landing.js 接管，没有那段脚本时命令照样完整可读、可以手工选中——
+丢的只是一次点击的便利。
+*/ -}}
+{{ $m := .M }}
+{{ with $m.code }}
+<section class="home-module module-command" aria-labelledby="cmd-{{ $.Index }}">
+  <div class="command-head">
+    <h2 class="command-title" id="cmd-{{ $.Index }}">{{ default "装起来" $m.title }}</h2>
+    {{ with $m.text }}<p class="command-text">{{ . }}</p>{{ end }}
+  </div>
+
+  <div class="command-block">
+    <pre class="command-code"><code>{{ . }}</code></pre>
+    <button class="btn btn-secondary btn-sm command-copy" type="button" hidden
+            data-copy-label="复制" data-copied-label="已复制">复制</button>
+  </div>
+</section>
+{{ end }}

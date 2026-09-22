@@ -1,0 +1,29 @@
+{{- /*
+图文展示。一张大图配一段话，图文左右分列，可以左右对调。
+
+与主视觉的区别是位置与语气：主视觉回答「这是什么」，只出现一次、在最上面；
+图文展示回答「它长什么样、能做什么」，可以连着放好几块。连放时把 reverse
+交替开关，版面才不会变成一列对齐的表格。
+
+图缺失时退成纯文字段落而不是留一块灰底：一块灰底比没有图更难看。
+
+入参 dict：Page 整页上下文 / M 模块参数 / Index 模块序号
+*/ -}}
+{{ $m := .M }}
+{{ $hasImage := ne (default "" $m.image) "" }}
+
+<section class="home-module module-showcase{{ if $m.reverse }} module-showcase--reverse{{ end }}{{ if not $hasImage }} module-showcase--plain{{ end }}"
+         aria-labelledby="show-{{ .Index }}">
+  <div class="showcase-body">
+    {{ with default "" $m.title }}
+    <h2 class="showcase-title" id="show-{{ $.Index }}">{{ . }}</h2>
+    {{ end }}
+    {{ with $m.text }}<p class="showcase-text">{{ . }}</p>{{ end }}
+  </div>
+
+  {{ if $hasImage }}
+  <figure class="showcase-figure">
+    <img src="{{ $m.image }}" alt="{{ default "" $m.imageAlt }}" loading="lazy" decoding="async">
+  </figure>
+  {{ end }}
+</section>

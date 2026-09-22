@@ -1,0 +1,39 @@
+{{- /*
+特性网格。一组「一枚印 + 一个标题 + 一句话」的卡片。
+
+标记用方印而不是线条图标：本主题的插图系统就是印（见 partials/seal.html），
+再引一套图标等于在同一页上摆两种视觉语言。印面是一两个汉字，
+站长自己挑——「快」「轻」「稳」比任何一个通用图标都更贴住那一条说的是什么。
+
+条目为空时整块不渲染：一个只有标题的空网格比没有这一块更难看。
+
+入参 dict：Page 整页上下文 / M 模块参数 / Index 模块序号
+*/ -}}
+{{ $m := .M }}
+{{ $items := $m.items }}
+{{ if $items }}
+{{ $columns := default 3 $m.columns }}
+
+<section class="home-module module-features" aria-labelledby="feat-{{ .Index }}">
+  {{ with default "" $m.title }}
+  <div class="module-head">
+    <h2 class="module-title" id="feat-{{ $.Index }}">{{ . }}</h2>
+  </div>
+  {{ end }}
+
+  <ul class="feature-grid" data-columns="{{ $columns }}" data-motion="list">
+    {{ range $items }}
+    {{ if .title }}
+    <li class="feature-card">
+      {{- /* 印文留空时取标题首字：站长少填一个字段，版面不会因此缺一块。 */ -}}
+      <span class="feature-mark">
+        {{ template "partials/seal.html" (default (printf "%.1s" .title) .mark) }}
+      </span>
+      <h3 class="feature-title">{{ .title }}</h3>
+      {{ with .text }}<p class="feature-text">{{ . }}</p>{{ end }}
+    </li>
+    {{ end }}
+    {{ end }}
+  </ul>
+</section>
+{{ end }}

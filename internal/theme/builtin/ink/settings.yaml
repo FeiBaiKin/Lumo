@@ -83,31 +83,123 @@ groups:
             additionalProperties: false
             required: [type]
             # 条目里字段多，顺序必须显式给：不然「模块」这个类型选择器会掉到最下面
-            x-order: [type, title, source, term, count, columns, style, menu, text]
+            x-order: [type, title, text, actions, items, image, imageAlt, reverse, code, source, term, count, columns, style, menu]
             properties:
               type:
                 type: string
                 title: 模块
-                enum: [carousel, notice, featured, categories, latest, popular, tags, links]
-                enumNames: [轮播图, 公告条, 精选卡片, 分类导航, 最新文章, 热门文章, 标签云, 友情链接]
+                enum: [hero, features, showcase, command, carousel, notice, featured, categories, latest, popular, tags, links]
+                enumNames: [主视觉, 特性网格, 图文展示, 命令块, 轮播图, 公告条, 精选卡片, 分类导航, 最新文章, 热门文章, 标签云, 友情链接]
                 x-widget: select
               title:
                 type: string
                 title: 区块标题
-                maxLength: 32
-                description: 留空则用模块的默认标题；公告条没有标题
+                maxLength: 60
+                description: 留空则用模块的默认标题；公告条没有标题。主视觉与图文展示拿它当大标题，那是一句标语，所以留到 60 字
                 x-show-if:
                   field: type
                   op: in
-                  value: [carousel, featured, categories, latest, popular, tags, links]
+                  value: [hero, features, showcase, command, carousel, featured, categories, latest, popular, tags, links]
               text:
                 type: string
-                title: 公告内容
-                maxLength: 200
+                title: 说明文字
+                maxLength: 300
                 x-widget: textarea
-                x-rows: 2
-                description: 纯文本，不解析 HTML
-                x-show-if: { field: type, op: eq, value: notice }
+                x-rows: 3
+                description: 纯文本，不解析 HTML。公告条用它当正文；主视觉、图文展示与命令块用它当标题下面那段话
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [hero, showcase, command, notice]
+
+              actions:
+                type: array
+                title: 行动按钮
+                maxItems: 3
+                x-widget: repeater
+                x-item-label: 按钮
+                description: 最多三个。第一个用墨底实心，其余用描边——一屏里只该有一个主行动
+                x-show-if: { field: type, op: eq, value: hero }
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [text, url]
+                  x-order: [text, url]
+                  properties:
+                    text:
+                      type: string
+                      title: 按钮文字
+                      maxLength: 16
+                      description: 说清点下去会发生什么：「快速开始」好过「了解更多」
+                    url:
+                      type: string
+                      title: 链接
+                      maxLength: 300
+
+              items:
+                type: array
+                title: 特性条目
+                maxItems: 12
+                x-widget: repeater
+                x-item-label: 特性
+                description: 每条一枚方印、一个标题、一句话。说一件事就够，两件事请拆成两条
+                x-show-if: { field: type, op: eq, value: features }
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [title]
+                  x-order: [mark, title, text]
+                  properties:
+                    mark:
+                      type: string
+                      title: 印文
+                      maxLength: 2
+                      description: 盖在卡片上的那一两个字，如「快」「轻」「稳」。留空则取标题首字
+                    title:
+                      type: string
+                      title: 标题
+                      maxLength: 24
+                    text:
+                      type: string
+                      title: 说明
+                      maxLength: 120
+                      x-widget: textarea
+                      x-rows: 2
+
+              image:
+                type: string
+                title: 配图
+                x-widget: image
+                description: 产品截图最合适——它同时是说明。宽屏下与文字并排，窄屏下落到文字下面
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [hero, showcase]
+
+              imageAlt:
+                type: string
+                title: 图片说明
+                maxLength: 120
+                description: 读屏用户听到的就是这句。写图里有什么，不要写「配图」
+                x-show-if:
+                  field: type
+                  op: in
+                  value: [hero, showcase]
+
+              reverse:
+                type: boolean
+                title: 图片放在左边
+                description: 连着放几个图文展示时交替开关，版面才不会像一列表格
+                x-show-if: { field: type, op: eq, value: showcase }
+
+              code:
+                type: string
+                title: 命令
+                maxLength: 600
+                x-widget: code
+                x-rows: 4
+                description: 一行一条。访客能一键复制整段
+                x-show-if: { field: type, op: eq, value: command }
               source:
                 type: string
                 title: 取哪些内容

@@ -1,0 +1,46 @@
+{{- /*
+主视觉。首页最上面那一块：一句标语、一段说明、若干行动按钮，右边一张图。
+
+为什么它值得单独一个模块：博客首页的第一屏可以是文章列表，产品站不行——
+访客落在这一页上要在三秒内知道「这是什么、我能拿它做什么、从哪开始」。
+这三件事分别对应标语、说明、按钮，少一样都得靠猜。
+
+图放的是产品截图而不是装饰插画：对一个 CMS 来说，界面本身就是最好的说明，
+而插画只是在页面上占一块颜色。没有图时整块退成单栏，文字撑满——
+那仍然是一个完整的主视觉，不是一个缺了图的主视觉。
+
+入参 dict：Page 整页上下文 / M 模块参数 / Index 模块序号
+*/ -}}
+{{ $m := .M }}
+{{ $title := default .Page.Site.Title $m.title }}
+{{ $hasImage := ne (default "" $m.image) "" }}
+
+<section class="home-module module-hero{{ if $hasImage }} module-hero--split{{ end }}"
+         aria-labelledby="hero-{{ .Index }}">
+  <div class="hero-body" data-motion="title">
+    <h1 class="hero-title" id="hero-{{ .Index }}">{{ $title }}</h1>
+    {{ with $m.text }}<p class="hero-text">{{ . }}</p>{{ end }}
+
+    {{ with $m.actions }}
+    <div class="hero-actions">
+      {{ range $i, $a := . }}
+      {{ if and $a.text $a.url }}
+      {{- /* 第一个按钮是主行动，其余描边：一屏里只该有一个「最该点的东西」。 */ -}}
+      <a class="btn {{ if eq $i 0 }}btn-primary{{ else }}btn-secondary{{ end }}"
+         href="{{ $a.url }}">{{ $a.text }}</a>
+      {{ end }}
+      {{ end }}
+    </div>
+    {{ end }}
+  </div>
+
+  {{ if $hasImage }}
+  <figure class="hero-figure">
+    {{- /*
+    不给 loading="lazy"：这张图在首屏之内，延迟加载只会让它比周围的文字晚到，
+    而那正是访客第一眼要看的东西。
+    */ -}}
+    <img src="{{ $m.image }}" alt="{{ default "" $m.imageAlt }}" decoding="async">
+  </figure>
+  {{ end }}
+</section>

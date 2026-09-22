@@ -158,6 +158,12 @@
   <script defer src="{{ .Theme.AssetsBase }}/scheme.js?v={{ .Theme.AssetsVersion }}"></script>
 
   {{- /*
+  命令块的复制按钮（首页模块）。与 code.js 同理：复制是功能不是装饰，
+  故**不受** appearance.motion 管辖。页面上没有命令块时它什么都不做。
+  */ -}}
+  <script defer src="{{ .Theme.AssetsBase }}/landing.js?v={{ .Theme.AssetsVersion }}"></script>
+
+  {{- /*
   轮播图（首页模块）。**不受** appearance.motion 管辖：翻页是功能不是装饰，
   关掉动效只让它不用平滑滚动，不该让轮播变成一张不动的图。
   页面上没有轮播时它什么都不做。

@@ -4510,3 +4510,304 @@ html.auth-open {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ==================================================================
+   落地页模块 —— 主视觉 / 特性网格 / 图文展示 / 命令块
+   ==================================================================
+
+   这四块是给「产品站首页」用的，与上面那批博客模块并列。它们的版面规矩
+   与本主题其余部分一致，只在一处刻意放宽：标语与区块标题允许比正文大得多。
+   首屏要在三秒内说清「这是什么」，而三秒里人只读得进一行字。
+
+   材质分野照旧：要读的用衬线（标语、标题），要操作的用无衬线（按钮、命令）。
+   图一律是产品截图而不是装饰插画——对一个 CMS 来说界面本身就是说明，
+   插画只是在页面上占一块颜色。
+   ================================================================== */
+
+/* ---------- 主视觉 ---------- */
+
+.module-hero {
+  padding-block: var(--s8) var(--s10);
+}
+
+/*
+ * 落地页模块之间的间距比博客模块大一档。
+ *
+ * 博客模块是一串同构的列表，2.5rem 的节奏正好；落地页是「一屏说一件事」，
+ * 同样的间距会让四块读成一整块，眼睛找不到分段的地方。
+ */
+.home-module + .module-hero,
+.home-module + .module-features,
+.home-module + .module-showcase,
+.home-module + .module-command {
+  margin-top: var(--s16);
+}
+
+/*
+ * 有图时两栏。图那一栏略宽（1.15fr）：截图里的信息密度比文字低，
+ * 等宽会让它显得比实际更小。
+ */
+.module-hero--split {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  align-items: center;
+  gap: var(--s10);
+}
+
+.hero-title {
+  margin: 0;
+  font-family: var(--font-display);
+  /* 下限 1.9rem：再小就压不住首屏；上限 3.5rem，超过之后一行放不下一句中文标语 */
+  font-size: clamp(1.9rem, 1.3rem + 2.6vw, 3.5rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.hero-text {
+  margin: var(--s5) 0 0;
+  max-width: 46ch;
+  /* 有图时这一栏本来就窄，46ch 是它的实际宽度；无图时见下面那条 */
+  color: var(--fg-muted);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-ui);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s7);
+}
+
+.hero-figure {
+  margin: 0;
+  min-width: 0;
+}
+
+/*
+ * 截图给一层描边与极轻的托底阴影，与卡片同一套材质。
+ * 不做倾斜、不做透视、不加浏览器外框：那些是装饰，而这张图是说明。
+ */
+.hero-figure img,
+.showcase-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--corner-card);
+  box-shadow: var(--elevation-card);
+  background: var(--surface);
+}
+
+/*
+ * 没有图的时候文字不该还挤在左边三分之一。放宽到 58ch——中文约 29 字一行，
+ * 仍在「一眼扫得完一行」的范围内，而右边不再空着一大片。
+ */
+.module-hero:not(.module-hero--split) .hero-text,
+.module-showcase--plain .showcase-text {
+  max-width: 58ch;
+}
+
+/* ---------- 特性网格 ---------- */
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--feature-cols, 3), minmax(0, 1fr));
+  /* 列间距大于行间距：卡片没有边框，全靠这道空隙把相邻两条分开 */
+  gap: var(--s8) var(--s10);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature-grid[data-columns="2"] {
+  --feature-cols: 2;
+}
+.feature-grid[data-columns="4"] {
+  --feature-cols: 4;
+}
+
+/*
+ * 卡片不加边框也不加底色：一排四个带框的盒子会把这一段压成表格，
+ * 而这里每一条都是一句独立的话。靠印与间距分组就够。
+ */
+.feature-card {
+  min-width: 0;
+}
+
+.feature-mark {
+  display: block;
+  margin-bottom: var(--s3);
+}
+
+/* 这里的印比空状态里那枚小一号：它是标记，不是主角 */
+.feature-mark .seal {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.feature-title {
+  margin: 0 0 var(--s2);
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.feature-text {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--fs-base);
+  line-height: var(--lh-ui);
+}
+
+/* ---------- 图文展示 ---------- */
+
+.module-showcase {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  align-items: center;
+  gap: var(--s10);
+}
+
+/* 连着放几块时交替开关，版面才不是一列对齐的表格 */
+.module-showcase--reverse .showcase-body {
+  order: 2;
+}
+
+/* 没有图时退成单栏，文字自己占满，而不是留半边空着 */
+.module-showcase--plain {
+  grid-template-columns: 1fr;
+}
+
+.showcase-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 1.15rem + 1.1vw, 2rem);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+.showcase-text {
+  margin: var(--s4) 0 0;
+  max-width: 46ch;
+  color: var(--fg-muted);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-ui);
+}
+
+.showcase-figure {
+  margin: 0;
+  min-width: 0;
+}
+
+/* ---------- 命令块 ---------- */
+
+.command-head {
+  margin-bottom: var(--s5);
+}
+
+.command-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.command-text {
+  margin: var(--s2) 0 0;
+  max-width: 56ch;
+  color: var(--fg-muted);
+  font-size: var(--fs-base);
+  line-height: var(--lh-ui);
+}
+
+/*
+ * 命令用「纸」之外的那层底色（surface-inset），与文章里的代码块同源：
+ * 访客在两个地方看到的「可以照抄的东西」应当长得一样。
+ */
+.command-block {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--corner-card);
+  background: var(--surface-inset, var(--surface-raised));
+}
+
+.command-code {
+  margin: 0;
+  overflow-x: auto;
+  padding: var(--s5) var(--s6);
+  /* 给按钮让出位置，免得长命令从它底下穿过去 */
+  padding-inline-end: 6.5rem;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.9;
+  tab-size: 2;
+}
+
+.command-copy {
+  position: absolute;
+  top: var(--s3);
+  inset-inline-end: var(--s3);
+}
+
+/* ---------- 窄屏 ---------- */
+
+/*
+ * 56rem 与「首页两栏」那几处同一个断点：并排的两栏一起换行，
+ * 页面不会出现「这一块折了、下一块还没折」的错位。
+ */
+@media (max-width: 56rem) {
+  .module-hero--split,
+  .module-showcase {
+    grid-template-columns: 1fr;
+    gap: var(--s6);
+  }
+
+  /* 单栏之后图一律在文字下面：先说是什么，再给图看 */
+  .module-showcase--reverse .showcase-body {
+    order: 0;
+  }
+
+  .feature-grid[data-columns="4"] {
+    --feature-cols: 2;
+  }
+}
+
+@media (max-width: 40rem) {
+  .module-hero {
+    padding-block: var(--s5) var(--s8);
+  }
+
+  .home-module + .module-hero,
+  .home-module + .module-features,
+  .home-module + .module-showcase,
+  .home-module + .module-command {
+    margin-top: var(--s10);
+  }
+
+  .feature-grid,
+  .feature-grid[data-columns="2"],
+  .feature-grid[data-columns="4"] {
+    --feature-cols: 1;
+    gap: var(--s6);
+  }
+
+  .hero-actions .btn {
+    /* 窄屏下按钮撑满一行：两个半宽按钮并排时触区比 44px 还窄 */
+    flex: 1 1 100%;
+  }
+
+  .command-code {
+    padding: var(--s4);
+    /* 按钮改到命令上方，横向不再与它抢地方 */
+    padding-block-start: 3.25rem;
+    padding-inline-end: var(--s4);
+  }
+}
