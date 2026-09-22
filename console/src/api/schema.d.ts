@@ -1317,6 +1317,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查看升级状态
+         * @description 一次返回当前版本、最近一次检查的结果、能否就地升级、正在进行的升级进度与备份列表。升级过程中轮询它即可。
+         */
+        get: operations["update-status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/update/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 下载并安装新版本
+         * @description 接口立即返回，下载、校验、替换与重启在后台进行，进度经 GET /update 查询。安装完成后服务会自动重启，其间接口短暂不可用；替换前会把当前版本备份到 data/backups。
+         */
+        post: operations["update-apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/update/backups/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 删除一份升级备份
+         * @description 删除 data/backups 下的一份旧版本备份。不可撤销：删掉之后就只能重新下载那个版本了。
+         */
+        delete: operations["update-delete-backup"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/update/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 立即检查新版本
+         * @description 向更新源查询最新发布并刷新缓存。10 秒内的重复调用直接复用上次结果——更新源对未认证请求有频率限制。
+         */
+        post: operations["update-check"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/users": {
         parameters: {
             query?: never;
@@ -1884,12 +1964,30 @@ export interface components {
             externalUrl?: string;
             steps: components["schemas"]["Step"][] | null;
         };
+        Asset: {
+            name: string;
+            /** Format: int64 */
+            size: number;
+            url: string;
+        };
         AuthorView: {
             avatarUrl: string;
             displayName: string;
             /** Format: int64 */
             id: number;
             username: string;
+        };
+        Backup: {
+            /** Format: date-time */
+            createdAt: string;
+            /** @description 备份文件名，删除时用它定位 */
+            name: string;
+            /**
+             * Format: int64
+             * @description 字节数
+             */
+            size: number;
+            version: string;
         };
         Body: {
             /** @description 分类 ID 列表（仅文章） */
@@ -1921,6 +2019,12 @@ export interface components {
              * @enum {string}
              */
             visibility?: "public" | "private";
+        };
+        BuildInfo: {
+            commit: string;
+            date: string;
+            platform: string;
+            version: string;
         };
         Category: {
             /** @description 封面图地址 */
@@ -2798,6 +2902,16 @@ export interface components {
              */
             pending: number;
         };
+        Release: {
+            asset: components["schemas"]["Asset"];
+            htmlUrl: string;
+            name: string;
+            notes: string;
+            prerelease: boolean;
+            /** Format: date-time */
+            publishedAt: string;
+            tag: string;
+        };
         Revision: {
             /**
              * Format: int64
@@ -3036,6 +3150,56 @@ export interface components {
             alt?: string;
             /** @description 标题 */
             title?: string;
+        };
+        UpdateProgress: {
+            backup?: string;
+            /**
+             * Format: int64
+             * @description 已下载字节数
+             */
+            downloaded: number;
+            error?: string;
+            /** @description idle / downloading / installing / restarting / ready / failed */
+            phase: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /**
+             * Format: int64
+             * @description 发布包总字节数，0 表示未知
+             */
+            total: number;
+            /** Format: date-time */
+            updatedAt?: string;
+            version?: string;
+        };
+        UpdateStatus: {
+            autoCheck: boolean;
+            backupDir: string;
+            backups: components["schemas"]["Backup"][] | null;
+            canUpdate: boolean;
+            checkError?: string;
+            /** @description 自动检查间隔 */
+            checkInterval: string;
+            /** Format: date-time */
+            checkedAt?: string;
+            /** @description 是否运行在容器中 */
+            container: boolean;
+            current: components["schemas"]["BuildInfo"];
+            /** @description 功能是否启用，关闭时其余字段仅供展示 */
+            enabled: boolean;
+            executable?: string;
+            hasUpdate: boolean;
+            /** Format: int64 */
+            keepBackups: number;
+            latest?: components["schemas"]["Release"];
+            /** @description 是否把预发布版本算作升级目标 */
+            prerelease: boolean;
+            progress: components["schemas"]["UpdateProgress"];
+            /** @description 不能就地升级的原因 */
+            reason?: string;
+            /** @description 更新源仓库 */
+            repo: string;
+            versionComparable: boolean;
         };
         UpdateUserBody: {
             avatarUrl?: string;
@@ -8052,6 +8216,213 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "update-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "update-apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateProgress"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "update-delete-backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 备份文件名，取自状态里的 backups[].name */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "update-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

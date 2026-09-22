@@ -143,6 +143,27 @@
         ],
         "type": "object"
       },
+      "Asset": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "size"
+        ],
+        "type": "object"
+      },
       "AuthorView": {
         "additionalProperties": false,
         "properties": {
@@ -165,6 +186,34 @@
           "username",
           "displayName",
           "avatarUrl"
+        ],
+        "type": "object"
+      },
+      "Backup": {
+        "additionalProperties": false,
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "备份文件名，删除时用它定位",
+            "type": "string"
+          },
+          "size": {
+            "description": "字节数",
+            "format": "int64",
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "size",
+          "createdAt"
         ],
         "type": "object"
       },
@@ -249,6 +298,30 @@
         },
         "required": [
           "title"
+        ],
+        "type": "object"
+      },
+      "BuildInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "commit": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "commit",
+          "date",
+          "platform"
         ],
         "type": "object"
       },
@@ -2687,6 +2760,43 @@
         ],
         "type": "object"
       },
+      "Release": {
+        "additionalProperties": false,
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/Asset"
+          },
+          "htmlUrl": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "prerelease": {
+            "type": "boolean"
+          },
+          "publishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tag": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "name",
+          "notes",
+          "htmlUrl",
+          "publishedAt",
+          "prerelease",
+          "asset"
+        ],
+        "type": "object"
+      },
       "Revision": {
         "additionalProperties": false,
         "properties": {
@@ -3402,6 +3512,141 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "UpdateProgress": {
+        "additionalProperties": false,
+        "properties": {
+          "backup": {
+            "type": "string"
+          },
+          "downloaded": {
+            "description": "已下载字节数",
+            "format": "int64",
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "phase": {
+            "description": "idle / downloading / installing / restarting / ready / failed",
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "total": {
+            "description": "发布包总字节数，0 表示未知",
+            "format": "int64",
+            "type": "integer"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "downloaded",
+          "total"
+        ],
+        "type": "object"
+      },
+      "UpdateStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "autoCheck": {
+            "type": "boolean"
+          },
+          "backupDir": {
+            "type": "string"
+          },
+          "backups": {
+            "items": {
+              "$ref": "#/components/schemas/Backup"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "canUpdate": {
+            "type": "boolean"
+          },
+          "checkError": {
+            "type": "string"
+          },
+          "checkInterval": {
+            "description": "自动检查间隔",
+            "type": "string"
+          },
+          "checkedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "container": {
+            "description": "是否运行在容器中",
+            "type": "boolean"
+          },
+          "current": {
+            "$ref": "#/components/schemas/BuildInfo"
+          },
+          "enabled": {
+            "description": "功能是否启用，关闭时其余字段仅供展示",
+            "type": "boolean"
+          },
+          "executable": {
+            "type": "string"
+          },
+          "hasUpdate": {
+            "type": "boolean"
+          },
+          "keepBackups": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "latest": {
+            "$ref": "#/components/schemas/Release"
+          },
+          "prerelease": {
+            "description": "是否把预发布版本算作升级目标",
+            "type": "boolean"
+          },
+          "progress": {
+            "$ref": "#/components/schemas/UpdateProgress"
+          },
+          "reason": {
+            "description": "不能就地升级的原因",
+            "type": "string"
+          },
+          "repo": {
+            "description": "更新源仓库",
+            "type": "string"
+          },
+          "versionComparable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled",
+          "current",
+          "hasUpdate",
+          "versionComparable",
+          "canUpdate",
+          "container",
+          "repo",
+          "autoCheck",
+          "checkInterval",
+          "prerelease",
+          "progress",
+          "backups",
+          "backupDir",
+          "keepBackups"
+        ],
         "type": "object"
       },
       "UpdateUserBody": {
@@ -10938,6 +11183,272 @@
         "summary": "更新主题设置分组",
         "tags": [
           "themes"
+        ]
+      }
+    },
+    "/api/v1/console/update": {
+      "get": {
+        "description": "一次返回当前版本、最近一次检查的结果、能否就地升级、正在进行的升级进度与备份列表。升级过程中轮询它即可。",
+        "operationId": "update-status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查看升级状态",
+        "tags": [
+          "update"
+        ]
+      }
+    },
+    "/api/v1/console/update/apply": {
+      "post": {
+        "description": "接口立即返回，下载、校验、替换与重启在后台进行，进度经 GET /update 查询。安装完成后服务会自动重启，其间接口短暂不可用；替换前会把当前版本备份到 data/backups。",
+        "operationId": "update-apply",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateProgress"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "下载并安装新版本",
+        "tags": [
+          "update"
+        ]
+      }
+    },
+    "/api/v1/console/update/backups/{name}": {
+      "delete": {
+        "description": "删除 data/backups 下的一份旧版本备份。不可撤销：删掉之后就只能重新下载那个版本了。",
+        "operationId": "update-delete-backup",
+        "parameters": [
+          {
+            "description": "备份文件名，取自状态里的 backups[].name",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "备份文件名，取自状态里的 backups[].name",
+              "maxLength": 128,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除一份升级备份",
+        "tags": [
+          "update"
+        ]
+      }
+    },
+    "/api/v1/console/update/check": {
+      "post": {
+        "description": "向更新源查询最新发布并刷新缓存。10 秒内的重复调用直接复用上次结果——更新源对未认证请求有频率限制。",
+        "operationId": "update-check",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "立即检查新版本",
+        "tags": [
+          "update"
         ]
       }
     },

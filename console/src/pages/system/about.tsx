@@ -15,13 +15,15 @@ import { Skeleton } from "@/components/ui/states";
 import { StatusDot } from "@/components/ui/status-dot";
 import { count } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { UpdateCard } from "@/pages/system/update-card";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Database, Info, RefreshCw, Server } from "lucide-react";
 
 /**
  * 关于页。
  *
- * 放三类信息，都是站点出问题时**第一个要看**的东西：
+ * 放四类信息，都是站点出问题时**第一个要看**的东西：
+ *   - 在线升级（有新版本时，这是整页最有行动价值的一块，故排在最前）
  *   - 版本与构建信息（提 issue 时要贴的就是它）
  *   - 全文搜索索引的状态与重建入口
  *   - 运行形态（单一二进制、数据库、许可证）
@@ -80,10 +82,13 @@ export function AboutPage() {
       <PageHeader
         icon={Info}
         title="关于"
-        description="版本、运行环境与搜索索引状态"
+        description="版本、在线升级、运行环境与搜索索引状态"
       />
 
       <PageBody>
+        {/* 升级接口要 settings:manage，没有这个权限的人连状态都读不到。 */}
+        {canManage ? <UpdateCard /> : null}
+
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader

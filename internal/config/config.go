@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,11 +21,15 @@ import (
 // EnvPrefix 是所有环境变量覆盖项的统一前缀。
 const EnvPrefix = "LUMO_"
 
+// DefaultUpdateRepo 是在线升级的默认更新源，即本项目的官方仓库。
+const DefaultUpdateRepo = "FeiBaiKin/Lumo"
+
 // Config 是全部运行配置的根。
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
 	Database DatabaseConfig `yaml:"database"`
 	Log      LogConfig      `yaml:"log"`
+	Update   UpdateConfig   `yaml:"update"`
 	// DataDir 是运行时工作目录，内含 themes/uploads/cache/logs/backups。
 	DataDir string `yaml:"dataDir"`
 }
@@ -88,6 +93,43 @@ type LogConfig struct {
 	MaxSizeMB int `yaml:"maxSizeMB"`
 }
 
+// UpdateConfig 是在线升级配置。
+//
+// 升级是运维动作而非站点设置：它取决于「这份二进制装在哪、谁能写它」，
+// 换台机器部署结论就变了，故放在配置文件与环境变量里，而不是入库的设置表。
+type UpdateConfig struct {
+	// Enabled 为假时整个功能关闭：不做后台检查，接口一律 409。
+	// 由发行方统一升级的部署（容器编排、包管理器）应当关掉它。
+	Enabled bool `yaml:"enabled"`
+	// AutoCheck 控制是否在后台定期检查新版本。关掉它仍可在后台手动检查。
+	AutoCheck bool `yaml:"autoCheck"`
+	// CheckInterval 是后台检查的间隔。
+	//
+	// 下限 1 小时：GitHub 对未认证请求按 IP 限 60 次/小时，
+	// 同一出口下的多个站点把这个值调小会一起被限流。
+	CheckInterval time.Duration `yaml:"checkInterval"`
+	// Prerelease 为真时把预发布版本也算作可升级目标。
+	Prerelease bool `yaml:"prerelease"`
+	// Repo 是更新源仓库，形如 owner/name。
+	//
+	// 可配置是为了让 fork 与内网镜像能自管升级；默认指向官方仓库。
+	// 改它等于改「这台机器信任谁发布的二进制」，故只接受配置文件与环境变量。
+	Repo string `yaml:"repo"`
+	// APIBase 是更新源的 API 根地址，留空即 GitHub 公有云。
+	//
+	// 只走环境变量 LUMO_UPDATE_API_BASE，与 Repo 是同一件事的两半：
+	// 指向自建镜像或 GitHub Enterprise 的部署要改它。不写进配置文件是因为
+	// 它决定「这台机器去哪里取二进制」，属于部署环境而非站点配置。
+	APIBase string `yaml:"-"`
+	// Token 是访问 GitHub API 的令牌，可留空。
+	//
+	// 只走环境变量 LUMO_UPDATE_TOKEN，理由同 DSN：凭据不写进入库文件。
+	// 用途是抬高限流阈值或访问私有仓库，公开仓库不需要它。
+	Token string `yaml:"-"`
+	// KeepBackups 是升级成功后保留的旧版本备份份数，0 表示不自动清理。
+	KeepBackups int `yaml:"keepBackups"`
+}
+
 // Default 返回内置默认配置。
 func Default() Config {
 	return Config{
@@ -113,6 +155,14 @@ func Default() Config {
 			File:       true,
 			RetainDays: 14,
 			MaxSizeMB:  100,
+		},
+		Update: UpdateConfig{
+			Enabled:       true,
+			AutoCheck:     true,
+			CheckInterval: 24 * time.Hour,
+			Prerelease:    false,
+			Repo:          DefaultUpdateRepo,
+			KeepBackups:   3,
 		},
 		DataDir: "./data",
 	}
@@ -186,12 +236,15 @@ type getenv func(string) string
 // applyEnv 用 LUMO_* 环境变量覆盖配置。
 func applyEnv(cfg *Config, env getenv) error {
 	strs := map[string]*string{
-		"ADDR":         &cfg.Server.Addr,
-		"EXTERNAL_URL": &cfg.Server.ExternalURL,
-		"DATABASE_DSN": &cfg.Database.DSN,
-		"LOG_LEVEL":    &cfg.Log.Level,
-		"LOG_FORMAT":   &cfg.Log.Format,
-		"DATA_DIR":     &cfg.DataDir,
+		"ADDR":            &cfg.Server.Addr,
+		"EXTERNAL_URL":    &cfg.Server.ExternalURL,
+		"DATABASE_DSN":    &cfg.Database.DSN,
+		"LOG_LEVEL":       &cfg.Log.Level,
+		"LOG_FORMAT":      &cfg.Log.Format,
+		"DATA_DIR":        &cfg.DataDir,
+		"UPDATE_REPO":     &cfg.Update.Repo,
+		"UPDATE_TOKEN":    &cfg.Update.Token,
+		"UPDATE_API_BASE": &cfg.Update.APIBase,
 	}
 	for key, target := range strs {
 		if v := env(EnvPrefix + key); v != "" {
@@ -204,6 +257,7 @@ func applyEnv(cfg *Config, env getenv) error {
 		"DATABASE_MAX_IDLE_CONNS": &cfg.Database.MaxIdleConns,
 		"LOG_RETAIN_DAYS":         &cfg.Log.RetainDays,
 		"LOG_MAX_SIZE_MB":         &cfg.Log.MaxSizeMB,
+		"UPDATE_KEEP_BACKUPS":     &cfg.Update.KeepBackups,
 	}
 	for key, target := range ints {
 		v := env(EnvPrefix + key)
@@ -237,6 +291,7 @@ func applyEnv(cfg *Config, env getenv) error {
 		"DATABASE_CONN_MAX_LIFETIME":      &cfg.Database.ConnMaxLifetime,
 		"DATABASE_MIGRATION_LOCK_TIMEOUT": &cfg.Database.MigrationLockTimeout,
 		"SHUTDOWN_TIMEOUT":                &cfg.Server.ShutdownTimeout,
+		"UPDATE_CHECK_INTERVAL":           &cfg.Update.CheckInterval,
 	}
 	for key, target := range durations {
 		v := env(EnvPrefix + key)
@@ -254,6 +309,9 @@ func applyEnv(cfg *Config, env getenv) error {
 		"DATABASE_AUTO_MIGRATE": &cfg.Database.AutoMigrate,
 		"SECURE_COOKIES":        &cfg.Server.SecureCookies,
 		"LOG_FILE":              &cfg.Log.File,
+		"UPDATE_ENABLED":        &cfg.Update.Enabled,
+		"UPDATE_AUTO_CHECK":     &cfg.Update.AutoCheck,
+		"UPDATE_PRERELEASE":     &cfg.Update.Prerelease,
 	}
 	for key, target := range bools {
 		v := env(EnvPrefix + key)
@@ -333,12 +391,45 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Errorf("database.maxIdleConns(%d) 不能大于 maxOpenConns(%d)",
 			c.Database.MaxIdleConns, c.Database.MaxOpenConns))
 	}
+	if c.Update.Enabled {
+		errs = append(errs, c.validateUpdate()...)
+	}
 	if c.Database.MigrationLockTimeout <= 0 {
 		errs = append(errs, fmt.Errorf("database.migrationLockTimeout 必须为正数，实际 %v",
 			c.Database.MigrationLockTimeout))
 	}
 
 	return errors.Join(errs...)
+}
+
+// updateRepoPattern 是 owner/name 的形状，与 GitHub 的命名规则同宽。
+var updateRepoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
+// minUpdateCheckInterval 是后台检查间隔的下限，理由见 UpdateConfig.CheckInterval。
+const minUpdateCheckInterval = time.Hour
+
+// validateUpdate 校验在线升级配置。功能关闭时不校验：
+// 关着的功能不该因为一个没人用的字段写错而挡住整个进程启动。
+func (c *Config) validateUpdate() []error {
+	var errs []error
+	if !updateRepoPattern.MatchString(c.Update.Repo) {
+		errs = append(errs, fmt.Errorf("update.repo 必须形如 owner/name，实际 %q", c.Update.Repo))
+	}
+	if c.Update.AutoCheck && c.Update.CheckInterval < minUpdateCheckInterval {
+		errs = append(errs, fmt.Errorf("update.checkInterval 至少为 %v，实际 %v",
+			minUpdateCheckInterval, c.Update.CheckInterval))
+	}
+	if c.Update.APIBase != "" {
+		u, err := url.Parse(c.Update.APIBase)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			errs = append(errs, fmt.Errorf("%sUPDATE_API_BASE 不是合法的绝对 URL: %q",
+				EnvPrefix, c.Update.APIBase))
+		}
+	}
+	if c.Update.KeepBackups < 0 {
+		errs = append(errs, fmt.Errorf("update.keepBackups 不能为负数，实际 %d", c.Update.KeepBackups))
+	}
+	return errs
 }
 
 // RequireDSN 在需要数据库的场景校验 DSN 已配置且形态正确。

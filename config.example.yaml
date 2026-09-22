@@ -62,6 +62,33 @@ log:
   # 单个日志文件的大小上限，超过则在同一天内滚到下一个序号（LUMO_LOG_MAX_SIZE_MB）
   maxSizeMB: 100
 
+# 在线升级：后台「关于」页的检查与安装。
+#
+# 它会替换掉正在运行的这份二进制，所以只在「程序文件由这台机器自己管」时可用。
+# 容器部署会被自动识别并拒绝（换镜像标签才是那边的升级方式），程序目录不可写
+# 也一样拒绝，两种情况后台都会把原因写在按钮旁边。
+update:
+  # 总开关（LUMO_UPDATE_ENABLED）。由发行方统一升级的部署（编排平台、包管理器）
+  # 应当关掉它，关掉后不做后台检查，接口一律 409。
+  enabled: true
+  # 后台定期检查新版本（LUMO_UPDATE_AUTO_CHECK）。关掉仍可在后台手动检查。
+  autoCheck: true
+  # 检查间隔，最短 1 小时（LUMO_UPDATE_CHECK_INTERVAL）。
+  # GitHub 对未认证请求按 IP 限 60 次/小时，同一出口下的多个站点会一起被限流。
+  checkInterval: 24h
+  # 是否把预发布版本也算作升级目标（LUMO_UPDATE_PRERELEASE）
+  prerelease: false
+  # 更新源仓库（LUMO_UPDATE_REPO）。改它等于改「这台机器信任谁发布的二进制」，
+  # fork 与内网镜像按需修改。
+  repo: FeiBaiKin/Lumo
+  # 升级成功后保留的旧版本备份份数，0 表示不自动清理（LUMO_UPDATE_KEEP_BACKUPS）。
+  # 备份放在 dataDir/backups，后台可以逐份删除。
+  keepBackups: 3
+
+# 更新源的两项凭据与地址只走环境变量，不写在此文件里：
+#   LUMO_UPDATE_TOKEN     GitHub 令牌，用于抬高限流阈值；公开仓库不需要
+#   LUMO_UPDATE_API_BASE  API 根地址，指向自建镜像或 GitHub Enterprise 时才设
+
 # 运行时工作目录，内含 themes/uploads/cache/logs/backups（LUMO_DATA_DIR）
 dataDir: ./data
 

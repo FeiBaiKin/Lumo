@@ -19,8 +19,9 @@
 - **全文搜索**：Go 侧二元组分词 + PostgreSQL `tsvector`，不依赖任何数据库扩展
 - **SEO**：`robots.txt` / `sitemap.xml` / `feed.xml` / `atom.xml` + canonical / OpenGraph / JSON-LD
 - **插件**：zip 包含清单与设置声明，后台安装 / 启停，目前是纯声明式、**不执行任何代码**（WASM 运行时在路线图上）
+- **在线升级**：后台「关于」页检查并安装新版本，校验 SHA-256、自检新二进制、备份旧版本后替换并自动重启
 - **REST API**：Console / Public / Extension 三平面，OpenAPI 3.1 由 Go 代码生成，Console 的 TS 类型自动生成
-- **模块化**：14 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
+- **模块化**：16 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
 
 **路线图**：2FA 与 OAuth 登录；让插件从声明式走向可执行（声明式页面 → 扩展点 → WASM 后端）。
 
@@ -171,6 +172,31 @@ dump 里有口令哈希与会话 / 令牌哈希，按密钥对待：不要放公
 **恢复后检查**：`/healthz` 与 `/readyz` 200、日志无迁移报错；原账号能登录；
 抽一篇已发布文章前台渲染正常；附件可访问、媒体库能列出；评论正常显示。
 
+## 在线升级
+
+后台「系统 → 关于」页可以检查并安装新版本，发布包取自 GitHub Releases。
+
+一次升级按顺序做五件事，任何一步失败都不会动到正在运行的程序：
+
+1. 下载当前平台的发布包，**按 `checksums.txt` 核对 SHA-256**，对不上直接中止
+2. 从包里取出主程序，解到程序所在目录的临时文件
+3. **跑一次 `lumo version -json` 自检**——确认它在这台机器上能运行，且确实是要装的那个版本
+4. 把当前二进制复制一份到 `dataDir/backups`，再原地替换
+5. 优雅停机后以新版本重启；数据库结构由新版本启动时自动迁移
+
+自检这一步挡住的是「架构拿错、文件被杀软掏空、包里装错版本」这类问题——
+没有它，一次坏掉的升级会让站点直接起不来，而那时后台已经打不开了。
+
+**两种情况不允许就地升级**，后台会把原因写在按钮旁边：
+
+- **容器部署**：镜像是只读的，换掉的文件会在下次重建容器时消失。容器请换镜像标签升级
+- **程序目录不可写**：交给部署脚本或包管理器
+
+旧版本备份留在 `dataDir/backups`，默认保留最近 3 份（`update.keepBackups`），
+后台可以逐份删除。要回退到某一份，把它复制回程序目录覆盖即可。
+
+由发行方统一升级的部署可以整块关掉：`update.enabled: false`（或 `LUMO_UPDATE_ENABLED=false`）。
+
 ## 后台 Console
 
 React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 外观 / 用户 / 设置 / 系统，
@@ -256,6 +282,7 @@ SMTP 口令与 S3 访问密钥在后台「设置 → 邮件发送 / 附件存储
 - `server` — 监听地址、对外地址、超时、可信代理、Secure Cookie、请求体上限
 - `database` — 连接池与启动时自动迁移（`--no-migrate` 可关）
 - `log` — 级别、格式（text / json）、是否同时写文件与日志的保留天数
+- `update` — 在线升级：总开关、自动检查间隔、更新源仓库、备份保留份数
 - `dataDir` — 运行时工作目录（`themes` / `uploads` / `cache` / `logs` / `backups`）
 
 日志默认**同时写控制台与文件**：控制台那一路保持 `log.format` 指定的格式，
@@ -329,6 +356,8 @@ internal/
   media/ taxonomy/ content/ settings/ comment/ favorite/ mail/ menu/ seo/   功能模块
   plugin/          插件系统：声明式插件的包格式、生命周期与设置（无代码执行）
   pkgzip/          主题与插件共用的 zip 安全解压
+  logs/            后台日志页的读取端：从 dataDir/logs 的 JSON 行里查询、下载
+  update/          在线升级：查 GitHub Releases、校验下载、备份替换与自重启
   form/            声明式表单 DSL：设置分组的 Go 侧声明与 settings.yaml 反解
   extension/       Extension 平面的通用 CRUD，给插件预留的自定义模型
   search/          全文搜索：Go 侧二元组分词 + tsvector 索引与后台对账

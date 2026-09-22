@@ -18,6 +18,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
 	"github.com/FeiBaiKin/lumo/internal/theme"
+	"github.com/FeiBaiKin/lumo/internal/update"
 	"github.com/FeiBaiKin/lumo/migrations"
 )
 
@@ -38,13 +39,15 @@ import (
 // 前台搜索页要在装配期取到它；
 // theme 读取以上全部模块的表来渲染前台，排在最后；
 // account 用 theme 的 Renderer 渲染账户页，故排在它之后；
-// logs 不依赖任何模块，位置随意，放在前面是为了它的接口在规范里挨着 settings。
+// logs 与 update 都不依赖任何模块，位置随意，放在前面是为了它们的接口在规范里挨着 settings。
 func modules() []app.Module {
 	return []app.Module{
 		settings.New(),
 		mail.New(),
 		// logs 只读配置里的日志目录，不依赖任何模块，也不碰数据库。
 		logs.New(),
+		// update 只碰自己的二进制与 data/backups，同样不依赖任何模块。
+		update.New(),
 		media.New(),
 		taxonomy.New(),
 		content.New(),

@@ -26,6 +26,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/server"
 	"github.com/FeiBaiKin/lumo/internal/theme"
+	"github.com/FeiBaiKin/lumo/internal/update"
 	"github.com/FeiBaiKin/lumo/internal/version"
 	"github.com/FeiBaiKin/lumo/internal/workdir"
 )
@@ -73,9 +74,17 @@ func runServe(args []string) error {
 			}
 			continue
 		}
-		err = runSite(cfg, logger, *debugSQL)
+		relaunch, siteErr := runSite(cfg, logger, *debugSQL)
 		closeLog()
-		return err
+		if siteErr != nil {
+			return siteErr
+		}
+		// 在线升级换掉了程序文件：进程已经停机、模块与数据库都关好了，
+		// 现在才轮到把新版本拉起来（见 internal/update）。
+		if relaunch != nil {
+			return relaunch()
+		}
+		return nil
 	}
 }
 
@@ -109,7 +118,10 @@ func newLogger(cfg config.Config) (logger *slog.Logger, closeLog func()) {
 }
 
 // runSite 是配置齐备时的正常启动路径。
-func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) error {
+//
+// 返回的函数非 nil 时表示在线升级已经把新版本装好，调用它即以新版本重启；
+// 这件事必须等到本函数返回、defer 里的模块与数据库都关闭之后才做。
+func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) (func() error, error) {
 	info := version.Get()
 	logger.Info("启动 Lumo",
 		slog.String("version", info.Version),
@@ -123,20 +135,24 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) error {
 
 	dataDir, err := workdir.Init(cfg.DataDir, logger)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// 在装好新版本之后，升级模块要能自己发起一次停机，而 signal 那一层只认信号。
+	// 故在它之上再套一层可主动取消的 context，下面一切仍用同一个 ctx。
+	ctx, requestShutdown := context.WithCancel(ctx)
+	defer requestShutdown()
 
 	// 数据库是核心依赖：DSN 缺失或连接失败都应让启动失败，
 	// 而不是带着半残状态对外服务。
 	if dsnErr := cfg.RequireDSN(); dsnErr != nil {
-		return dsnErr
+		return nil, dsnErr
 	}
 	db, err := database.Open(ctx, cfg.Database, debugSQL)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = db.Close() }()
 
@@ -152,7 +168,7 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) error {
 
 	clientIP, err := httpx.NewClientIPResolver(cfg.Server.TrustedProxies)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(cfg.Server.TrustedProxies) == 0 {
 		logger.Info("未配置可信代理，将忽略 X-Forwarded-For 并使用直连地址")
@@ -193,12 +209,18 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) error {
 
 	// 核心端点与全部功能模块，与 openapi 命令共用同一条注册路径（见 core.go）。
 	if regErr := registerAPI(core, planes, application, installer, logger); regErr != nil {
-		return regErr
+		return nil, regErr
+	}
+
+	// 升级模块拿到「请求停机」的入口：它装完新版本后调它，停机走完由
+	// runServe 接着把新版本拉起来。
+	if updates := update.From(application); updates != nil {
+		updates.Service().OnShutdownRequest(requestShutdown)
 	}
 
 	if cfg.Database.AutoMigrate {
 		if upErr := runMigrations(ctx, db, migrationSources(application), cfg.Database, logger); upErr != nil {
-			return upErr
+			return nil, upErr
 		}
 	} else {
 		logger.Warn("已跳过自动迁移，schema 可能落后于当前版本")
@@ -206,7 +228,7 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) error {
 
 	// 内置角色每次启动都以代码为准同步，确保升级后新增权限生效。
 	if seedErr := core.Users.SeedRoles(ctx); seedErr != nil {
-		return seedErr
+		return nil, seedErr
 	}
 	if count, cErr := core.Users.CountUsers(ctx); cErr == nil && count == 0 {
 		logger.Warn("尚无任何用户，请执行 lumo admin create-user 创建初始管理员")
@@ -214,7 +236,7 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) error {
 
 	// 迁移完成，模块可以开始播种数据、启动后台任务。
 	if startErr := application.Start(ctx); startErr != nil {
-		return startErr
+		return nil, startErr
 	}
 
 	// 访客前台必须最后挂载：它的兜底路由 /{slug}（独立页面）与 NotFound
@@ -261,10 +283,14 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) error {
 
 	srv := server.New(root, &cfg.Server, logger)
 	if err := srv.Run(ctx); err != nil {
-		return err
+		return nil, err
 	}
 	logger.Info("已退出")
-	return nil
+
+	if updates := update.From(application); updates != nil && updates.Service().RelaunchPending() {
+		return updates.Service().Relaunch, nil
+	}
+	return nil, nil
 }
 
 // readinessProbeTimeout 是 /readyz 数据库探测的独立期限（审查建议 2–3 秒，取中值）。
