@@ -3043,6 +3043,27 @@
         ],
         "type": "object"
       },
+      "Rollback": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "at"
+        ],
+        "type": "object"
+      },
       "SessionView": {
         "additionalProperties": false,
         "properties": {
@@ -3605,6 +3626,10 @@
           "hasUpdate": {
             "type": "boolean"
           },
+          "image": {
+            "description": "容器部署要换成的镜像引用",
+            "type": "string"
+          },
           "keepBackups": {
             "format": "int64",
             "type": "integer"
@@ -3626,6 +3651,9 @@
           "repo": {
             "description": "更新源仓库",
             "type": "string"
+          },
+          "rollback": {
+            "$ref": "#/components/schemas/Rollback"
           },
           "versionComparable": {
             "type": "boolean"

@@ -109,6 +109,11 @@ type UpdateStatus struct {
 	CanUpdate bool   `json:"canUpdate"`
 	Reason    string `json:"reason,omitempty" doc:"不能就地升级的原因"`
 	Container bool   `json:"container" doc:"是否运行在容器中"`
+	// Image 是容器部署该换成的镜像标签，仅在容器里且查到新版本时有值。
+	Image string `json:"image,omitempty" doc:"容器部署要换成的镜像引用"`
+	// Rollback 非空表示当前跑的版本比在线升级装过的那个旧——多半是容器被重建，
+	// 回到了镜像里的版本。
+	Rollback *Rollback `json:"rollback,omitempty"`
 	// Executable 是当前程序的路径，排障时要看的第一样东西。
 	Executable    string         `json:"executable,omitempty"`
 	Repo          string         `json:"repo" doc:"更新源仓库"`
@@ -132,6 +137,7 @@ type Service struct {
 	installer  *Installer
 	backupDir  string
 	cacheDir   string
+	dataDir    string
 	logger     *slog.Logger
 
 	// requestShutdown 由 cmd/lumo 注入，用来在装好之后触发一次优雅停机。
@@ -146,6 +152,8 @@ type Service struct {
 	running   bool
 	// relaunch 为真表示停机之后要用新二进制把自己拉起来。
 	relaunch bool
+	// rollback 在启动时算一次：版本不会在进程运行期间变。
+	rollback *Rollback
 }
 
 // NewService 构造服务。
@@ -163,6 +171,7 @@ func NewService(cfg config.Config, current version.Info, logger *slog.Logger) *S
 		installer:  NewInstaller(env, backupDir),
 		backupDir:  backupDir,
 		cacheDir:   filepath.Join(cfg.DataDir, workdir.CacheDirName, updateCacheDir),
+		dataDir:    cfg.DataDir,
 		logger:     logger,
 		progress:   UpdateProgress{Phase: PhaseIdle},
 	}
@@ -268,7 +277,7 @@ func (s *Service) Status() UpdateStatus {
 	progress := s.progress
 	s.mu.Unlock()
 
-	canUpdate, reason := s.env.CanUpdate()
+	canUpdate, reason := s.env.CanUpdate(s.cfg.AllowInContainer)
 	if !s.cfg.Enabled {
 		canUpdate, reason = false, "在线升级已在配置中关闭（update.enabled）"
 	}
@@ -302,6 +311,12 @@ func (s *Service) Status() UpdateStatus {
 		at := checkedAt
 		status.CheckedAt = &at
 	}
+	// 容器里给出该换成哪个标签：说「请改用新的镜像标签」而不说是哪个，
+	// 等于把站长支去翻文档。
+	if s.env.Container && latest != nil && status.HasUpdate && s.cfg.Image != "" {
+		status.Image = s.cfg.Image + ":" + latest.Version.Raw
+	}
+	status.Rollback = s.rollback
 
 	backups, err := ListBackups(s.backupDir)
 	if err != nil {
@@ -331,7 +346,7 @@ func (s *Service) Apply(base context.Context) (UpdateProgress, error) {
 	if !s.cfg.Enabled {
 		return UpdateProgress{}, ErrDisabled
 	}
-	if ok, reason := s.env.CanUpdate(); !ok {
+	if ok, reason := s.env.CanUpdate(s.cfg.AllowInContainer); !ok {
 		return UpdateProgress{}, fmt.Errorf("%w：%s", ErrNotUpgradable, reason)
 	}
 
@@ -414,6 +429,11 @@ func (s *Service) run(target *Release) {
 	}
 	if removed := PruneBackups(s.backupDir, s.cfg.KeepBackups); removed > 0 {
 		s.logger.Info("已清理旧备份", slog.Int("removed", removed))
+	}
+	// 记下「这台机器由在线升级装到了这个版本」。容器被重建回旧镜像时，
+	// 下次启动靠它把回退说出来（见 state.go）。
+	if err := writeState(s.dataDir, target.Version.Raw); err != nil {
+		s.logger.Warn("记录升级状态失败，版本回退将无法被检测到", slog.Any("error", err))
 	}
 
 	s.mu.Lock()
@@ -523,3 +543,20 @@ func (s *Service) DeleteBackup(name string) error {
 
 // CleanupStale 清理上一次升级遗留的旧程序文件，启动时调用一次。
 func (s *Service) CleanupStale() { cleanupStale(s.env.Executable) }
+
+// DetectRollback 在启动时检测版本回退，结果留给 Status 展示。
+//
+// 最典型的一幕：容器里开着 allowInContainer 升到了新版本，几个月后站长在面板上
+// 改了个端口，容器被重建，站点悄悄回到镜像里的旧版本——而数据库已经迁到新版本的
+// schema 了。这条 warn 是把它说出来的唯一机会。
+func (s *Service) DetectRollback() {
+	s.rollback = detectRollback(s.dataDir, s.current.Version)
+	if s.rollback == nil {
+		return
+	}
+	s.logger.Warn("检测到版本回退",
+		slog.String("installed", s.rollback.From),
+		slog.String("running", s.rollback.To),
+		slog.Time("installedAt", s.rollback.At),
+		slog.Bool("container", s.env.Container))
+}

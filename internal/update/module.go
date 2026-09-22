@@ -62,6 +62,9 @@ func (m *Module) Start(ctx context.Context) error {
 	// Windows 上换不掉正在运行的文件，上一次升级会留下一个 lumo.exe.old。
 	// 现在那个进程已经没了，删得掉。
 	m.service.CleanupStale()
+	// 版本回退只可能在启动时发生（容器被重建、有人手工换回旧二进制），
+	// 故在这里检测一次并记进日志——后台没人看的时候，日志是唯一的落点。
+	m.service.DetectRollback()
 	m.service.StartAutoCheck(ctx)
 	return nil
 }

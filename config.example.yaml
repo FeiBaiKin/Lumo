@@ -67,6 +67,10 @@ log:
 # 它会替换掉正在运行的这份二进制，所以只在「程序文件由这台机器自己管」时可用。
 # 容器部署会被自动识别并拒绝（换镜像标签才是那边的升级方式），程序目录不可写
 # 也一样拒绝，两种情况后台都会把原因写在按钮旁边。
+#
+# 注意「容器」指的是 Docker / containerd / Kubernetes 这类**应用容器**。
+# LXC / OpenVZ 虚拟化的 VPS 不算：那上面跑的是直接部署的二进制，文件系统持久，
+# 就地升级完全有效。
 update:
   # 总开关（LUMO_UPDATE_ENABLED）。由发行方统一升级的部署（编排平台、包管理器）
   # 应当关掉它，关掉后不做后台检查，接口一律 409。
@@ -78,6 +82,19 @@ update:
   checkInterval: 24h
   # 是否把预发布版本也算作升级目标（LUMO_UPDATE_PRERELEASE）
   prerelease: false
+  # 允许在容器里就地升级（LUMO_UPDATE_ALLOW_IN_CONTAINER）。
+  #
+  # 默认关闭。换掉的程序文件活在容器的可写层里：docker restart 不会丢，但
+  # **重建**容器（改配置、拉新镜像、compose up --force-recreate）会回到镜像
+  # 里的版本——而几个月后没人会把「我那天改过端口」和「版本怎么退回去了」
+  # 联系起来。
+  #
+  # 开着它换来的是：配一次，之后每次都能在后台一键升级，不必去换镜像标签。
+  # 真退回去时，启动日志会记一条 warn，后台「关于」页也会明说，不会无声无息。
+  allowInContainer: false
+  # 容器部署的镜像地址（LUMO_UPDATE_IMAGE）。只用于在后台显示「该换成哪个标签」，
+  # 程序不会自己去拉镜像。
+  image: ghcr.io/feibaikin/lumo
   # 更新源仓库（LUMO_UPDATE_REPO）。改它等于改「这台机器信任谁发布的二进制」，
   # fork 与内网镜像按需修改。
   repo: FeiBaiKin/Lumo

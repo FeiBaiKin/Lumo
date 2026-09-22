@@ -57,12 +57,16 @@ func DetectEnvironment() Environment {
 }
 
 // CanUpdate 报告能否就地升级，不能时一并给出原因。
-func (e Environment) CanUpdate() (ok bool, reason string) {
+//
+// allowInContainer 来自配置：容器里默认不升级，但站长可以明确选择承担那个代价
+// （见 config.UpdateConfig.AllowInContainer 与 state.go 的回退检测）。
+func (e Environment) CanUpdate(allowInContainer bool) (ok bool, reason string) {
 	switch {
 	case e.Err != "":
 		return false, e.Err
-	case e.Container:
-		return false, "运行在容器中：就地替换二进制会在下次重建容器时丢失，请改用新的镜像标签升级"
+	case e.Container && !allowInContainer:
+		return false, "运行在容器中：换掉的文件活在容器的可写层里，重建容器就会回到镜像里的版本。" +
+			"请改用新的镜像标签升级；确实要在容器里就地升级，开 update.allowInContainer"
 	case !e.Writable:
 		return false, "程序所在目录不可写（" + e.Dir + "），请改由部署脚本或包管理器升级"
 	default:
@@ -73,13 +77,19 @@ func (e Environment) CanUpdate() (ok bool, reason string) {
 // containerMarkers 是容器运行时留下的标记文件。
 var containerMarkers = []string{"/.dockerenv", "/run/.containerenv"}
 
-// containerCgroupHints 是 /proc/1/cgroup 中指示容器化的片段。
-var containerCgroupHints = []string{"docker", "containerd", "kubepods", "lxc", "/podman"}
-
-// inContainer 判断当前进程是否运行在容器里。
+// containerCgroupHints 是 /proc/1/cgroup 中指示**应用容器**的片段。
 //
-// 判断不可能百分之百准确，故宁可误判为「是」：把容器当主机会让站长升级完
-// 一重启就回到旧版本且无从解释，反过来只是多一句「请换镜像标签」的提示。
+// 刻意不含 lxc：LXC/OpenVZ 多数时候是「系统容器」，也就是一台按 VPS 卖的机器——
+// 上面跑的是直接部署的二进制，文件系统持久，就地升级完全有效。把它算作容器
+// 等于对一大批最普通的部署关掉这个功能，还附赠一句让人摸不着头脑的
+// 「运行在容器中」。应用容器有更明确的标记（下面那两个文件与这里的片段）。
+var containerCgroupHints = []string{"docker", "containerd", "kubepods", "/podman"}
+
+// inContainer 判断当前进程是否运行在**应用容器**里。
+//
+// 判断不可能百分之百准确。宁可漏判也不误判：漏判的代价是站长在容器里升了一次
+// 级，而那件事现在有回退检测兜着；误判的代价是功能对一台好端端的 VPS 直接关闭，
+// 且没有任何办法说服它。
 func inContainer() bool {
 	if runtime.GOOS != "linux" {
 		return false

@@ -24,6 +24,9 @@ const EnvPrefix = "LUMO_"
 // DefaultUpdateRepo 是在线升级的默认更新源，即本项目的官方仓库。
 const DefaultUpdateRepo = "FeiBaiKin/Lumo"
 
+// DefaultUpdateImage 是官方容器镜像，容器部署的升级指引按它拼标签。
+const DefaultUpdateImage = "ghcr.io/feibaikin/lumo"
+
 // Config 是全部运行配置的根。
 type Config struct {
 	Server   ServerConfig   `yaml:"server"`
@@ -110,6 +113,18 @@ type UpdateConfig struct {
 	CheckInterval time.Duration `yaml:"checkInterval"`
 	// Prerelease 为真时把预发布版本也算作可升级目标。
 	Prerelease bool `yaml:"prerelease"`
+	// AllowInContainer 允许在容器里就地替换二进制。
+	//
+	// 默认关闭，因为换掉的文件活在容器的可写层里：`docker restart` 不丢，
+	// 但**重建容器**（改配置、拉新镜像、compose up --force-recreate）会回到
+	// 镜像里的版本，而站长多半不会把「我上个月改过端口」和「版本怎么退回去了」
+	// 联系起来。
+	//
+	// 开着它是一个有意义的取舍：配一次之后就能在后台一键升级，不必每次去换镜像
+	// 标签。代价由版本回退检测兜住——真回退了，日志与后台都会说出来（见 state.go）。
+	AllowInContainer bool `yaml:"allowInContainer"`
+	// Image 是容器部署的镜像地址，用来在后台给出「该换成哪个标签」。
+	Image string `yaml:"image"`
 	// Repo 是更新源仓库，形如 owner/name。
 	//
 	// 可配置是为了让 fork 与内网镜像能自管升级；默认指向官方仓库。
@@ -161,6 +176,7 @@ func Default() Config {
 			AutoCheck:     true,
 			CheckInterval: 24 * time.Hour,
 			Prerelease:    false,
+			Image:         DefaultUpdateImage,
 			Repo:          DefaultUpdateRepo,
 			KeepBackups:   3,
 		},
@@ -245,6 +261,7 @@ func applyEnv(cfg *Config, env getenv) error {
 		"UPDATE_REPO":     &cfg.Update.Repo,
 		"UPDATE_TOKEN":    &cfg.Update.Token,
 		"UPDATE_API_BASE": &cfg.Update.APIBase,
+		"UPDATE_IMAGE":    &cfg.Update.Image,
 	}
 	for key, target := range strs {
 		if v := env(EnvPrefix + key); v != "" {
@@ -306,12 +323,13 @@ func applyEnv(cfg *Config, env getenv) error {
 	}
 
 	bools := map[string]*bool{
-		"DATABASE_AUTO_MIGRATE": &cfg.Database.AutoMigrate,
-		"SECURE_COOKIES":        &cfg.Server.SecureCookies,
-		"LOG_FILE":              &cfg.Log.File,
-		"UPDATE_ENABLED":        &cfg.Update.Enabled,
-		"UPDATE_AUTO_CHECK":     &cfg.Update.AutoCheck,
-		"UPDATE_PRERELEASE":     &cfg.Update.Prerelease,
+		"DATABASE_AUTO_MIGRATE":     &cfg.Database.AutoMigrate,
+		"SECURE_COOKIES":            &cfg.Server.SecureCookies,
+		"LOG_FILE":                  &cfg.Log.File,
+		"UPDATE_ENABLED":            &cfg.Update.Enabled,
+		"UPDATE_AUTO_CHECK":         &cfg.Update.AutoCheck,
+		"UPDATE_PRERELEASE":         &cfg.Update.Prerelease,
+		"UPDATE_ALLOW_IN_CONTAINER": &cfg.Update.AllowInContainer,
 	}
 	for key, target := range bools {
 		v := env(EnvPrefix + key)

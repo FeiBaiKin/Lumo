@@ -13,7 +13,9 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Archive,
   ArrowRight,
+  Check,
   CircleArrowUp,
+  Copy,
   Download,
   ExternalLink,
   RefreshCw,
@@ -21,6 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 /**
  * 在线升级。
@@ -253,13 +256,34 @@ export function UpdateCard() {
             />
           ) : null}
 
+          {data?.rollback ? (
+            <Alert
+              tone="warn"
+              title={`版本回退了：装过 ${data.rollback.from}，现在跑的是 ${data.rollback.to}`}
+            >
+              这台机器在 {absoluteDate(data.rollback.at)} 由在线升级装到过{" "}
+              {data.rollback.from}。多半是容器被重建，回到了镜像里的版本——
+              把镜像标签换成新版本再重建，就不会再退回去了。若是你主动降级的，忽略即可。
+            </Alert>
+          ) : null}
+
           {!data?.enabled ? (
             <Alert tone="info" title="功能已关闭">
               在线升级在配置中被关掉了（update.enabled）。开启后可在这里检查并安装新版本。
             </Alert>
           ) : !data.canUpdate ? (
-            <Alert tone="warn" title="这台机器上不能就地升级">
-              {data.reason}
+            data.container ? (
+              <ContainerGuide image={data.image} hasUpdate={data.hasUpdate} />
+            ) : (
+              <Alert tone="warn" title="这台机器上不能就地升级">
+                {data.reason}
+              </Alert>
+            )
+          ) : data.container ? (
+            <Alert tone="warn" title="容器里的就地升级是开着的">
+              换掉的程序文件活在容器的可写层里：重启容器不丢，但
+              <strong>重建</strong>
+              容器（改配置、拉新镜像）会回到镜像里的版本。真退回去了这里会说出来。
             </Alert>
           ) : null}
 
@@ -337,6 +361,93 @@ export function UpdateCard() {
         }
       />
     </>
+  );
+}
+
+/**
+ * 一行可复制的命令或镜像引用。
+ *
+ * 容器部署的升级是一串要照抄的东西，而这一页的读者多半是从面板点进来的——
+ * 让他们自己去别处查命令，等于把这块提示写了等于没写。
+ */
+function CopyLine({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <code className="token rounded-control bg-surface-inset px-2 py-1 text-xs text-ink">
+        {value}
+      </code>
+      <Button
+        variant="ghost"
+        size="xs"
+        aria-label={`复制${label}`}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(value);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          } catch {
+            toast.error("剪贴板不可用，请手动选中复制");
+          }
+        }}
+      >
+        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+        {copied ? "已复制" : "复制"}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * 容器部署的升级指引。
+ *
+ * 容器里换掉二进制是白费功夫，但只说「请改用新的镜像标签」而不说是哪个标签、
+ * 在哪儿改，对着面板部署的站长等于没说。这里给全三样：标签、命令、以及
+ * 「不想每次手动换」的那条路。
+ */
+function ContainerGuide({
+  image,
+  hasUpdate,
+}: {
+  image: string | undefined;
+  hasUpdate: boolean;
+}) {
+  return (
+    // 语气是 info 不是 warn：这一块讲的是「这边该怎么升级」，不是出了什么问题。
+    // 黄色留给真正需要人去处置的事（版本回退、检查失败），否则一屏两块黄底，
+    // 哪一块要紧就看不出来了。
+    <Alert tone="info" title="容器部署：换镜像标签升级">
+      <div className="flex flex-col gap-2.5">
+        <p>
+          就地替换二进制在容器里是白费功夫——换掉的文件活在可写层，重建容器就回到
+          镜像里的版本。
+        </p>
+
+        {hasUpdate && image ? (
+          <>
+            <p>把镜像换成这个标签后重建容器：</p>
+            <CopyLine value={image} label="镜像标签" />
+          </>
+        ) : null}
+
+        <p>命令行（compose 用 latest 标签时）：</p>
+        <CopyLine
+          value="docker compose pull && docker compose up -d"
+          label="升级命令"
+        />
+
+        <p className="text-ink-muted">
+          面板上的位置：1Panel 在「容器 → 编辑 → 镜像」，宝塔在 Docker
+          模块的容器编辑里。数据都在卷上，重建容器不会丢。
+        </p>
+        <p className="text-ink-muted">
+          不想每次手动换标签：给这个容器装一个 Watchtower（1Panel
+          应用商店里有），它会定时拉新镜像并重建容器；或者在配置里开
+          update.allowInContainer，就能在这一页直接升级——代价是重建容器时会退回
+          镜像里的版本，退了这里会明说。
+        </p>
+      </div>
+    </Alert>
   );
 }
 

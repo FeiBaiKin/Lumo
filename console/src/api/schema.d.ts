@@ -2978,6 +2978,12 @@ export interface components {
             /** @description 角色名列表，整体替换 */
             roles: string[] | null;
         };
+        Rollback: {
+            /** Format: date-time */
+            at: string;
+            from: string;
+            to: string;
+        };
         SessionView: {
             /** @description 后续非安全方法请求须放在 X-CSRF-Token 头中回传 */
             csrfToken: string;
@@ -3189,6 +3195,8 @@ export interface components {
             enabled: boolean;
             executable?: string;
             hasUpdate: boolean;
+            /** @description 容器部署要换成的镜像引用 */
+            image?: string;
             /** Format: int64 */
             keepBackups: number;
             latest?: components["schemas"]["Release"];
@@ -3199,6 +3207,7 @@ export interface components {
             reason?: string;
             /** @description 更新源仓库 */
             repo: string;
+            rollback?: components["schemas"]["Rollback"];
             versionComparable: boolean;
         };
         UpdateUserBody: {
