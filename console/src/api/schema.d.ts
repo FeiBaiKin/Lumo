@@ -128,6 +128,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 获取当前运行的构建信息
+         * @description 返回版本号、提交、构建时间、Go 版本与平台，对所有已登录用户开放。
+         */
+        get: operations["console-build"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/categories": {
         parameters: {
             query?: never;
@@ -2026,6 +2046,18 @@ export interface components {
             platform: string;
             version: string;
         };
+        BuildView: {
+            /** @description git 提交短哈希；构建时未注入且取不到 VCS 信息时为 unknown */
+            commit: string;
+            /** @description 构建时间（RFC 3339）；取不到时为 unknown */
+            date: string;
+            /** @description 编译所用的 Go 版本 */
+            goVersion: string;
+            /** @description 操作系统/架构，如 linux/amd64 */
+            platform: string;
+            /** @description 语义化版本号；源码直接构建时为 0.0.0-dev */
+            version: string;
+        };
         Category: {
             /** @description 封面图地址 */
             coverUrl: string;
@@ -3605,6 +3637,35 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "console-build": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuildView"];
+                };
+            };
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };

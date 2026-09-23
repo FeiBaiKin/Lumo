@@ -325,6 +325,39 @@
         ],
         "type": "object"
       },
+      "BuildView": {
+        "additionalProperties": false,
+        "properties": {
+          "commit": {
+            "description": "git 提交短哈希；构建时未注入且取不到 VCS 信息时为 unknown",
+            "type": "string"
+          },
+          "date": {
+            "description": "构建时间（RFC 3339）；取不到时为 unknown",
+            "type": "string"
+          },
+          "goVersion": {
+            "description": "编译所用的 Go 版本",
+            "type": "string"
+          },
+          "platform": {
+            "description": "操作系统/架构，如 linux/amd64",
+            "type": "string"
+          },
+          "version": {
+            "description": "语义化版本号；源码直接构建时为 0.0.0-dev",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "commit",
+          "date",
+          "goVersion",
+          "platform"
+        ],
+        "type": "object"
+      },
       "Category": {
         "additionalProperties": false,
         "properties": {
@@ -4402,6 +4435,46 @@
         "summary": "撤销访问令牌",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/console/build": {
+      "get": {
+        "description": "返回版本号、提交、构建时间、Go 版本与平台，对所有已登录用户开放。",
+        "operationId": "console-build",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取当前运行的构建信息",
+        "tags": [
+          "console"
         ]
       }
     },

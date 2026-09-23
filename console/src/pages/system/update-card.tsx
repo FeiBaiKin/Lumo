@@ -149,9 +149,10 @@ export function UpdateCard() {
     upgradeFrom !== null && Boolean(liveVersion) && liveVersion !== upgradeFrom;
 
   // 服务换了版本，同一页上的「构建信息」还在显示旧版本号——两个版本号打架
-  // 比晚几秒更新更让人困惑。那张卡读的是 /healthz，让它重新问一次。
+  // 比晚几秒更新更让人困惑。让那张卡与仪表盘的版本号都重新问一次。
   useEffect(() => {
     if (restarted) {
+      void queryClient.invalidateQueries({ queryKey: ["build-info"] });
       void queryClient.invalidateQueries({ queryKey: ["health"] });
     }
   }, [restarted]);

@@ -28,15 +28,12 @@ import { Database, Info, RefreshCw, Server } from "lucide-react";
  *   - 全文搜索索引的状态与重建入口
  *   - 运行形态（单一二进制、数据库、许可证）
  *
- * 构建信息经 `/healthz` 取得 —— 那个端点本就返回版本号，
- * 而它是免认证的（供负载均衡探活），故这里也在登录后调用它。
+ * 构建信息取自需登录的 `/api/v1/console/build`。`/healthz` 是免认证的探活端点，
+ * 只带版本号，这里仅用它点亮「运行正常」。
  */
 
 type Health = {
   status: string;
-  version: string;
-  commit?: string;
-  date?: string;
 };
 
 export function AboutPage() {
@@ -52,6 +49,17 @@ export function AboutPage() {
         throw new Error(`HTTP ${response.status}`);
       }
       return (await response.json()) as Health;
+    },
+  });
+
+  const build = useQuery({
+    queryKey: ["build-info"],
+    queryFn: async () => {
+      const { data, response } = await api.GET("/api/v1/console/build");
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return data;
     },
   });
 
@@ -105,21 +113,31 @@ export function AboutPage() {
               <DescriptionList>
                 <DescriptionTerm>Lumo 版本</DescriptionTerm>
                 <DescriptionDetail className="token">
-                  {health.isLoading ? (
+                  {build.isLoading ? (
                     <Skeleton className="h-4 w-32" />
                   ) : (
-                    health.data?.version || "—"
+                    build.data?.version || "—"
                   )}
                 </DescriptionDetail>
 
                 <DescriptionTerm>提交</DescriptionTerm>
                 <DescriptionDetail className="token">
-                  {health.data?.commit || "—"}
+                  {build.data?.commit || "—"}
                 </DescriptionDetail>
 
                 <DescriptionTerm>构建时间</DescriptionTerm>
                 <DescriptionDetail className="token">
-                  {health.data?.date || "—"}
+                  {build.data?.date || "—"}
+                </DescriptionDetail>
+
+                <DescriptionTerm>Go 版本</DescriptionTerm>
+                <DescriptionDetail className="token">
+                  {build.data?.goVersion || "—"}
+                </DescriptionDetail>
+
+                <DescriptionTerm>平台</DescriptionTerm>
+                <DescriptionDetail className="token">
+                  {build.data?.platform || "—"}
                 </DescriptionDetail>
 
                 <DescriptionTerm>当前用户</DescriptionTerm>

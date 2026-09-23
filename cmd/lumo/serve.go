@@ -310,6 +310,7 @@ type pinger interface {
 //
 // /healthz 只报进程存活，不触库；/readyz 额外探测数据库，用于负载均衡摘流判断。
 // 它们是运维探针而非业务接口，故不进 OpenAPI 文档。
+// 两者免认证，只带版本号；提交号与构建时间走需登录的 /api/v1/console/build。
 // readyTimeout 独立于请求 context，测试可传短期限验证超时行为。
 func registerHealth(root chi.Router, db pinger, info *version.Info, readyTimeout time.Duration) {
 	root.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
