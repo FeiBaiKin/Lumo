@@ -10,7 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -30,6 +33,14 @@ const (
 	// 整体时长由调用方的 context 控制，否则慢网络上的大文件永远下不完。
 	responseHeaderTimeout = 30 * time.Second
 	tlsHandshakeTimeout   = 15 * time.Second
+	// dialTimeout 是建立一条连接的总期限（含 DNS 解析）。域名解析出多个地址时，
+	// Go 把它分给各地址轮流试；不设的话，一个不通的地址要等内核放弃
+	// （Linux 约 127 秒）才轮到下一个，进度条就停在 0 好几分钟。
+	dialTimeout = 20 * time.Second
+	// connectAttempts 是没拿到响应就失败时的总尝试次数：丢包严重或握手被干扰的线路上，
+	// 换一条连接往往就通了。
+	connectAttempts   = 3
+	connectRetryDelay = 2 * time.Second
 )
 
 // ErrChecksumMismatch 表示下载内容与发布方公布的校验和不符。
@@ -40,21 +51,27 @@ type Downloader struct {
 	client    *http.Client
 	token     string
 	userAgent string
+	logger    *slog.Logger
 }
 
 // NewDownloader 构造下载器。
-func NewDownloader(token, userAgent string) *Downloader {
+func NewDownloader(token, userAgent string, logger *slog.Logger) *Downloader {
+	dialer := &net.Dialer{Timeout: dialTimeout}
 	return &Downloader{
 		client: &http.Client{
 			Transport: &http.Transport{
 				// 走环境里的代理设置：更新源在境外，不少部署靠代理才能访问。
-				Proxy:                 http.ProxyFromEnvironment,
+				Proxy:       http.ProxyFromEnvironment,
+				DialContext: dialer.DialContext,
+				// 自定义了 DialContext，HTTP/2 就不再自动启用，这里显式打开。
+				ForceAttemptHTTP2:     true,
 				ResponseHeaderTimeout: responseHeaderTimeout,
 				TLSHandshakeTimeout:   tlsHandshakeTimeout,
 			},
 		},
 		token:     token,
 		userAgent: userAgent,
+		logger:    logger,
 	}
 }
 
@@ -159,29 +176,57 @@ func (d *Downloader) download(ctx context.Context, asset Asset, dst string, onPr
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-// open 发起一次下载请求并检查状态码。
-func (d *Downloader) open(ctx context.Context, url string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
-	if err != nil {
-		return nil, fmt.Errorf("构造下载请求: %w", err)
-	}
-	req.Header.Set("User-Agent", d.userAgent)
-	req.Header.Set("Accept", "application/octet-stream")
-	if d.token != "" {
-		// 资产下载会重定向到另一个域名，Go 的客户端在跨站重定向时会主动
-		// 剥掉 Authorization，故这里带上令牌不会把它送去第三方。
-		req.Header.Set("Authorization", "Bearer "+d.token)
-	}
+// open 发起下载请求并检查状态码。
+//
+// 没拿到响应的失败（DNS、建连、TLS 握手被断或超时、等响应头超时）换一条新连接重试；
+// 拿到了响应的失败（HTTP 错误码）重试也没用，直接返回。
+func (d *Downloader) open(ctx context.Context, rawURL string) (*http.Response, error) {
+	for attempt := 1; ; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, http.NoBody)
+		if err != nil {
+			return nil, fmt.Errorf("构造下载请求: %w", err)
+		}
+		req.Header.Set("User-Agent", d.userAgent)
+		req.Header.Set("Accept", "application/octet-stream")
+		if d.token != "" {
+			// 资产下载会重定向到另一个域名，Go 的客户端在跨站重定向时会主动
+			// 剥掉 Authorization，故这里带上令牌不会把它送去第三方。
+			req.Header.Set("Authorization", "Bearer "+d.token)
+		}
 
-	resp, err := d.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("下载失败: %w", err)
+		resp, err := d.client.Do(req)
+		if err == nil {
+			if resp.StatusCode != http.StatusOK {
+				_ = resp.Body.Close()
+				return nil, fmt.Errorf("下载失败（HTTP %d）", resp.StatusCode)
+			}
+			return resp, nil
+		}
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("下载失败: %w", err)
+		}
+		if attempt == connectAttempts {
+			return nil, connectFailure(err, attempt)
+		}
+		d.logger.Warn("连接下载源失败，稍后重试", slog.Int("attempt", attempt), slog.Any("error", err))
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("下载失败: %w", err)
+		case <-time.After(connectRetryDelay):
+		}
 	}
-	if resp.StatusCode != http.StatusOK {
-		_ = resp.Body.Close()
-		return nil, fmt.Errorf("下载失败（HTTP %d）", resp.StatusCode)
+}
+
+// connectFailure 说明连接失败：连的是哪个域名、试了几次、底层原因。
+// GitHub 的下载会重定向到 CDN，失败的往往是跳转之后的那个域名，url.Error 里记的正是它。
+func connectFailure(err error, attempts int) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		if u, parseErr := url.Parse(urlErr.URL); parseErr == nil && u.Host != "" {
+			return fmt.Errorf("连不上 %s（已尝试 %d 次）: %w", u.Host, attempts, urlErr.Err)
+		}
 	}
-	return resp, nil
+	return fmt.Errorf("下载失败（已尝试 %d 次）: %w", attempts, err)
 }
 
 // progressWriter 在写入过程中汇报进度。

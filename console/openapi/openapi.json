@@ -3550,7 +3550,7 @@
             "type": "string"
           },
           "phase": {
-            "description": "idle / downloading / installing / restarting / ready / failed",
+            "description": "idle / connecting / downloading / installing / restarting / ready / failed",
             "type": "string"
           },
           "startedAt": {

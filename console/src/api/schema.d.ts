@@ -3165,7 +3165,7 @@ export interface components {
              */
             downloaded: number;
             error?: string;
-            /** @description idle / downloading / installing / restarting / ready / failed */
+            /** @description idle / connecting / downloading / installing / restarting / ready / failed */
             phase: string;
             /** Format: date-time */
             startedAt?: string;

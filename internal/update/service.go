@@ -22,6 +22,8 @@ type Phase string
 const (
 	// PhaseIdle 表示没有正在进行的升级。
 	PhaseIdle Phase = "idle"
+	// PhaseConnecting 表示正在连接下载源，发布包还没收到一个字节。
+	PhaseConnecting Phase = "connecting"
 	// PhaseDownloading 表示正在下载发布包，此时进度有意义。
 	PhaseDownloading Phase = "downloading"
 	// PhaseInstalling 表示正在校验与替换程序文件。
@@ -63,7 +65,7 @@ var (
 
 // UpdateProgress 是一次升级任务的实时状态。
 type UpdateProgress struct {
-	Phase Phase `json:"phase" doc:"idle / downloading / installing / restarting / ready / failed"`
+	Phase Phase `json:"phase" doc:"idle / connecting / downloading / installing / restarting / ready / failed"`
 	// Version 是这次要装的版本。
 	Version string `json:"version,omitempty"`
 	// Downloaded 与 Total 只在下载阶段有意义，Total 为 0 表示源没给出长度。
@@ -171,7 +173,7 @@ func NewService(cfg config.Config, current version.Info, logger *slog.Logger) *S
 		env:        env,
 		current:    current,
 		source:     NewSource(cfg.Update.Repo, cfg.Update.Token, userAgent, cfg.Update.APIBase),
-		downloader: NewDownloader(cfg.Update.Token, userAgent),
+		downloader: NewDownloader(cfg.Update.Token, userAgent, logger),
 		installer:  NewInstaller(env, backupDir),
 		backupDir:  backupDir,
 		cacheDir:   filepath.Join(cfg.DataDir, workdir.CacheDirName, updateCacheDir),
@@ -388,7 +390,7 @@ func (s *Service) Apply(base context.Context) (UpdateProgress, error) {
 	s.running = true
 	now := time.Now()
 	s.progress = UpdateProgress{
-		Phase:     PhaseDownloading,
+		Phase:     PhaseConnecting,
 		Version:   target.Version.Raw,
 		Total:     target.Asset.Size,
 		StartedAt: &now,
@@ -476,6 +478,7 @@ func (s *Service) download(ctx context.Context, target *Release) (string, error)
 	}
 	return s.downloader.Fetch(ctx, target, s.cacheDir, func(done, total int64) {
 		s.mu.Lock()
+		s.progress.Phase = PhaseDownloading
 		s.progress.Downloaded = done
 		if total > 0 {
 			s.progress.Total = total

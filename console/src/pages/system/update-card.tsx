@@ -57,7 +57,12 @@ const BUSY_POLL_MS = 1500;
 const HEALTH_POLL_MS = 2000;
 
 /** 正在忙的几个阶段：此时不给操作入口，只给进度。 */
-const BUSY_PHASES = new Set(["downloading", "installing", "restarting"]);
+const BUSY_PHASES = new Set([
+  "connecting",
+  "downloading",
+  "installing",
+  "restarting",
+]);
 
 /**
  * 版本号去掉 v 前缀。
@@ -538,6 +543,7 @@ function VersionLine({ status }: { status: Status | undefined }) {
 
 /** 阶段对应的说明文字。动词与按钮一致。 */
 const PHASE_TEXT: Record<string, string> = {
+  connecting: "正在连接 GitHub，准备下载",
   downloading: "正在下载发布包",
   installing: "正在核对校验和并替换程序文件",
   restarting: "服务正在以新版本重启",
@@ -636,6 +642,12 @@ function ProgressPanel({
             style={{ transform: `scaleX(${total > 0 ? percent / 100 : 1})` }}
           />
         </div>
+      ) : null}
+
+      {phase === "connecting" ? (
+        <p className="text-xs text-ink-muted">
+          服务器访问 GitHub 不畅时这一步会慢一些，连不上会自动换一条连接重试。
+        </p>
       ) : null}
 
       {phase === "ready" ? (
