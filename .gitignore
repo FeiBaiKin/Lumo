@@ -22,6 +22,9 @@ secret.key
 # 本地启动脚本（仅本地，不入库）
 /dev.cmd
 
+# 官网 lumo.xzji.top 的主题（不开源，仅本地）
+/website/
+
 # 依赖
 node_modules/
 
