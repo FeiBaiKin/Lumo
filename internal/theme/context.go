@@ -21,6 +21,10 @@ const (
 	KindAuthor   = "author"
 	KindNotFound = "404"
 
+	// KindPosts 是全部文章的分页列表（/posts）。首页第一页可能摆的是模块，
+	// 这里才是一篇不落的完整列表。
+	KindPosts = "posts"
+
 	// KindFavorites 是「我的收藏」页。它由本模块渲染而不是 account——
 	// 那一页上是一列文章，而按可见性取文章、补作者分类标签、算分页
 	// 全都在本包里（account 不为内容提供任何接口）。

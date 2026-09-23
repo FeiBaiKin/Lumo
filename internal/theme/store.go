@@ -31,6 +31,9 @@ const (
 	// （已知限制，account 的那几条固定路径就是这么来的），
 	// 而两段路径与 /{slug} 的兜底完全不相交，不必再往保留字清单里添一个词。
 	PathFavorites = "/account/favorites"
+
+	// PathPostIndex 是全部文章列表。有同名独立页面时页面优先，见 Frontend.postIndex。
+	PathPostIndex = "/posts"
 )
 
 // 分类与标签在按词筛选时的区分。

@@ -41,7 +41,19 @@
   <div class="module-head">
     <h2 class="module-title" id="mod-{{ .Index }}">{{ $title }}</h2>
     {{ if ne $type "popular" }}
-    <a class="module-more" href="/posts">全部文章</a>
+    {{- /*
+    「更多」指向哪：精选模块若是按分类或标签取的，指向那个归档才对路——
+    站长把标题写成「Go 精选」时，右边的「全部文章」跳到全站列表是答非所问。
+    置顶 / 最新取的仍是全站，指向 /posts（全部文章列表）。
+    $source 是在上面的 if 里声明的，出了那个块就没了，故这里从 $m.source 重取。
+    */ -}}
+    {{ $moreURL := "/posts" }}{{ $moreLabel := "全部文章" }}
+    {{ if and (eq $type "featured") $m.term }}
+      {{ if eq $m.source "category" }}{{ $moreURL = printf "/categories/%s" $m.term }}{{ $moreLabel = "更多文章" }}
+      {{ else if eq $m.source "tag" }}{{ $moreURL = printf "/tags/%s" $m.term }}{{ $moreLabel = "更多文章" }}
+      {{ end }}
+    {{ end }}
+    <a class="module-more" href="{{ $moreURL }}">{{ $moreLabel }}</a>
     {{ end }}
   </div>
 

@@ -34,7 +34,7 @@ var requiredTemplates = []string{"index.html", "post.html", "page.html", "404.ht
 // 顺序按访客实际会走的流程排（登录 → 注册 → 找回 → 重置 → 账户），
 // 后台展示模板提供情况时也就按这个顺序列出来。
 var optionalTemplates = []string{
-	"category.html", "tag.html", "archive.html", "search.html", "author.html",
+	"posts.html", "category.html", "tag.html", "archive.html", "search.html", "author.html",
 	"login.html", "register.html", "forgot-password.html", "reset-password.html", "account.html",
 	"favorites.html",
 }

@@ -37,6 +37,7 @@ func NewFrontend(renderer *Renderer, store *Store) *Frontend {
 // 最后才是兜底的 /{slug}（独立页面），否则页面路由会吞掉一切。
 func (f *Frontend) Mount(r chi.Router) {
 	r.Get("/", f.index)
+	r.Get(PathPostIndex, f.postIndex)
 	r.Get(PathPosts+"{slug}", f.post)
 	r.Get(PathCategories+"{slug}", f.category)
 	r.Get(PathTags+"{slug}", f.tag)
@@ -120,6 +121,38 @@ func (f *Frontend) index(w http.ResponseWriter, r *http.Request) {
 	f.renderer.Render(w, r, http.StatusOK, "index.html", pageCtx)
 }
 
+// postIndex 渲染全部文章的分页列表。
+//
+// 站点里有 slug 为 posts 的独立页面时，/posts 仍显示那个页面：加这条路由之前，
+// 这个地址一直归兜底的独立页面路由，已有站点拿它配了专用模板，不能被新路由挤掉。
+func (f *Frontend) postIndex(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	slug := strings.TrimPrefix(PathPostIndex, "/")
+	if view, err := f.store.GetContent(ctx, string(content.TypePage), slug, viewerID(r)); err == nil {
+		f.renderPage(w, r, view)
+		return
+	}
+
+	pageCtx, err := f.renderer.NewContext(ctx, r, KindPosts)
+	if err != nil {
+		f.renderer.renderError(w, r, err, "posts.html")
+		return
+	}
+
+	page := pageParam(r)
+	size := f.renderer.PageSize(ctx)
+	posts, total, err := f.store.Posts(ctx, page, size)
+	if err != nil {
+		f.renderer.renderError(w, r, err, "posts.html")
+		return
+	}
+
+	pageCtx.Title = "全部文章"
+	pageCtx.Posts = posts
+	pageCtx.Pagination = newPagination(page, size, total, PathPostIndex)
+	f.renderer.Render(w, r, http.StatusOK, "posts.html", pageCtx)
+}
+
 // post 渲染文章详情页。
 func (f *Frontend) post(w http.ResponseWriter, r *http.Request) {
 	f.renderContent(w, r, string(content.TypePost), pathParam(r, "slug"), KindPost, "post.html")
@@ -130,15 +163,16 @@ func (f *Frontend) post(w http.ResponseWriter, r *http.Request) {
 // 页面可选主题提供的 page-*.html 模板（WordPress 模式）；
 // 模板不存在时回退到 page.html，而不是报错——主题换了之后旧页面还得能打开。
 func (f *Frontend) page(w http.ResponseWriter, r *http.Request) {
-	slug := pathParam(r, "slug")
-	ctx := r.Context()
-
-	view, err := f.store.GetContent(ctx, string(content.TypePage), slug, viewerID(r))
+	view, err := f.store.GetContent(r.Context(), string(content.TypePage), pathParam(r, "slug"), viewerID(r))
 	if err != nil {
 		f.notFound(w, r)
 		return
 	}
+	f.renderPage(w, r, view)
+}
 
+// renderPage 按页面选定的模板渲染一个独立页面。
+func (f *Frontend) renderPage(w http.ResponseWriter, r *http.Request, view *PostView) {
 	name := "page.html"
 	if view.Template != "" {
 		candidate := view.Template + ".html"

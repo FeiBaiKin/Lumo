@@ -1,0 +1,20 @@
+{{ template "layouts/base.html" . }}
+
+{{ define "main" }}
+{{- /*
+全部文章（/posts）。首页第一页摆的是模块，文章模块里「全部文章」指到这里。
+版式与分类、标签、归档页一样：一张页头卡片加一列文章。
+*/ -}}
+<div class="wrap wrap--wide">
+  <header class="archive-header has-seal">
+    {{ template "partials/seal.html" "文" }}
+    <div data-motion="title">
+      <p class="archive-kind">文章</p>
+      <h1 class="archive-title">全部文章</h1>
+      <p class="archive-count">共 {{ .Pagination.Total }} 篇</p>
+    </div>
+  </header>
+
+  {{ template "partials/list-with-sidebar.html" . }}
+</div>
+{{ end }}

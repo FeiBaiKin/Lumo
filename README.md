@@ -263,15 +263,18 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 └── screenshot.png      # 可选
 ```
 
-**必需模板只有四个**：`index.html`、`post.html`、`page.html`、`404.html`。另有十一个可选模板
-（分类 / 标签 / 归档 / 搜索 / 作者，登录 / 注册 / 找回密码 / 重置密码 / 账户页，以及我的收藏），
-缺省时**整页回退**到内置主题「墨 Ink」，不会报错或渲染空白。
+**必需模板只有四个**：`index.html`、`post.html`、`page.html`、`404.html`。另有十二个可选模板
+（全部文章列表，分类 / 标签 / 归档 / 搜索 / 作者，登录 / 注册 / 找回密码 / 重置密码 / 账户页，
+以及我的收藏），缺省时**整页回退**到内置主题「墨 Ink」，不会报错或渲染空白。
 模板可用数据：路由上下文（`.Site` / `.Post` / `.Posts` / `.Pagination` / `.Theme.Settings` 等）
 与只读 Finder 函数（`{{ .Find.Posts.Recent 5 }}`、`.Find.Categories.Tree`、`.Find.Menus.Get "primary"` 等）。
 
-前台路由约定：文章 `/posts/<slug>`、独立页面 `/<slug>`、分类 `/categories/<slug>`、
-标签 `/tags/<slug>`、归档 `/archives/<年>[/<月>]`、作者 `/authors/<用户名>`、搜索 `/search?q=`；
-账户相关为 `/login`、`/register`、`/forgot-password`、`/reset-password`、`/account`。
+前台路由约定：全部文章列表 `/posts`、文章 `/posts/<slug>`、独立页面 `/<slug>`、
+分类 `/categories/<slug>`、标签 `/tags/<slug>`、归档 `/archives/<年>[/<月>]`、
+作者 `/authors/<用户名>`、搜索 `/search?q=`；账户相关为 `/login`、`/register`、
+`/forgot-password`、`/reset-password`、`/account`。
+`/posts` 让位给同 slug 的独立页面——站内建了 slug 为 `posts` 的页面（配 `page-posts` 之类的专用
+模板）时显示那个页面，列表页只在没有这个页面时接管，已有站点不会被新路由挤掉。
 模板改动在后台点「重新加载」即可生效；开发时设 `LUMO_THEME_DEV=true` 自动重载、静态资源不缓存。
 
 ## REST API
