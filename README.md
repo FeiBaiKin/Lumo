@@ -67,8 +67,8 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 发布包是单个静态二进制，目标机器上不需要 Go、Node 或 Docker：
 
 ```bash
-tar -xf lumo_<版本>_linux_amd64.tar
-cd lumo_<版本>_linux_amd64
+mkdir lumo && cd lumo
+tar -xzf ../lumo_<版本>_linux_amd64.tar.gz   # 包里没有外层目录，解出来就是 lumo、LICENSE、README.md
 ./lumo serve
 ```
 
