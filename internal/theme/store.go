@@ -538,6 +538,17 @@ func (s *Store) RecentPosts(ctx context.Context, n int) ([]PostView, error) {
 	return s.attach(ctx, rows)
 }
 
+// ListPosts 按前台列表的顺序（置顶优先）返回前 n 篇文章。
+func (s *Store) ListPosts(ctx context.Context, n int) ([]PostView, error) {
+	rows := []postRow{}
+	sqlText := `SELECT ` + postColumns + ` FROM posts AS p WHERE ` + publicFilter +
+		` AND p.type = 'post'` + listOrder + ` LIMIT ?`
+	if err := s.db.NewRaw(sqlText, n).Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("查询文章列表: %w", err)
+	}
+	return s.attach(ctx, rows)
+}
+
 // PinnedPosts 返回置顶文章。
 func (s *Store) PinnedPosts(ctx context.Context, n int) ([]PostView, error) {
 	rows := []postRow{}

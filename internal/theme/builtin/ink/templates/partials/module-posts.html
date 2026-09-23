@@ -13,12 +13,11 @@
 {{ $type := $m.type }}
 
 {{- /*
-先取「最新」占位，再按类型改写。模板变量的类型由第一次赋值定下，
+先按「最新文章」取（置顶在前，与 /posts 同序），再按类型改写。模板变量的类型由第一次赋值定下，
 所以必须用一个真正返回文章列表的调用起头：写成 `{{ $posts := slice }}`
 会在后面赋值时炸「cannot assign []theme.PostView to $posts of type []any」。
-这里多一次取数的代价是零：Finder 在同一请求内按 key 缓存，首页本来也要取最新。
 */ -}}
-{{ $posts := $page.Find.Posts.Recent $count }}
+{{ $posts := $page.Find.Posts.List $count }}
 {{ if eq $type "popular" }}
   {{ $posts = $page.Find.Posts.Popular $count }}
 {{ else if eq $type "featured" }}
@@ -26,6 +25,7 @@
   {{ if eq $source "pinned" }}{{ $posts = $page.Find.Posts.Pinned $count }}
   {{ else if eq $source "category" }}{{ $posts = $page.Find.Posts.ByCategory $m.term $count }}
   {{ else if eq $source "tag" }}{{ $posts = $page.Find.Posts.ByTag $m.term $count }}
+  {{ else }}{{ $posts = $page.Find.Posts.Recent $count }}
   {{ end }}
 {{ end }}
 

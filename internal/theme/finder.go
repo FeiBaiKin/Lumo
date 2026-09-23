@@ -95,6 +95,16 @@ func (p PostsFinder) Recent(n int) []PostView {
 	})
 }
 
+// List 按前台列表的顺序返回前 n 篇：置顶在前，再按发布时间倒序。
+//
+// 首页「最新文章」这类主列表用它，与 /posts、分类页的顺序一致；侧栏的「最新」仍用 Recent，只看时间。
+func (p PostsFinder) List(n int) []PostView {
+	n = clamp(n)
+	return cached(p.f, "posts.list:"+itoa(n), func() ([]PostView, error) {
+		return p.f.store.ListPosts(p.f.ctx, n)
+	})
+}
+
 // Pinned 返回置顶文章。
 func (p PostsFinder) Pinned(n int) []PostView {
 	n = clamp(n)

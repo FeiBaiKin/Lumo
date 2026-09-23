@@ -155,7 +155,7 @@ HTML 文本、属性、URL、JavaScript 里，它会各自用不同的转义规�
 | `favorites.html` | 我的收藏 |
 
 回退是**整页**而不是逐块——回退的页面会长得像另一个主题。
-所以真要发布的主题应该把这十二个也写了，至少写掉前五个。
+所以真要发布的主题应该把这十二个也写了，至少写掉前六个。
 
 ### layout 与 partial
 
@@ -355,6 +355,7 @@ Go 的模板没有继承，只有「定义块 + 调用块」。Lumo 的约定是
 | 调用 | 返回 |
 |---|---|
 | `.Find.Posts.Recent n` | 最近发布的 n 篇 |
+| `.Find.Posts.List n` | 前 n 篇，置顶在前，与 `/posts`、分类页同序；首页主列表用它 |
 | `.Find.Posts.Pinned n` | 置顶文章 |
 | `.Find.Posts.Popular n` | 按评论数排序的热门 |
 | `.Find.Posts.Related $id n` | 与该文共享分类或标签最多的其他文章 |
