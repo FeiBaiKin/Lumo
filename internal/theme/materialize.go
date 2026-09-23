@@ -69,13 +69,13 @@ var legacyFactoryDigests = map[string]string{
 // 换不换只看一件事：磁盘上的文件是否与出厂清单逐字节一致，一致才换，多一个少一个都不换。
 func MaterializeBuiltin(root string, builtinFS fs.FS) (BuiltinSync, error) {
 	dir := filepath.Join(root, BuiltinName)
-	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+	if _, statErr := os.Stat(dir); errors.Is(statErr, fs.ErrNotExist) {
 		if err := writeFactory(dir, builtinFS); err != nil {
 			return BuiltinUnchanged, err
 		}
 		return BuiltinCreated, nil
-	} else if err != nil {
-		return BuiltinUnchanged, fmt.Errorf("检查内置主题目录: %w", err)
+	} else if statErr != nil {
+		return BuiltinUnchanged, fmt.Errorf("检查内置主题目录: %w", statErr)
 	}
 
 	recorded, err := readManifest(dir)
