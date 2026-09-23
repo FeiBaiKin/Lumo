@@ -1809,6 +1809,16 @@ textarea.field-input,
   padding-left: 1.5em;
 }
 
+/*
+ * 上面两条清零是为了去掉浏览器默认的 1em，但它们的特异度（.prose p）高于
+ * 文首「相邻元素」那条（.prose > * + *），连顶边距一起清掉了：段落与段落、
+ * 段落与列表一行接一行贴在一起，分不出段。这里用同等特异度、靠后的位置补回来。
+ * 只管 .prose 的直接子元素，列表项与引用里的段落另有自己的间距。
+ */
+.prose > * + :is(p, ul, ol) {
+  margin-top: var(--s6);
+}
+
 .prose li + li {
   margin-top: var(--s2);
 }
@@ -1860,6 +1870,28 @@ textarea.field-input,
   border: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
+  /*
+   * 不沿用 .prose 的 anywhere：它让每一列的最小宽度缩到一个字，
+   * 自动表格布局就把短列挤碎，「0.1.1」断成「0.1.」和「1」。
+   * break-word 只在真放不下时才断，不参与最小宽度的计算。
+   */
+  overflow-wrap: break-word;
+}
+
+/* 第一列多是短标签（版本、阶段、现象），保持一行，长的那一列去折行 */
+.prose :is(th, td):first-child {
+  white-space: nowrap;
+}
+
+/* 窄屏下宁可把字拆开，也不能让表格撑出一道横向滚动条 */
+@media (max-width: 40rem) {
+  .prose :is(th, td) {
+    overflow-wrap: anywhere;
+  }
+
+  .prose :is(th, td):first-child {
+    white-space: normal;
+  }
 }
 
 .prose th {
