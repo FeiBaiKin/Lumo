@@ -9,13 +9,18 @@
 而插画只是在页面上占一块颜色。没有图时整块退成单栏，文字撑满——
 那仍然是一个完整的主视觉，不是一个缺了图的主视觉。
 
+「配图放在文字下方」给宽而密的截图用：并排时它只分到半栏，后台界面里的字会缩到看不清；
+放到下面按整栏铺开，截图才真正起到说明的作用。
+
 入参 dict：Page 整页上下文 / M 模块参数 / Index 模块序号
 */ -}}
 {{ $m := .M }}
 {{ $title := default .Page.Site.Title $m.title }}
 {{ $hasImage := ne (default "" $m.image) "" }}
+{{ $layout := "" }}
+{{ if and $hasImage $m.imageBelow }}{{ $layout = "stacked" }}{{ else if $hasImage }}{{ $layout = "split" }}{{ end }}
 
-<section class="home-module module-hero{{ if $hasImage }} module-hero--split{{ end }}"
+<section class="home-module module-hero{{ with $layout }} module-hero--{{ . }}{{ end }}"
          aria-labelledby="hero-{{ .Index }}">
   <div class="hero-body" data-motion="title">
     <h1 class="hero-title" id="hero-{{ .Index }}">{{ $title }}</h1>

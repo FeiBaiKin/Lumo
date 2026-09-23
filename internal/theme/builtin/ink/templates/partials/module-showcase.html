@@ -16,7 +16,7 @@
          aria-labelledby="show-{{ .Index }}">
   <div class="showcase-body">
     {{ with default "" $m.title }}
-    <h2 class="showcase-title" id="show-{{ $.Index }}">{{ . }}</h2>
+    <h2 class="landing-title showcase-title" id="show-{{ $.Index }}">{{ . }}</h2>
     {{ end }}
     {{ with $m.text }}<p class="showcase-text">{{ . }}</p>{{ end }}
   </div>

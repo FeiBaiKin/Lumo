@@ -11,7 +11,7 @@
 {{ with $m.code }}
 <section class="home-module module-command" aria-labelledby="cmd-{{ $.Index }}">
   <div class="command-head">
-    <h2 class="command-title" id="cmd-{{ $.Index }}">{{ default "装起来" $m.title }}</h2>
+    <h2 class="landing-title command-title" id="cmd-{{ $.Index }}">{{ default "装起来" $m.title }}</h2>
     {{ with $m.text }}<p class="command-text">{{ . }}</p>{{ end }}
   </div>
 

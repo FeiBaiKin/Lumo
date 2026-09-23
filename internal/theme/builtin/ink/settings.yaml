@@ -83,7 +83,7 @@ groups:
             additionalProperties: false
             required: [type]
             # 条目里字段多，顺序必须显式给：不然「模块」这个类型选择器会掉到最下面
-            x-order: [type, title, text, actions, items, image, imageAlt, reverse, code, source, term, count, columns, style, menu]
+            x-order: [type, title, text, actions, items, image, imageAlt, imageBelow, reverse, code, source, term, count, columns, style, menu]
             properties:
               type:
                 type: string
@@ -185,6 +185,12 @@ groups:
                   field: type
                   op: in
                   value: [hero, showcase]
+
+              imageBelow:
+                type: boolean
+                title: 配图放在文字下方
+                description: 截图里字多、并排时缩得看不清，就打开它：文字在上，图按整栏宽度铺在下面
+                x-show-if: { field: type, op: eq, value: hero }
 
               reverse:
                 type: boolean

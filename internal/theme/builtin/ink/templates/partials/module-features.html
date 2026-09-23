@@ -16,9 +16,7 @@
 
 <section class="home-module module-features" aria-labelledby="feat-{{ .Index }}">
   {{ with default "" $m.title }}
-  <div class="module-head">
-    <h2 class="module-title" id="feat-{{ $.Index }}">{{ . }}</h2>
-  </div>
+  <h2 class="landing-title features-title" id="feat-{{ $.Index }}">{{ . }}</h2>
   {{ end }}
 
   <ul class="feature-grid" data-columns="{{ $columns }}" data-motion="list">

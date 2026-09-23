@@ -4587,6 +4587,20 @@ html.auth-open {
 }
 
 /*
+ * 图在下方：文字在上，截图按整栏铺开。后台截图里字多，并排时只分到半栏，
+ * 字会缩到看不清；整栏宽度下它差不多是原大，截图才真正是说明。
+ * 与文字之间的空隙比段落间距大一档：上面是「说」，下面是「看」。
+ */
+.module-hero--stacked .hero-figure {
+  margin-top: var(--s12);
+}
+
+/* 整幅截图是首屏最大的一块，托底阴影比卡片深一档，才从纸面上立得起来 */
+.module-hero--stacked .hero-figure img {
+  box-shadow: var(--elevation-overlay);
+}
+
+/*
  * 截图给一层描边与极轻的托底阴影，与卡片同一套材质。
  * 不做倾斜、不做透视、不加浏览器外框：那些是装饰，而这张图是说明。
  */
@@ -4610,7 +4624,37 @@ html.auth-open {
   max-width: 58ch;
 }
 
+/*
+ * 特性网格、图文展示、命令块的标题同一级：它们在页面上是并列的几段，
+ * 字号不该各说各话。比主视觉的标语小两档，比卡片标题大一档。
+ * 不沿用博客模块那条带底线的小标题：那是列表的表头，这里每段自成一屏。
+ */
+.landing-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 1.15rem + 1.1vw, 2rem);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+/*
+ * 中文标语按标点断行。默认规则允许在任意两个汉字之间折行，窄屏下会出现「装 / 下整套」
+ * 这种把一个词拆到两行的断法。keep-all 让折行只落在标点与空格上；
+ * 整句没有标点又一行放不下时，overflow-wrap 兜底，不会撑破版面。
+ */
+.hero-title,
+.landing-title {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- 特性网格 ---------- */
+
+.features-title {
+  margin-bottom: var(--s8);
+}
 
 .feature-grid {
   display: grid;
@@ -4642,10 +4686,22 @@ html.auth-open {
   margin-bottom: var(--s3);
 }
 
-/* 这里的印比空状态里那枚小一号：它是标记，不是主角 */
+/*
+ * 这里的印比空状态里那枚小一号：它是标记，不是主角。
+ * 印色实底、字留纸色，是白文印盖出来的样子；空状态那枚淡底只是「印痕」，
+ * 放在一排文字前面会读成一个灰色徽章。
+ */
 .feature-mark .seal {
   width: 2.5rem;
   height: 2.5rem;
+}
+
+.feature-mark .seal rect {
+  fill: var(--seal);
+}
+
+.feature-mark .seal text {
+  fill: var(--surface);
 }
 
 .feature-title {
@@ -4667,12 +4723,23 @@ html.auth-open {
 
 .module-showcase {
   display: grid;
-  grid-template-columns: 1fr 1.15fr;
+  /*
+   * 图那一栏比主视觉并排时更宽：这里的图多是后台界面的局部特写，
+   * 文字只有一段话，1.4 倍才能让截图里的字接近原大。
+   */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
   align-items: center;
   gap: var(--s10);
 }
 
-/* 连着放几块时交替开关，版面才不是一列对齐的表格 */
+/*
+ * 连着放几块时交替开关，版面才不是一列对齐的表格。
+ * 列宽要跟着对调：只换 order 的话，图会落进窄的那一栏。
+ */
+.module-showcase--reverse {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+
 .module-showcase--reverse .showcase-body {
   order: 2;
 }
@@ -4680,16 +4747,6 @@ html.auth-open {
 /* 没有图时退成单栏，文字自己占满，而不是留半边空着 */
 .module-showcase--plain {
   grid-template-columns: 1fr;
-}
-
-.showcase-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: clamp(1.4rem, 1.15rem + 1.1vw, 2rem);
-  font-weight: 600;
-  line-height: var(--lh-tight);
-  letter-spacing: -0.01em;
-  text-wrap: balance;
 }
 
 .showcase-text {
@@ -4709,14 +4766,6 @@ html.auth-open {
 
 .command-head {
   margin-bottom: var(--s5);
-}
-
-.command-title {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: var(--fs-2xl);
-  font-weight: 600;
-  letter-spacing: -0.01em;
 }
 
 .command-text {
@@ -4751,6 +4800,11 @@ html.auth-open {
   tab-size: 2;
 }
 
+/* <code> 自带浏览器的 monospace，不接住就落到系统默认等宽字体，中文系统上是宋体 */
+.command-code code {
+  font: inherit;
+}
+
 .command-copy {
   position: absolute;
   top: var(--s3);
@@ -4765,7 +4819,8 @@ html.auth-open {
  */
 @media (max-width: 56rem) {
   .module-hero--split,
-  .module-showcase {
+  .module-showcase,
+  .module-showcase--reverse {
     grid-template-columns: 1fr;
     gap: var(--s6);
   }
@@ -4783,6 +4838,10 @@ html.auth-open {
 @media (max-width: 40rem) {
   .module-hero {
     padding-block: var(--s5) var(--s8);
+  }
+
+  .module-hero--stacked .hero-figure {
+    margin-top: var(--s8);
   }
 
   .home-module + .module-hero,
