@@ -160,18 +160,10 @@ func (m *Module) Routes(r app.Router) {
 //
 // 这是模块第一次被允许访问数据库的时机。
 func (m *Module) Start(ctx context.Context) error {
-	// 先把内置主题解压到 data/themes（已存在则不动），再扫目录 ——
+	// 先把内置主题解压到 data/themes（没改过的旧副本顺带换成新版本），再扫目录 ——
 	// 顺序不能反：LoadInstalled 正是靠磁盘上那份把注册表里的内置主题顶掉。
 	if m.builtin != nil {
-		created, err := MaterializeBuiltin(m.root, m.builtin)
-		if err != nil {
-			// 落盘失败不拦启动：二进制里那份照样服务，只是站长这次在
-			// data/themes 下看不到内置主题。
-			m.logger.Warn("内置主题落盘失败，本次仍用二进制里那份", slog.Any("error", err))
-		} else if created {
-			m.logger.Info("内置主题已解压到 data/themes",
-				slog.String("dir", filepath.Join(m.root, BuiltinName)))
-		}
+		m.syncBuiltin()
 	}
 
 	if err := m.registry.LoadInstalled(); err != nil {
@@ -249,6 +241,29 @@ func (m *Module) MountFrontend(r chi.Router, optional func(http.Handler) http.Ha
 
 // Registry 返回主题注册表，供其他模块与测试取用。
 func (m *Module) Registry() *Registry { return m.registry }
+
+// syncBuiltin 核对内置主题的磁盘副本并记下结果。
+//
+// 失败不拦启动：二进制里那份照样服务，只是站长这次在 data/themes 下看到的不是它。
+// 两种「没换」都记 warn 并写明该怎么做：站长多半是发现新版本的主题功能没出现才来翻日志的。
+func (m *Module) syncBuiltin() {
+	dir := slog.String("dir", filepath.Join(m.root, BuiltinName))
+	result, err := MaterializeBuiltin(m.root, m.builtin)
+	switch {
+	case err != nil:
+		m.logger.Warn("内置主题落盘失败，本次仍用二进制里那份", slog.Any("error", err))
+	case result == BuiltinCreated:
+		m.logger.Info("内置主题已解压到 data/themes", dir)
+	case result == BuiltinUpdated:
+		m.logger.Info("内置主题的磁盘副本没有改动过，已换成新版本", dir)
+	case result == BuiltinModified:
+		m.logger.Warn("内置主题有新版本，但磁盘副本改动过，没有替换；"+
+			"要用新版本请先备份改动，再到后台「外观 → 主题」恢复出厂", dir)
+	case result == BuiltinUnknown:
+		m.logger.Warn("内置主题的磁盘副本由旧版本解压，判断不了是否改动过，没有替换；"+
+			"没改过模板的话，到后台「外观 → 主题」恢复出厂一次，此后升级会自动更新", dir)
+	}
+}
 
 // RestoreBuiltin 把内置主题恢复成出厂状态（重新解压）并立即重新加载。
 //
