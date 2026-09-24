@@ -1,8 +1,7 @@
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-// 从 vitest/config 导入，使同一份配置同时覆盖构建与测试。
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vite";
 
 // Console 构建产物直接输出到 Go 的 embed 目标目录（internal/console/dist）。
 // base 必须与后端挂载路径 /console/ 一致，否则 index.html 里的资源地址会 404。
@@ -34,13 +33,5 @@ export default defineConfig({
       // （附件库、选择器、封面预览）都是破图，走查时会误以为是界面坏了。
       "/uploads": { target: "http://127.0.0.1:8080", changeOrigin: true },
     },
-  },
-  // 2026-09-15 清空全部用例，src/test/setup.ts 一并删除，故这里不再有 setupFiles。
-  // 将来加回用例时，setup 文件要同时加回并重新挂上；测试脚本已带
-  // --passWithNoTests，零用例时不会报失败。
-  test: {
-    environment: "jsdom",
-    globals: true,
-    css: false,
   },
 });

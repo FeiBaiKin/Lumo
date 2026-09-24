@@ -7,7 +7,8 @@ name: Verify
 #
 # 仓库目前没有测试用例（2026-09-15 清空），所以这里不设测试作业。加回时：
 # Go 集成测试要一个 PostgreSQL 服务容器、库名含 test，经 LUMO_TEST_DSN 传入；
-# -race 依赖 cgo，须在该作业里覆盖 CGO_ENABLED=1；Console 跑 npm run test。
+# -race 依赖 cgo，须在该作业里覆盖 CGO_ENABLED=1。Console 的测试依赖与 test 脚本也已删除，
+# 要重新装上测试框架再接进来。
 on:
   workflow_call:
 

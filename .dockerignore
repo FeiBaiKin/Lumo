@@ -11,7 +11,6 @@
 # 本机构建产物：镜像里的二进制由 Dockerfile 自己编，不复用宿主机的。
 /lumo
 /lumo.exe
-/coverage.out
 *.test
 
 # 前端依赖与产物：镜像里 npm ci 重装、vite 重新构建。
