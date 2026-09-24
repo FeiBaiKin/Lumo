@@ -3,8 +3,9 @@
 用 Go 编写的现代化开源 CMS，单一静态二进制：后台是 `go:embed` 进二进制的 React SPA，
 访客前台由服务端模板渲染主题。产品形态对标 [Halo](https://www.halo.run/)，目标是形成主题与插件生态。
 
-> **开发中**：功能已齐备，但**尚未正式发版、未经生产环境检验**。欢迎试用与反馈，
-> 上生产请自行评估风险。
+> **早期版本**：已发布 0.1.x 系列（[Releases](https://github.com/FeiBaiKin/Lumo/releases)），
+> 官网 [lumo.xzji.top](https://lumo.xzji.top) 就是用 Lumo 自己搭的。还没经过大规模生产检验，
+> 欢迎试用与反馈，上生产请自行评估风险。
 
 ## 特性
 
@@ -19,6 +20,7 @@
 - **全文搜索**：Go 侧二元组分词 + PostgreSQL `tsvector`，不依赖任何数据库扩展
 - **SEO**：`robots.txt` / `sitemap.xml` / `feed.xml` / `atom.xml` + canonical / OpenGraph / JSON-LD
 - **插件**：zip 包含清单与设置声明，后台安装 / 启停，目前是纯声明式、**不执行任何代码**（WASM 运行时在路线图上）
+- **安装与运维**：没配数据库时启动即进入浏览器安装向导；后台可查看、筛选、下载运行日志
 - **在线升级**：后台「关于」页检查并安装新版本，校验 SHA-256、自检新二进制、备份旧版本后替换并自动重启
 - **REST API**：Console / Public / Extension 三平面，OpenAPI 3.1 由 Go 代码生成，Console 的 TS 类型自动生成
 - **模块化**：16 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
@@ -64,7 +66,8 @@ export LUMO_DATABASE_DSN="postgres://user:password@127.0.0.1:5432/lumo?sslmode=d
 
 ## 部署到 Linux 服务器
 
-发布包是单个静态二进制，目标机器上不需要 Go、Node 或 Docker：
+发布包是单个静态二进制，目标机器上不需要 Go、Node 或 Docker。
+从 [Releases](https://github.com/FeiBaiKin/Lumo/releases) 下载对应平台的包：
 
 ```bash
 mkdir lumo && cd lumo
@@ -389,6 +392,7 @@ internal/
   api/             huma 三平面装配、错误桥接、分页约定
   auth/            用户、角色、会话、令牌；认证与管理端点
   account/         访客侧账户：注册 / 邮箱验证 / 找回密码 / 账户页（原生表单，不依赖 JS）
+  install/         首次安装向导：没有数据库连接时接管启动，装完写入 data/install.json 后自动重启
   secret/          凭据加密保管（AES-256-GCM），口令类设置加密入库后接口不回传明文
   config/ database/ migrate/ logging/ httpx/ server/ workdir/ version/ slug/
   console/         SPA 的 go:embed 目标（dist/ 不进库）
@@ -412,6 +416,7 @@ console/           Vite + React + TypeScript 后台前端
 data/themes/       运行时装第三方主题的位置（不进库，由 workdir 创建）
 deploy/            Dockerfile（源码构建）、Dockerfile.goreleaser（发布装箱）
                    docker-compose.yml、.env.example
+docs/              贡献指南、许可相关条款、主题开发文档
 ```
 
 ## 参与贡献
@@ -423,6 +428,17 @@ deploy/            Dockerfile（源码构建）、Dockerfile.goreleaser（发布
 你保留自己代码的版权，授予的是许可而非所有权。
 
 发现安全问题请走 [SECURITY.md](./docs/SECURITY.md) 里的私有报告通道，不要开公开 Issue。
+
+## 赞赏
+
+如果 Lumo 对你有用，可以扫码赞赏，支持项目继续做下去。
+
+<table>
+  <tr>
+    <td align="center"><img src="./docs/images/sponsor-wechat.jpg" height="280" alt="微信赞赏码"><br>微信</td>
+    <td align="center"><img src="./docs/images/sponsor-alipay.jpg" height="280" alt="支付宝收款码"><br>支付宝</td>
+  </tr>
+</table>
 
 ## 许可证
 
