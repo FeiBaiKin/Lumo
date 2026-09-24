@@ -8,8 +8,6 @@ import {
   EntityList,
   EntityStart,
 } from "@/components/data/entity";
-import { HtmlEditor } from "@/components/editor/html-editor";
-import { MarkdownEditor } from "@/components/editor/markdown-editor";
 import { PageHeader } from "@/components/layout/page-header";
 import { MediaPickerDialog } from "@/components/media/media-picker";
 import { UnsavedChangesGuard } from "@/components/navigation/unsaved-guard";
@@ -69,6 +67,8 @@ import {
 } from "lucide-react";
 import {
   type ReactNode,
+  Suspense,
+  lazy,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -78,6 +78,21 @@ import {
 } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
+
+/*
+ * 两个编辑器各是一整套 ProseMirror 生态（TipTap 带着代码着色的语法，Milkdown 带着自己的解析器），
+ * 一篇文章只会用到其中一个，故各自按需加载，不让写 Markdown 的人也下载一遍 TipTap。
+ */
+const HtmlEditor = lazy(() =>
+  import("@/components/editor/html-editor").then((m) => ({
+    default: m.HtmlEditor,
+  })),
+);
+const MarkdownEditor = lazy(() =>
+  import("@/components/editor/markdown-editor").then((m) => ({
+    default: m.MarkdownEditor,
+  })),
+);
 
 /**
  * 内容编辑器（文章与独立页面共用），形态对齐 Halo 的 PostEditor：
@@ -876,24 +891,32 @@ function EditorSession({ kind }: { kind: ContentType }) {
               */}
               {loaded ? (
                 <div key={editorKey}>
-                  {rawType === "html" ? (
-                    <HtmlEditor
-                      initialContent={raw || EMPTY_HTML}
-                      toolbarContainer={toolbarSlot}
-                      onChange={(html) => {
-                        setRaw(html);
-                        markDirty();
-                      }}
-                    />
-                  ) : (
-                    <MarkdownEditor
-                      initialContent={raw}
-                      onChange={(markdown) => {
-                        setRaw(markdown);
-                        markDirty();
-                      }}
-                    />
-                  )}
+                  <Suspense
+                    fallback={
+                      <div className="flex min-h-[60vh] items-center justify-center text-sm text-ink-muted">
+                        正在准备编辑器
+                      </div>
+                    }
+                  >
+                    {rawType === "html" ? (
+                      <HtmlEditor
+                        initialContent={raw || EMPTY_HTML}
+                        toolbarContainer={toolbarSlot}
+                        onChange={(html) => {
+                          setRaw(html);
+                          markDirty();
+                        }}
+                      />
+                    ) : (
+                      <MarkdownEditor
+                        initialContent={raw}
+                        onChange={(markdown) => {
+                          setRaw(markdown);
+                          markDirty();
+                        }}
+                      />
+                    )}
+                  </Suspense>
                 </div>
               ) : null}
             </div>

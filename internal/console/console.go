@@ -7,12 +7,17 @@
 package console
 
 import (
+	"bytes"
+	"compress/gzip"
 	"embed"
 	"errors"
 	"io/fs"
+	"mime"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
+	"sync"
 )
 
 // MountPath 是 Console 的挂载前缀，必须与 console/vite.config.ts 的 base 一致。
@@ -56,6 +61,7 @@ func Handler() http.Handler {
 // spaHandler 在给定文件系统上实现 SPA 静态服务与 history 路由回退。
 func spaHandler(assets fs.FS) http.Handler {
 	fileServer := http.FileServer(http.FS(assets))
+	compressed := &gzipCache{assets: assets, files: map[string][]byte{}}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -87,11 +93,88 @@ func spaHandler(assets fs.FS) http.Handler {
 		// 带内容哈希的构建产物可长期缓存；index.html 必须每次回源校验。
 		if strings.HasPrefix(name, "assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			if compressible(name) {
+				w.Header().Add("Vary", "Accept-Encoding")
+				if acceptsGzip(r) {
+					if data, ok := compressed.get(name); ok {
+						serveGzip(w, r, name, data)
+						return
+					}
+				}
+			}
 		} else {
 			w.Header().Set("Cache-Control", "no-cache")
 		}
 		fileServer.ServeHTTP(w, r)
 	})
+}
+
+// gzipCache 缓存压缩过的构建产物。
+//
+// 后台首屏的脚本未压缩时有六百多 KB，不经反向代理直接部署的站点每个新访客都要全额下载。
+// 产物嵌在二进制里、内容永不变，所以每个文件只在第一次被请求时压一次，之后直接发压好的字节。
+type gzipCache struct {
+	assets fs.FS
+	mu     sync.Mutex
+	files  map[string][]byte
+}
+
+// get 返回 name 的 gzip 字节；读不出或压完不比原文件小时返回 false，由调用方发原文件。
+func (c *gzipCache) get(name string) ([]byte, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if data, ok := c.files[name]; ok {
+		return data, data != nil
+	}
+	raw, err := fs.ReadFile(c.assets, name)
+	if err != nil {
+		return nil, false
+	}
+	var buf bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	if err != nil {
+		return nil, false
+	}
+	if _, err := zw.Write(raw); err != nil || zw.Close() != nil || buf.Len() >= len(raw) {
+		c.files[name] = nil
+		return nil, false
+	}
+	c.files[name] = buf.Bytes()
+	return c.files[name], true
+}
+
+// compressible 报告这类产物值不值得压缩：图片与字体本身已经是压缩格式。
+func compressible(name string) bool {
+	switch path.Ext(name) {
+	case ".js", ".css", ".svg", ".json", ".map":
+		return true
+	}
+	return false
+}
+
+// acceptsGzip 报告客户端是否接受 gzip。显式写了 q=0 的视为拒绝。
+func acceptsGzip(r *http.Request) bool {
+	for _, part := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
+		coding, params, _ := strings.Cut(strings.TrimSpace(part), ";")
+		if strings.EqualFold(strings.TrimSpace(coding), "gzip") {
+			return strings.ReplaceAll(strings.TrimSpace(params), " ", "") != "q=0"
+		}
+	}
+	return false
+}
+
+// serveGzip 发出压缩过的产物。
+func serveGzip(w http.ResponseWriter, r *http.Request, name string, data []byte) {
+	if ctype := mime.TypeByExtension(path.Ext(name)); ctype != "" {
+		w.Header().Set("Content-Type", ctype)
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.WriteHeader(http.StatusOK)
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = w.Write(data)
 }
 
 // serveIndex 输出 SPA 入口文件，供 history 路由回退使用。

@@ -1,5 +1,5 @@
 import { useAuth } from "@/components/auth/auth-provider";
-import { useCommandPalette } from "@/components/layout/command-palette";
+import { useCommandPalette } from "@/components/layout/command-palette-context";
 import { Logo } from "@/components/layout/logo";
 import { isActivePath } from "@/components/layout/nav";
 import { useNavigation } from "@/components/layout/use-nav";

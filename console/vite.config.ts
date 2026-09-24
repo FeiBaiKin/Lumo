@@ -21,6 +21,22 @@ export default defineConfig({
     emptyOutDir: false,
     sourcemap: false,
     chunkSizeWarningLimit: 1024,
+    rollupOptions: {
+      output: {
+        // React 与路由单独成包：它们几乎不随版本变化，拆出来之后升级 Lumo 时
+        // 浏览器缓存里这一份还能继续用，只需重新下载改过的业务代码。
+        manualChunks(id) {
+          if (
+            /[\\/]node_modules[\\/](react|react-dom|react-router|scheduler)[\\/]/.test(
+              id,
+            )
+          ) {
+            return "vendor-react";
+          }
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port: 5173,

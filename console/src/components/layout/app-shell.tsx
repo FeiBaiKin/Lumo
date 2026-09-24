@@ -1,10 +1,34 @@
 import {
-  CommandPalette,
   CommandPaletteProvider,
-} from "@/components/layout/command-palette";
+  useCommandPalette,
+} from "@/components/layout/command-palette-context";
 import { MobileNav, MobileTopBar } from "@/components/layout/mobile-nav";
 import { Sidebar } from "@/components/layout/sidebar";
+import { Suspense, lazy, useState } from "react";
 import { Outlet } from "react-router";
+
+const CommandPalette = lazy(() =>
+  import("@/components/layout/command-palette").then((m) => ({
+    default: m.CommandPalette,
+  })),
+);
+
+/**
+ * 命令面板第一次打开时才加载：它带着 cmdk 与检索逻辑，而多数时候站长一次也不按 Ctrl/⌘ K。
+ * 加载过之后一直留着，再开不必重新挂载。
+ */
+function DeferredCommandPalette() {
+  const { open } = useCommandPalette();
+  const [wanted, setWanted] = useState(false);
+  if (open && !wanted) {
+    setWanted(true);
+  }
+  return wanted ? (
+    <Suspense fallback={null}>
+      <CommandPalette />
+    </Suspense>
+  ) : null;
+}
 
 /**
  * 应用外壳（Halo 的 BasicLayout）。
@@ -39,7 +63,7 @@ export function AppShell() {
         </div>
 
         <MobileNav />
-        <CommandPalette />
+        <DeferredCommandPalette />
       </div>
     </CommandPaletteProvider>
   );

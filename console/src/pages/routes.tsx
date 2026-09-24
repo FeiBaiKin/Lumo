@@ -1,15 +1,42 @@
 import { Skeleton } from "@/components/ui/states";
-import { CommentsPage } from "@/pages/content/comments";
-import { PagesPage } from "@/pages/content/pages";
-import { PostsPage } from "@/pages/content/posts";
-import { MediaPage } from "@/pages/media/media";
-import { ProfilePage } from "@/pages/profile";
-import { AboutPage } from "@/pages/system/about";
-import { CategoriesPage } from "@/pages/taxonomy/categories";
-import { TagsPage } from "@/pages/taxonomy/tags";
-import { RolesPage } from "@/pages/users/roles";
-import { UsersPage } from "@/pages/users/users";
-import { Suspense, lazy } from "react";
+import { type ComponentType, Suspense, lazy } from "react";
+
+/**
+ * 除仪表盘外，每一页都按需加载。
+ *
+ * 首屏包只该装「打开后台那一刻必须有的东西」：外壳、登录态与仪表盘。
+ * 列表页各自不大，但十来页叠在一起就是首屏上一百多 KB 的等待，
+ * 而站长一次打开后台通常只去其中一两页。
+ *
+ * 页面模块只导出具名组件，React.lazy 要的是 default，故包一层。
+ */
+function lazyPage<K extends string>(
+  load: () => Promise<Record<K, ComponentType>>,
+  name: K,
+) {
+  const Page: ComponentType = lazy(async () => {
+    const module: Record<string, ComponentType> = await load();
+    return { default: module[name] as ComponentType };
+  });
+  return () => <LazyPage element={<Page />} />;
+}
+
+const PostsPage = lazyPage(() => import("@/pages/content/posts"), "PostsPage");
+const PagesPage = lazyPage(() => import("@/pages/content/pages"), "PagesPage");
+const CommentsPage = lazyPage(
+  () => import("@/pages/content/comments"),
+  "CommentsPage",
+);
+const CategoriesPage = lazyPage(
+  () => import("@/pages/taxonomy/categories"),
+  "CategoriesPage",
+);
+const TagsPage = lazyPage(() => import("@/pages/taxonomy/tags"), "TagsPage");
+const MediaPage = lazyPage(() => import("@/pages/media/media"), "MediaPage");
+const UsersPage = lazyPage(() => import("@/pages/users/users"), "UsersPage");
+const RolesPage = lazyPage(() => import("@/pages/users/roles"), "RolesPage");
+const ProfilePage = lazyPage(() => import("@/pages/profile"), "ProfilePage");
+const AboutPage = lazyPage(() => import("@/pages/system/about"), "AboutPage");
 
 /**
  * 内容编辑器按需加载。

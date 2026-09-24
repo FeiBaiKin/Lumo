@@ -1,5 +1,6 @@
 import { api } from "@/api/client";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useCommandPalette } from "@/components/layout/command-palette-context";
 import type { NavItem } from "@/components/layout/nav";
 import { useNavigation } from "@/components/layout/use-nav";
 import { type ThemeChoice, useTheme } from "@/components/theme/theme-provider";
@@ -21,8 +22,6 @@ import {
 } from "lucide-react";
 import {
   type ReactNode,
-  createContext,
-  use,
   useCallback,
   useEffect,
   useMemo,
@@ -39,39 +38,6 @@ import { useNavigate } from "react-router";
  * 用 Radix Dialog + cmdk 的 Command 自行组合，而不用 cmdk 自带的 Command.Dialog：
  * 后者没有 DialogTitle，Radix 会在开发期告警，且读屏用户听不到这是什么面板。
  */
-
-type PaletteContextValue = {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-};
-
-const PaletteContext = createContext<PaletteContextValue | null>(null);
-
-export function CommandPaletteProvider({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        setOpen((value) => !value);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  const value = useMemo(() => ({ open, setOpen }), [open]);
-  return <PaletteContext value={value}>{children}</PaletteContext>;
-}
-
-export function useCommandPalette(): PaletteContextValue {
-  const value = use(PaletteContext);
-  if (!value) {
-    throw new Error("useCommandPalette 必须在 CommandPaletteProvider 内使用");
-  }
-  return value;
-}
 
 const THEME_OPTIONS: { value: ThemeChoice; label: string; icon: typeof Sun }[] =
   [
