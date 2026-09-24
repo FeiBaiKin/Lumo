@@ -6,8 +6,8 @@
 #      用来在真有 Docker 的机器上验证镜像能否构建。本项目的日常开发机没装 Docker，
 #      这是验证 deploy/Dockerfile.goreleaser 的主要途径。
 #
-# 两种方式都必须先通过 verify 作业（与 CI 完全相同的 lint / 测试 / 构建），
-# 且验证的是**同一次提交**：只要测试不过，就不存在推送 latest 的路径。
+# 两种方式都必须先通过 verify 作业（与 CI 完全相同的 lint / 构建），
+# 且验证的是**同一次提交**：只要验证不过，就不存在推送 latest 的路径。
 name: Release
 
 on:
