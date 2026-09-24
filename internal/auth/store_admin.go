@@ -47,12 +47,17 @@ type UserFilter struct {
 	Status string
 	// Q 非空时按用户名、邮箱或显示名模糊筛选。
 	Q string
+	// Email 取 verified 或 unverified，按邮箱是否已验证筛选。
+	Email string
 }
 
 // 用户状态筛选取值。
 const (
 	StatusEnabled  = "enabled"
 	StatusDisabled = "disabled"
+	// EmailVerified 与 EmailUnverified 是邮箱验证状态的筛选取值。
+	EmailVerified   = "verified"
+	EmailUnverified = "unverified"
 )
 
 // PageUsers 分页返回用户（含角色），按创建时间倒序。
@@ -69,6 +74,12 @@ func (s *Store) PageUsers(ctx context.Context, filter UserFilter, params api.Pag
 		q = q.Where("u.disabled = false")
 	case StatusDisabled:
 		q = q.Where("u.disabled = true")
+	}
+	switch filter.Email {
+	case EmailVerified:
+		q = q.Where("u.email_verified_at IS NOT NULL")
+	case EmailUnverified:
+		q = q.Where("u.email_verified_at IS NULL")
 	}
 	if text := strings.TrimSpace(filter.Q); text != "" {
 		pattern := "%" + escapeLike(text) + "%"

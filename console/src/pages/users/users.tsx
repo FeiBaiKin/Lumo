@@ -50,6 +50,8 @@ import { useDebouncedSearch, useListParams } from "@/lib/use-list-params";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   KeyRound,
+  Mail,
+  MailCheck,
   Pencil,
   Plus,
   ShieldCheck,
@@ -82,6 +84,12 @@ const STATUS_OPTIONS = [
   // 界面文案用「正常 / 已停用」——站长不关心字段叫什么
   { value: "enabled", label: "正常" },
   { value: "disabled", label: "已停用" },
+];
+
+const EMAIL_OPTIONS = [
+  { value: "", label: "全部" },
+  { value: "verified", label: "已验证" },
+  { value: "unverified", label: "未验证" },
 ];
 
 export function UsersPage() {
@@ -129,6 +137,9 @@ export function UsersPage() {
             ...(list.filter("status")
               ? { status: list.filter("status") as "enabled" | "disabled" }
               : {}),
+            ...(list.filter("email")
+              ? { email: list.filter("email") as "verified" | "unverified" }
+              : {}),
             ...(list.filter("q") ? { q: list.filter("q") } : {}),
           },
         },
@@ -157,7 +168,10 @@ export function UsersPage() {
 
   // `create` 也在地址栏里，但它不是筛选条件，不该点亮「清除筛选」
   const hasFilters = Boolean(
-    list.filter("q") || list.filter("role") || list.filter("status"),
+    list.filter("q") ||
+      list.filter("role") ||
+      list.filter("status") ||
+      list.filter("email"),
   );
 
   return (
@@ -218,6 +232,12 @@ export function UsersPage() {
                     value={list.filter("status")}
                     options={STATUS_OPTIONS}
                     onChange={(value) => list.setFilter("status", value)}
+                  />
+                  <FilterMenu
+                    label="邮箱"
+                    value={list.filter("email")}
+                    options={EMAIL_OPTIONS}
+                    onChange={(value) => list.setFilter("email", value)}
                   />
                 </>
               }
@@ -400,8 +420,13 @@ function UserRow({
           )}
         </div>
 
+        {/* 只占一个状态位，按「现在能不能登录」排优先级：停用压过未验证 */}
         {user.disabled ? (
           <StatusDot state="danger">已停用</StatusDot>
+        ) : !user.emailVerified ? (
+          <StatusDot state="warn" title="邮箱验证之前不能登录">
+            邮箱未验证
+          </StatusDot>
         ) : (
           <StatusDot state="ok">正常</StatusDot>
         )}
@@ -670,6 +695,8 @@ function EditUserDialog({
   const [bio, setBio] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [initialised, setInitialised] = useState<number | null>(null);
+  // 弹窗里标记为已验证之后，手上这份 user 仍是打开时的快照，靠它把区块收起来
+  const [verifiedHere, setVerifiedHere] = useState(false);
 
   // 打开另一个用户时重填。用 id 判断而不是对象引用：
   // 列表刷新后引用会变，那会覆盖用户正在编辑的内容。
@@ -678,8 +705,10 @@ function EditUserDialog({
     setDisplayName(user.displayName);
     setBio(user.bio);
     setAvatarUrl(user.avatarUrl);
+    setVerifiedHere(false);
     setInitialised(user.id);
   }
+  const verified = Boolean(user?.emailVerified) || verifiedHere;
 
   const save = useMutation({
     mutationFn: () =>
@@ -728,7 +757,20 @@ function EditUserDialog({
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
+              {verified ? (
+                <FieldDescription>邮箱已验证。</FieldDescription>
+              ) : null}
             </Field>
+
+            {user && !verified ? (
+              <EmailVerification
+                user={user}
+                onVerified={() => {
+                  setVerifiedHere(true);
+                  onDone();
+                }}
+              />
+            ) : null}
 
             <Field>
               <FieldLabel htmlFor="edit-display">显示名</FieldLabel>
@@ -772,6 +814,108 @@ function EditUserDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * 邮箱未验证时的处置区。未验证的账号不能登录，站长能做两件事：
+ * 再发一封验证信让他自己点开，或者确认过邮箱属于他之后直接放行。
+ * 发不了信的原因（没配 SMTP、没配站点地址）由服务端给出，按钮旁边原样写明。
+ */
+function EmailVerification({
+  user,
+  onVerified,
+}: {
+  user: User;
+  onVerified: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  const mailStatus = useQuery({
+    queryKey: ["verification-mail"],
+    queryFn: async () => {
+      const { data, response } = await api.GET(
+        "/api/v1/console/account/verification-mail",
+      );
+      if (!response.ok) {
+        throw new Error(`查询发信条件失败（HTTP ${response.status}）`);
+      }
+      return data;
+    },
+  });
+
+  const resend = useMutation({
+    mutationFn: () =>
+      runMutation(
+        () =>
+          api.POST("/api/v1/console/users/{id}/verification-mail", {
+            params: { path: { id: user.id } },
+          }),
+        { success: `验证邮件已发往 ${user.email}` },
+      ),
+  });
+
+  const markVerified = useMutation({
+    mutationFn: () =>
+      runMutation(
+        () =>
+          api.PUT("/api/v1/console/users/{id}/email-verified", {
+            params: { path: { id: user.id } },
+          }),
+        { success: "已标记为已验证", invalidate: ["users"] },
+      ),
+    onSuccess: onVerified,
+  });
+
+  const blocked =
+    mailStatus.data && !mailStatus.data.available ? mailStatus.data.reason : "";
+
+  return (
+    <Alert tone="warn" title="邮箱还没有验证，这个账号现在不能登录">
+      <p>
+        可以再发一封验证邮件让他点开链接；如果你已经确认这个邮箱属于他，也可以直接标记为已验证。
+      </p>
+      {blocked ? <p className="mt-1">{blocked}</p> : null}
+      <div className="mt-2.5 flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => resend.mutate()}
+          loading={resend.isPending}
+          disabled={Boolean(blocked) || mailStatus.isLoading}
+        >
+          <Mail aria-hidden="true" />
+          重发验证邮件
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setConfirming(true)}
+        >
+          <MailCheck aria-hidden="true" />
+          标记为已验证
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        destructive={false}
+        title={`把 ${user.email} 标记为已验证？`}
+        consequence={
+          <p>
+            标记之后他就能登录了。只在你确认过这个邮箱确实属于他时这样做，
+            否则等于让一个没人收信的邮箱拥有账号。
+          </p>
+        }
+        confirmLabel="标记为已验证"
+        pending={markVerified.isPending}
+        onConfirm={async () => {
+          await markVerified.mutateAsync().catch(() => {});
+          setConfirming(false);
+        }}
+      />
+    </Alert>
   );
 }
 

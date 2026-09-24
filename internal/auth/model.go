@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"context"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -21,8 +22,10 @@ type User struct {
 	//
 	// json:"-" 而不是导出这个时间值：管理接口直接序列化 User，
 	// 而「哪一秒验证的」除了拼出一条精确到秒的账号活动轨迹之外没有任何用处。
-	// Console 需要的是「这个号能不能登录」，那是 userView.EmailVerified 那个布尔值的事。
+	// Console 需要的是「这个号能不能登录」，那是下面 Verified 那个布尔值的事。
 	EmailVerifiedAt *time.Time `bun:"email_verified_at" json:"-"`
+	// Verified 由 EmailVerifiedAt 推出，扫描每一行后填充（见 AfterScanRow），不是数据库列。
+	Verified bool `bun:"-" json:"emailVerified"`
 	// PasswordHash 绝不出现在 JSON 中：json:"-" 是防止口令哈希经 API 泄漏的第一道防线。
 	PasswordHash string `bun:"password_hash,notnull" json:"-"`
 	DisplayName  string `bun:"display_name"          json:"displayName"`
@@ -52,6 +55,15 @@ func (u *User) Name() string {
 //
 // 判定写在这里而不是散落各处：登录闸门、Console 视图与账户页读的必须是同一个判据。
 func (u *User) EmailVerified() bool { return u != nil && u.EmailVerifiedAt != nil }
+
+var _ bun.AfterScanRowHook = (*User)(nil)
+
+// AfterScanRow 实现 bun.AfterScanRowHook：每读出一行就同步 Verified，
+// 接口序列化 User 时这个字段因此永远与数据库一致。
+func (u *User) AfterScanRow(context.Context) error {
+	u.Verified = u.EmailVerifiedAt != nil
+	return nil
+}
 
 // RoleNames 返回用户的角色名列表。
 func (u *User) RoleNames() []string {

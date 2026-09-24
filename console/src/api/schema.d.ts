@@ -4,6 +4,26 @@
  */
 
 export interface paths {
+    "/api/v1/console/account/verification-mail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查询此刻能否发送验证邮件
+         * @description 后台据此决定「重发验证邮件」是否可用，不可用时给出原因。
+         */
+        get: operations["account-verification-mail-status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/auth/change-password": {
         parameters: {
             query?: never;
@@ -1426,7 +1446,7 @@ export interface paths {
         };
         /**
          * 分页列出用户
-         * @description 按创建时间倒序，可按角色、启用状态与关键词筛选。响应不含口令哈希。
+         * @description 按创建时间倒序，可按角色、启用状态、邮箱验证状态与关键词筛选。响应不含口令哈希。
          */
         get: operations["user-page"];
         put?: never;
@@ -1461,6 +1481,26 @@ export interface paths {
          * @description 不能删除自己，也不能删除最后一名管理员。用户发布过的内容因外键约束会阻止删除。
          */
         delete: operations["user-delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/users/{id}/email-verified": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 把邮箱标记为已验证
+         * @description 站长确认过这个邮箱、而对方收不到验证信时手动放行。已验证的账号保持原验证时间不变。
+         */
+        put: operations["user-mark-email-verified"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1520,6 +1560,26 @@ export interface paths {
          */
         put: operations["user-set-status"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/users/{id}/verification-mail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 重发验证邮件
+         * @description 给未验证邮箱的账号重新签发验证链接并发信。同一账号每小时最多 5 次。
+         */
+        post: operations["user-resend-verification"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3268,6 +3328,7 @@ export interface components {
             disabled: boolean;
             displayName: string;
             email: string;
+            emailVerified: boolean;
             /** Format: int64 */
             id: number;
             /** Format: date-time */
@@ -3287,6 +3348,10 @@ export interface components {
             roleLabels: string[] | null;
             roles: string[] | null;
             username: string;
+        };
+        VerificationMailStatusOutputBody: {
+            available: boolean;
+            reason: string;
         };
         View: {
             active: boolean;
@@ -3314,6 +3379,35 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    "account-verification-mail-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerificationMailStatusOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     "auth-change-password": {
         parameters: {
             query?: never;
@@ -8516,6 +8610,8 @@ export interface operations {
                 role?: string;
                 /** @description 按启用状态筛选 */
                 status?: "enabled" | "disabled";
+                /** @description 按邮箱是否已验证筛选 */
+                email?: "verified" | "unverified";
                 /** @description 按用户名、邮箱或显示名模糊筛选 */
                 q?: string;
             };
@@ -8781,6 +8877,55 @@ export interface operations {
             };
         };
     };
+    "user-mark-email-verified": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     "user-reset-password": {
         parameters: {
             query?: never;
@@ -8967,6 +9112,80 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "user-resend-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

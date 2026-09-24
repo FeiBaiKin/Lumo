@@ -3794,6 +3794,9 @@
           "email": {
             "type": "string"
           },
+          "emailVerified": {
+            "type": "boolean"
+          },
           "id": {
             "format": "int64",
             "type": "integer"
@@ -3823,6 +3826,7 @@
           "id",
           "username",
           "email",
+          "emailVerified",
           "displayName",
           "avatarUrl",
           "bio",
@@ -3883,6 +3887,22 @@
           "roles",
           "roleLabels",
           "emailVerified"
+        ],
+        "type": "object"
+      },
+      "VerificationMailStatusOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "reason"
         ],
         "type": "object"
       },
@@ -3994,6 +4014,46 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/console/account/verification-mail": {
+      "get": {
+        "description": "后台据此决定「重发验证邮件」是否可用，不可用时给出原因。",
+        "operationId": "account-verification-mail-status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerificationMailStatusOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询此刻能否发送验证邮件",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/v1/console/auth/change-password": {
       "post": {
         "description": "校验原密码后设置新密码；成功后该用户全部会话与令牌立即失效，需重新登录。",
@@ -11563,7 +11623,7 @@
     },
     "/api/v1/console/users": {
       "get": {
-        "description": "按创建时间倒序，可按角色、启用状态与关键词筛选。响应不含口令哈希。",
+        "description": "按创建时间倒序，可按角色、启用状态、邮箱验证状态与关键词筛选。响应不含口令哈希。",
         "operationId": "user-page",
         "parameters": [
           {
@@ -11614,6 +11674,20 @@
               "enum": [
                 "enabled",
                 "disabled"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "按邮箱是否已验证筛选",
+            "explode": false,
+            "in": "query",
+            "name": "email",
+            "schema": {
+              "description": "按邮箱是否已验证筛选",
+              "enum": [
+                "verified",
+                "unverified"
               ],
               "type": "string"
             }
@@ -11988,6 +12062,78 @@
         ]
       }
     },
+    "/api/v1/console/users/{id}/email-verified": {
+      "put": {
+        "description": "站长确认过这个邮箱、而对方收不到验证信时手动放行。已验证的账号保持原验证时间不变。",
+        "operationId": "user-mark-email-verified",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "把邮箱标记为已验证",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/v1/console/users/{id}/password": {
       "put": {
         "description": "设置新口令并清除该用户全部会话与令牌；响应不回显口令。",
@@ -12269,6 +12415,101 @@
           }
         ],
         "summary": "启用或停用用户",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/console/users/{id}/verification-mail": {
+      "post": {
+        "description": "给未验证邮箱的账号重新签发验证链接并发信。同一账号每小时最多 5 次。",
+        "operationId": "user-resend-verification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "重发验证邮件",
         "tags": [
           "users"
         ]

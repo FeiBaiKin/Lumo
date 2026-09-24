@@ -57,5 +57,10 @@ func registerAPI(c *auth.Core, planes *api.Planes, application *app.App, install
 		install.NewHandler(installer, logger).Register(planes.API())
 	}
 
+	// account 模块经此取用**同一批**认证实例（见 auth.Core 的说明）。放在这里而不是 serve 里：
+	// openapi 命令也走本函数，少了这一行 account 的后台接口就不会进规范。
+	// migrate 命令不走本函数，account 取不到 core 时自行退化为「只装配迁移与设置声明」。
+	application.Provide(auth.CoreKey, c)
+
 	return application.Register(modules()...)
 }

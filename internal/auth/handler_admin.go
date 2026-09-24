@@ -65,7 +65,7 @@ func (h *AdminHandler) Register(console huma.API) {
 		Method:      http.MethodGet,
 		Path:        pathUsers,
 		Summary:     "分页列出用户",
-		Description: "按创建时间倒序，可按角色、启用状态与关键词筛选。响应不含口令哈希。",
+		Description: "按创建时间倒序，可按角色、启用状态、邮箱验证状态与关键词筛选。响应不含口令哈希。",
 		Tags:        tagUsers,
 		Middlewares: users,
 	}, h.pageUsers)
@@ -218,6 +218,7 @@ type userPageInput struct {
 	api.PageParams
 	Role   string `query:"role" maxLength:"64" doc:"按角色名筛选"`
 	Status string `query:"status" enum:"enabled,disabled" doc:"按启用状态筛选"`
+	Email  string `query:"email" enum:"verified,unverified" doc:"按邮箱是否已验证筛选"`
 	Q      string `query:"q" maxLength:"200" doc:"按用户名、邮箱或显示名模糊筛选"`
 }
 
@@ -338,7 +339,7 @@ type permissionListOutput struct {
 
 func (h *AdminHandler) pageUsers(ctx context.Context, in *userPageInput) (*userPageOutput, error) {
 	items, total, err := h.store.PageUsers(ctx, UserFilter{
-		Role: in.Role, Status: in.Status, Q: in.Q,
+		Role: in.Role, Status: in.Status, Q: in.Q, Email: in.Email,
 	}, in.PageParams)
 	if err != nil {
 		return nil, err

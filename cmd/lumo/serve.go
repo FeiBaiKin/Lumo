@@ -16,7 +16,6 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/account"
 	"github.com/FeiBaiKin/lumo/internal/api"
 	"github.com/FeiBaiKin/lumo/internal/app"
-	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/config"
 	"github.com/FeiBaiKin/lumo/internal/console"
 	"github.com/FeiBaiKin/lumo/internal/database"
@@ -193,11 +192,6 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) (func() erro
 		Logger: logger,
 		Router: planes,
 	})
-	// account 模块经此取用**同一批**认证实例（见 auth.Core 的说明）。
-	// 这一行只在 serve 里：migrate 命令也走同一条注册链，但它不需要认证栈，
-	// 而 account 在取不到 core 时会自行退化为「只装配迁移与设置声明」。
-	application.Provide(auth.CoreKey, core)
-
 	// 正常模式下安装向导已经关闭，但仍要注册那组端点：一是规范里得有它们
 	// （Console 的类型从规范生成），二是给「已安装」一个明确的 409 而不是 404。
 	installer := install.New(install.Options{

@@ -129,6 +129,7 @@ func (s *Store) CreateUser(ctx context.Context, params *CreateUserParams) (*User
 		PasswordHash:    hash,
 		DisplayName:     strings.TrimSpace(params.DisplayName),
 		EmailVerifiedAt: verifiedAt,
+		Verified:        verifiedAt != nil,
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
