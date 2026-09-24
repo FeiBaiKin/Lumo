@@ -5,10 +5,9 @@ name: Verify
 #
 # 触发方式只有 workflow_call：它不是一个入口，入口是 ci.yml 与 release.yml。
 #
-# 仓库目前没有测试用例（2026-09-15 清空），所以这里不设测试作业。加回时：
-# Go 集成测试要一个 PostgreSQL 服务容器、库名含 test，经 LUMO_TEST_DSN 传入；
-# -race 依赖 cgo，须在该作业里覆盖 CGO_ENABLED=1。Console 的测试依赖与 test 脚本也已删除，
-# 要重新装上测试框架再接进来。
+# Go 测试分两类：不连库的单元测试，和连 PostgreSQL 服务容器的集成测试（每个测试在
+# 自己的临时 schema 里跑，库名必须含 test，经 LUMO_TEST_DSN 传入）。
+# 暂不开 -race：它依赖 cgo，而当年卡住测试作业的 goose 竞态还没有在这套测试上重新验证过。
 on:
   workflow_call:
 
@@ -77,6 +76,36 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.2
+
+  test:
+    name: Go 测试
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: lumo
+          POSTGRES_PASSWORD: lumo
+          POSTGRES_DB: lumo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lumo -d lumo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      LUMO_TEST_DSN: postgres://lumo:lumo@127.0.0.1:5432/lumo_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 单元与集成测试
+        run: go test -tags nodynamic -count=1 ./...
 
   build:
     name: 构建（含嵌入 Console）

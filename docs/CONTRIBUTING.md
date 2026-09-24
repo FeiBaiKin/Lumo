@@ -4,12 +4,11 @@
 
 ## 先说三件事
 
-1. **项目仍在开发中**，尚未正式发版。接口、数据结构与模块边界都还可能变动。
+1. **项目还在 0.x 阶段**。接口、数据结构与模块边界都还可能变动。
 2. **动手前先开 Issue**。小修小补（错别字、明显 bug）直接提 PR 就好；
    涉及新功能、接口变更或架构调整的，请先开 Issue 对齐方向，避免白做。
-3. **仓库当前没有自动化测试用例**。原有用例已于 2026-09-15 整体清空，
-   Taskfile 与 CI 里都没有测试任务，CI 只做 lint、类型检查与构建。CI 通过并不能证明你的改动是对的——
-   请自行在本地把受影响的页面与接口走一遍。
+3. **测试只覆盖安全边界与关键流程**，大部分页面与接口没有用例。CI 通过说明这些关键路径没坏，
+   不说明你的改动是对的——请自行在本地把受影响的页面与接口走一遍。
 
 ## 环境
 
@@ -58,7 +57,8 @@ task all
 | `task all` | 全量构建（前端 + 后端），发布前用这个 |
 | `task build` | 只构建后端二进制 |
 | `task run` | 本地运行后端 |
-| `task check` | **提交前自检**：fmt + vet + golangci-lint |
+| `task test` | Go 测试；集成测试需 `LUMO_TEST_DSN`（库名须含 test，见下） |
+| `task check` | **提交前自检**：fmt + vet + golangci-lint + 测试 |
 | `task console:dev` | Console 开发服务器（HMR） |
 | `task console:build` | 构建 Console 到 `internal/console/dist` |
 | `task console:lint` | Console 检查：Biome + tsc |
@@ -71,6 +71,16 @@ task check && task console:lint
 ```
 
 两条都要是绿的。CI 跑的是同一套检查（见 [.github/workflows/verify.yml](.github/workflows/verify.yml)）。
+
+集成测试要一个单独的测试库，库名必须含 `test`，不要指向开发库：
+
+```bash
+createdb lumo_test
+export LUMO_TEST_DSN="postgres://user:password@127.0.0.1:5432/lumo_test?sslmode=disable"
+task test
+```
+
+每个测试在自己的临时 schema 里跑，结束即删，不会在库里留下东西。
 
 ## 代码约定
 

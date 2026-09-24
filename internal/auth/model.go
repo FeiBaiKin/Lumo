@@ -162,7 +162,7 @@ type AccessToken struct {
 	TokenHint string `bun:"token_hint" json:"tokenHint"`
 	UserID    int64  `bun:"user_id,notnull" json:"userId"`
 	Name      string `bun:"name,notnull"    json:"name"`
-	// Scopes 为空表示继承用户的全部权限。
+	// Scopes 为空表示没有任何权限；签发时省略 scope 会展开成调用者当时的全部权限再落库。
 	Scopes     []perm.Permission `bun:"scopes,type:jsonb" json:"scopes"`
 	ExpiresAt  *time.Time        `bun:"expires_at"        json:"expiresAt,omitempty"`
 	LastUsedAt *time.Time        `bun:"last_used_at"      json:"lastUsedAt,omitempty"`

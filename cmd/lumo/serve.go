@@ -158,6 +158,63 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) (func() erro
 	logger.Info("数据库已连接", slog.String("dsn", cfg.RedactedDSN()))
 	db.LogInfo(ctx, logger)
 
+	s, err := assembleSite(ctx, cfg, db, dataDir, info, logger)
+	if err != nil {
+		return nil, err
+	}
+	root, application, core := s.root, s.application, s.core
+
+	// 升级模块拿到「请求停机」的入口：它装完新版本后调它，停机走完由
+	// runServe 接着把新版本拉起来。
+	if updates := update.From(application); updates != nil {
+		updates.Service().OnShutdownRequest(requestShutdown)
+	}
+
+	// 停机顺序：srv.Run 收到信号后先停止接收新请求并排空 HTTP（最多
+	// ShutdownTimeout），返回后才执行本 defer 的模块关闭；邮件队列等模块
+	// 到这里才停止入队并做限时排空。deploy/docker-compose.yml 的
+	// stop_grace_period 按「HTTP 排空 + 模块清理」的总预算取值。
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
+		defer cancel()
+		if err := application.Close(closeCtx); err != nil {
+			logger.Error("关闭模块失败", slog.Any("error", err))
+		}
+	}()
+
+	// 后台定期清理过期会话与限流计数。
+	go core.Service.StartCleanup(ctx, db.DB, time.Hour)
+
+	registerHealth(root, db, &info, readinessProbeTimeout)
+	logger.Info("API 规范与文档已就绪",
+		slog.String("openapi", api.OpenAPIPath+".json"),
+		slog.String("docs", api.DocsPath))
+
+	srv := server.New(root, &cfg.Server, logger)
+	if err := srv.Run(ctx); err != nil {
+		return nil, err
+	}
+	logger.Info("已退出")
+
+	if updates := update.From(application); updates != nil && updates.Service().RelaunchPending() {
+		return updates.Service().Relaunch, nil
+	}
+	return nil, nil
+}
+
+// assembledSite 是装配完毕、可以对外服务的整站。
+type assembledSite struct {
+	root        chi.Router
+	application *app.App
+	core        *coreStack
+}
+
+// assembleSite 装配整站：认证栈、三平面与全部模块，跑迁移与播种，启动模块，最后挂上访客前台。
+//
+// serve 与集成测试共用这一条路径，测试验证的因此就是线上跑的那一套装配。
+// db 与 ctx 归调用方：ctx 取消时模块的后台任务退出，模块关闭由调用方经 application.Close 完成。
+func assembleSite(ctx context.Context, cfg config.Config, db *database.DB, dataDir string,
+	info version.Info, logger *slog.Logger) (*assembledSite, error) {
 	// 认证栈。构造不触库，可以在迁移之前完成。
 	core := newCoreStack(db, cfg.Server.SecureCookies, logger)
 
@@ -206,12 +263,6 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) (func() erro
 		return nil, regErr
 	}
 
-	// 升级模块拿到「请求停机」的入口：它装完新版本后调它，停机走完由
-	// runServe 接着把新版本拉起来。
-	if updates := update.From(application); updates != nil {
-		updates.Service().OnShutdownRequest(requestShutdown)
-	}
-
 	if cfg.Database.AutoMigrate {
 		if upErr := runMigrations(ctx, db, migrationSources(application), cfg.Database, logger); upErr != nil {
 			return nil, upErr
@@ -255,36 +306,8 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) (func() erro
 		themes.MountFrontend(root, core.Authenticator.Optional)
 		logger.Info("访客前台已挂载", slog.String("theme", themes.Registry().ActiveName()))
 	}
-	// 停机顺序：srv.Run 收到信号后先停止接收新请求并排空 HTTP（最多
-	// ShutdownTimeout），返回后才执行本 defer 的模块关闭；邮件队列等模块
-	// 到这里才停止入队并做限时排空。deploy/docker-compose.yml 的
-	// stop_grace_period 按「HTTP 排空 + 模块清理」的总预算取值。
-	defer func() {
-		closeCtx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
-		defer cancel()
-		if err := application.Close(closeCtx); err != nil {
-			logger.Error("关闭模块失败", slog.Any("error", err))
-		}
-	}()
 
-	// 后台定期清理过期会话与限流计数。
-	go core.Service.StartCleanup(ctx, db.DB, time.Hour)
-
-	registerHealth(root, db, &info, readinessProbeTimeout)
-	logger.Info("API 规范与文档已就绪",
-		slog.String("openapi", api.OpenAPIPath+".json"),
-		slog.String("docs", api.DocsPath))
-
-	srv := server.New(root, &cfg.Server, logger)
-	if err := srv.Run(ctx); err != nil {
-		return nil, err
-	}
-	logger.Info("已退出")
-
-	if updates := update.From(application); updates != nil && updates.Service().RelaunchPending() {
-		return updates.Service().Relaunch, nil
-	}
-	return nil, nil
+	return &assembledSite{root: root, application: application, core: core}, nil
 }
 
 // readinessProbeTimeout 是 /readyz 数据库探测的独立期限（审查建议 2–3 秒，取中值）。

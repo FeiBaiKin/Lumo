@@ -56,6 +56,11 @@ tasks:
     cmds:
       - golangci-lint run
 
+  test:
+    desc: 运行 Go 测试（集成测试需设 LUMO_TEST_DSN，指向库名含 test 的库；没设时跳过）
+    cmds:
+      - go test -tags {{.BUILD_TAGS}} -count=1 ./...
+
   build:
     desc: 构建后端二进制（不含前端，前端请先跑 console:build）
     cmds:
@@ -131,11 +136,12 @@ tasks:
       - task: build
 
   check:
-    desc: 提交前自检：格式化 + vet + lint
+    desc: 提交前自检：格式化 + vet + lint + 测试
     cmds:
       - task: fmt
       - task: vet
       - task: lint
+      - task: test
 
   clean:
     desc: 清理构建产物
