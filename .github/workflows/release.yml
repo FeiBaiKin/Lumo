@@ -30,8 +30,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # 发布门禁：与手动 CI 调用同一个可复用工作流，因此「发布前验证」不可能比
-  # 「手动验证」更宽松。任一作业失败，release 作业不会开始。
+  # 发布门禁：与 CI 调用同一个可复用工作流，因此「发布前验证」不可能比
+  # 「日常验证」更宽松。任一作业失败，release 作业不会开始。
   verify:
     name: 发布前验证
     uses: ./.github/workflows/verify.yml
