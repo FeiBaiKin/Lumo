@@ -273,8 +273,8 @@ func runSite(cfg config.Config, logger *slog.Logger, debugSQL bool) (func() erro
 		}
 	}()
 
-	// 后台定期清理过期会话。
-	go core.Service.StartSessionCleanup(ctx, time.Hour)
+	// 后台定期清理过期会话与限流计数。
+	go core.Service.StartCleanup(ctx, db.DB, time.Hour)
 
 	registerHealth(root, db, &info, readinessProbeTimeout)
 	logger.Info("API 规范与文档已就绪",

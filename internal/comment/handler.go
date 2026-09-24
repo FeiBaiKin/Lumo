@@ -383,8 +383,7 @@ func (h *Handler) publicCreate(ctx context.Context, in *createInput) (*createOut
 		}
 	}
 
-	status := h.judge(ctx, cfg, &in.Body, content, post)
-
+	ip := httpx.ClientIPFromContext(ctx)
 	c := &Comment{
 		PostID:      post.ID,
 		ParentID:    in.Body.ParentID,
@@ -394,13 +393,17 @@ func (h *Handler) publicCreate(ctx context.Context, in *createInput) (*createOut
 		AuthorURL:   author.url,
 		Content:     content,
 		ContentHTML: Render(content),
-		Status:      status,
-		IP:          httpx.ClientIPFromContext(ctx),
+		IP:          ip,
 		UserAgent:   userAgent(ctx),
 	}
-	if err := h.store.Create(ctx, c); err != nil {
+	err = h.store.SerializeByIP(ctx, ip, func(ctx context.Context, tx *Store) error {
+		c.Status = h.judge(ctx, tx, cfg, &in.Body, content, post)
+		return tx.Create(ctx, c)
+	})
+	if err != nil {
 		return nil, mapError(err)
 	}
+	status := c.Status
 
 	if h.notify != nil {
 		h.notify.CommentCreated(ctx, &NotifyEvent{
@@ -473,9 +476,9 @@ func (h *Handler) settings(ctx context.Context) Settings {
 }
 
 // judge 决定新评论的状态。
-func (h *Handler) judge(ctx context.Context, cfg Settings, body *createBody, content string, post *PostRef) Status {
+func (h *Handler) judge(ctx context.Context, store *Store, cfg Settings, body *createBody, content string, post *PostRef) Status {
 	var last time.Time
-	if at, err := h.store.LastByIP(ctx, httpx.ClientIPFromContext(ctx)); err == nil {
+	if at, err := store.LastByIP(ctx, httpx.ClientIPFromContext(ctx)); err == nil {
 		last = at
 	}
 	// 查不到最近记录不该让评论发不出去：err 非 nil 时 last 保持零值，

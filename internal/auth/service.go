@@ -7,8 +7,12 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/uptrace/bun"
+
 	"github.com/FeiBaiKin/lumo/internal/auth/password"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/database"
+	"github.com/FeiBaiKin/lumo/internal/ratelimit"
 )
 
 // ErrInvalidCredentials 表示登录凭据错误。
@@ -28,23 +32,26 @@ type Service struct {
 	sessions *SessionStore
 	tokens   *TokenStore
 	logger   *slog.Logger
-	// limiter 限制登录失败频率；为 nil 时不限流（仅供测试）。
+	// limiter 限制登录失败频率；为 nil 时不限流（管理命令不走登录）。
 	limiter *LoginLimiter
+	// counter 是限流计数所在的表，由周期清理顺带回收过期行；可为 nil。
+	counter *ratelimit.Counter
 }
 
-// NewService 构造 Service。
-func NewService(users *Store, sessions *SessionStore, tokens *TokenStore, logger *slog.Logger) *Service {
-	return &Service{
+// NewService 构造 Service。counter 为 nil 时不做登录限流。
+func NewService(users *Store, sessions *SessionStore, tokens *TokenStore, counter *ratelimit.Counter, logger *slog.Logger) *Service {
+	s := &Service{
 		users:    users,
 		sessions: sessions,
 		tokens:   tokens,
 		logger:   logger,
-		limiter:  NewLoginLimiter(),
+		counter:  counter,
 	}
+	if counter != nil {
+		s.limiter = NewLoginLimiter(counter, logger)
+	}
+	return s
 }
-
-// SetLoginLimiter 替换限流器，供测试注入可控制时间的实例。
-func (s *Service) SetLoginLimiter(limiter *LoginLimiter) { s.limiter = limiter }
 
 // dummyHash 用于在账号不存在时仍执行一次哈希校验。
 //
@@ -75,7 +82,7 @@ type LoginParams struct {
 // **任何数据库访问之前**判定：被限流的请求不该再去花一次 64 MiB 的 argon2 开销，
 // 否则限流本身就成了一条放大路径。
 func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession, *User, error) {
-	if err := s.limiter.Allow(params.Login, params.IP); err != nil {
+	if err := s.limiter.Allow(ctx, params.Login, params.IP); err != nil {
 		return nil, nil, err
 	}
 
@@ -86,7 +93,7 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession
 			if dummyHash != "" {
 				_ = password.Verify(params.Password, dummyHash)
 			}
-			s.limiter.RecordFailure(params.Login, params.IP)
+			s.limiter.RecordFailure(ctx, params.Login, params.IP)
 			return nil, nil, ErrInvalidCredentials
 		}
 		return nil, nil, err
@@ -94,7 +101,7 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession
 
 	if verifyErr := password.Verify(params.Password, user.PasswordHash); verifyErr != nil {
 		if errors.Is(verifyErr, password.ErrMismatch) || errors.Is(verifyErr, password.ErrInvalidHash) {
-			s.limiter.RecordFailure(params.Login, params.IP)
+			s.limiter.RecordFailure(ctx, params.Login, params.IP)
 			return nil, nil, ErrInvalidCredentials
 		}
 		if errors.Is(verifyErr, password.ErrBusy) {
@@ -122,7 +129,7 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession
 
 	// 成功登录清空账号维度的失败计数，避免用户改对密码后仍被自己之前的
 	// 手误锁在门外。
-	s.limiter.ResetAccount(params.Login)
+	s.limiter.ResetAccount(ctx, params.Login)
 
 	// 明文在手，是唯一能升级哈希强度的时机。
 	if password.NeedsRehash(user.PasswordHash) {
@@ -248,8 +255,8 @@ func (s *Service) Bootstrap(ctx context.Context, params *CreateUserParams) (*Use
 	return user, nil
 }
 
-// CleanupExpiredSessions 清理过期会话，供定期任务调用。
-func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
+// cleanup 清理过期会话与过期限流计数。
+func (s *Service) cleanup(ctx context.Context) error {
 	removed, err := s.sessions.DeleteExpired(ctx)
 	if err != nil {
 		return err
@@ -257,11 +264,19 @@ func (s *Service) CleanupExpiredSessions(ctx context.Context) error {
 	if removed > 0 && s.logger != nil {
 		s.logger.Info("已清理过期会话", slog.Int64("count", removed))
 	}
+	if s.counter == nil {
+		return nil
+	}
+	if _, err := s.counter.Sweep(ctx); err != nil {
+		return err
+	}
 	return nil
 }
 
-// StartSessionCleanup 启动后台会话清理循环，ctx 取消时退出。
-func (s *Service) StartSessionCleanup(ctx context.Context, interval time.Duration) {
+// StartCleanup 启动后台周期清理，ctx 取消时退出。
+//
+// 多实例部署时每个实例的定时器都会触发，经 database.ClaimRun 认领后每轮只有一个实例真正执行。
+func (s *Service) StartCleanup(ctx context.Context, db bun.IDB, interval time.Duration) {
 	if interval <= 0 {
 		interval = time.Hour
 	}
@@ -273,7 +288,11 @@ func (s *Service) StartSessionCleanup(ctx context.Context, interval time.Duratio
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if err := s.CleanupExpiredSessions(ctx); err != nil && s.logger != nil {
+			claimed, err := database.ClaimRun(ctx, db, "auth.cleanup", interval)
+			if err == nil && claimed {
+				err = s.cleanup(ctx)
+			}
+			if err != nil && s.logger != nil {
 				s.logger.Warn("清理过期会话失败", slog.Any("error", err))
 			}
 		}

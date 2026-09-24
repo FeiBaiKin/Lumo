@@ -29,11 +29,28 @@ var (
 // 直接用 bun 读 posts 表而不经 content 模块：两者共用同一张表，
 // 而模块之间只允许经 App 交互，不值得为一次标题查询引入跨模块依赖。
 type Store struct {
-	db *bun.DB
+	db bun.IDB
 }
 
 // NewStore 构造 Store。
-func NewStore(db *bun.DB) *Store { return &Store{db: db} }
+func NewStore(db bun.IDB) *Store { return &Store{db: db} }
+
+// SerializeByIP 在一个事务里执行 fn，同一来源 IP 的调用排队进行。
+//
+// 频率判定是「先查这个 IP 的上一条，再写这一条」：同一 IP 几乎同时提交的两条评论
+// 会各自查到「没有上一条」而双双放行。按 IP 取事务级 advisory lock，
+// 后一条要等前一条提交后才去查，多实例下同样成立。
+func (s *Store) SerializeByIP(ctx context.Context, ip string, fn func(ctx context.Context, tx *Store) error) error {
+	if ip == "" {
+		return fn(ctx, s)
+	}
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewRaw("SELECT pg_advisory_xact_lock(hashtextextended(?, 0))", "lumo.comment.ip:"+ip).Exec(ctx); err != nil {
+			return fmt.Errorf("锁定评论来源: %w", err)
+		}
+		return fn(ctx, &Store{db: tx})
+	})
+}
 
 // Filter 是后台列表的筛选条件。
 type Filter struct {

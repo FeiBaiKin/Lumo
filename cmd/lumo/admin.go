@@ -97,7 +97,7 @@ func openAdminDeps(ctx context.Context, configPath string) (*adminDeps, error) {
 
 	return &adminDeps{
 		users:    users,
-		service:  auth.NewService(users, sessions, tokens, logger),
+		service:  auth.NewService(users, sessions, tokens, nil, logger),
 		db:       db,
 		teardown: func() { _ = db.Close() },
 	}, nil

@@ -354,7 +354,7 @@ func (m *Module) postRegister(w http.ResponseWriter, r *http.Request) {
 		m.renderRegisterFailure(w, r, http.StatusNotFound, errNotice(noticeRegisterOff), nil)
 		return
 	}
-	if !m.limiter.Allow("register:ip:"+clientIP(r), registerPerIPLimit, registerWindow) {
+	if !m.limiter.Allow(r.Context(), "register:ip:"+clientIP(r), registerPerIPLimit, registerWindow) {
 		m.renderRegisterFailure(w, r, http.StatusTooManyRequests, errNotice(noticeTooFrequent), nil)
 		return
 	}
@@ -557,8 +557,8 @@ func (m *Module) postForgotPassword(w http.ResponseWriter, r *http.Request) {
 
 	email := strings.ToLower(strings.TrimSpace(r.PostFormValue("email")))
 	ip := clientIP(r)
-	if !m.limiter.Allow("forgot:email:"+email, forgotPerEmailLimit, forgotWindow) ||
-		!m.limiter.Allow("forgot:ip:"+ip, forgotPerIPLimit, forgotWindow) {
+	if !m.limiter.Allow(r.Context(), "forgot:email:"+email, forgotPerEmailLimit, forgotWindow) ||
+		!m.limiter.Allow(r.Context(), "forgot:ip:"+ip, forgotPerIPLimit, forgotWindow) {
 		m.renderForgotFailure(w, r, http.StatusTooManyRequests, errNotice(noticeTooFrequent))
 		return
 	}
@@ -643,7 +643,7 @@ func (m *Module) postResetPassword(w http.ResponseWriter, r *http.Request) {
 		m.renderResetFailure(w, r, http.StatusBadRequest, errNotice(noticeFormExpired), r.PostFormValue("token"))
 		return
 	}
-	if !m.limiter.Allow("reset:ip:"+clientIP(r), resetPerIPLimit, resetWindow) {
+	if !m.limiter.Allow(r.Context(), "reset:ip:"+clientIP(r), resetPerIPLimit, resetWindow) {
 		m.renderResetFailure(w, r, http.StatusTooManyRequests, errNotice(noticeTooFrequent), r.PostFormValue("token"))
 		return
 	}
@@ -892,7 +892,7 @@ func (m *Module) postAccountProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	user := principal.User
 
-	if !m.limiter.Allow("profile:"+strconv.FormatInt(user.ID, 10), profilePerUserLimit, profileWindow) {
+	if !m.limiter.Allow(r.Context(), "profile:"+strconv.FormatInt(user.ID, 10), profilePerUserLimit, profileWindow) {
 		m.renderAccount(w, r, http.StatusTooManyRequests, theme.NewFormState(), user, errNotice(noticeTooFrequent))
 		return
 	}

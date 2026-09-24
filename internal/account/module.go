@@ -17,11 +17,14 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/uptrace/bun"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
+	"github.com/FeiBaiKin/lumo/internal/database"
 	"github.com/FeiBaiKin/lumo/internal/mail"
 	"github.com/FeiBaiKin/lumo/internal/media"
+	"github.com/FeiBaiKin/lumo/internal/ratelimit"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/theme"
 )
@@ -68,6 +71,8 @@ type Module struct {
 	limiter *Limiter
 	csrf    *CSRF
 	logger  *slog.Logger
+	// db 供周期任务认领执行权。
+	db bun.IDB
 	// renderer 非 nil 表示可以渲染页面，路由才装得上。
 	// migrate 命令走的是同一条注册链但没有认证栈，那时这里是 nil。
 	renderer *theme.Renderer
@@ -104,7 +109,12 @@ func (m *Module) Register(a *app.App) error {
 	if db := a.DB(); db != nil {
 		m.store = NewStore(db.DB)
 		m.tokens = NewTokenStore(db.DB)
-		m.limiter = NewLimiter()
+		limits := ratelimit.New(db.DB)
+		if m.core != nil {
+			limits = m.core.Limits
+		}
+		m.limiter = NewLimiter(limits, m.logger)
+		m.db = db.DB
 		m.csrf = NewCSRF(m.core != nil && m.core.Sessions.Secure)
 	}
 
@@ -230,7 +240,7 @@ func (m *Module) Start(ctx context.Context) error {
 
 // sweepTokens 定期清理过期已久的令牌，ctx 取消即退出。
 //
-// 照 auth.Service.StartSessionCleanup 的写法：循环跑在自己的 goroutine 上，
+// 照 auth.Service.StartCleanup 的写法：循环跑在自己的 goroutine 上，认领到本轮才执行，
 // 出错只记日志不中断——清理失败不该让进程退出。
 func (m *Module) sweepTokens(ctx context.Context) {
 	ticker := time.NewTicker(tokenSweepInterval)
@@ -241,6 +251,14 @@ func (m *Module) sweepTokens(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			claimed, err := database.ClaimRun(ctx, m.db, "account.tokens.sweep", tokenSweepInterval)
+			if err != nil {
+				m.logger.Warn("清理过期账户令牌失败", slog.Any("error", err))
+				continue
+			}
+			if !claimed {
+				continue
+			}
 			removed, err := m.tokens.DeleteExpired(ctx, tokenRetention)
 			if err != nil {
 				m.logger.Warn("清理过期账户令牌失败", slog.Any("error", err))
