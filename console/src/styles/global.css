@@ -301,6 +301,62 @@
     font-size: 0.875em;
   }
 
+  /*
+   * 代码块的节点视图：外框由包裹层承担，顶部一条细栏放语言选择，代码在下面。
+   * 不把按钮浮在代码上：那会压住首行的长代码。
+   */
+  .prose-editor .editor-code-block-wrap {
+    background-color: var(--surface-inset);
+    border: 1px solid var(--line);
+    border-radius: var(--corner-control);
+  }
+  .prose-editor .editor-code-block-tools {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.25em 0.35em 0;
+  }
+  .prose-editor .editor-code-block-wrap pre {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    padding-top: 0.15em;
+  }
+
+  /*
+   * 语法着色，与「墨」前台代码块同一套取舍：关键字用印且加粗，注释苔绿、字符串朱砂、
+   * 数字与类型赭石；函数名与类名只加粗不换色；运算符与标点保持墨色，
+   * 它们密度最高，一上色整段代码就花了。
+   */
+  .prose-editor pre .hljs-comment,
+  .prose-editor pre .hljs-quote,
+  .prose-editor pre .hljs-meta {
+    color: var(--code-comment);
+  }
+  .prose-editor pre .hljs-keyword,
+  .prose-editor pre .hljs-literal,
+  .prose-editor pre .hljs-selector-tag {
+    color: var(--code-keyword);
+    font-weight: 600;
+  }
+  .prose-editor pre .hljs-attr,
+  .prose-editor pre .hljs-attribute,
+  .prose-editor pre .hljs-name {
+    color: var(--code-keyword);
+  }
+  .prose-editor pre .hljs-string,
+  .prose-editor pre .hljs-regexp,
+  .prose-editor pre .hljs-symbol {
+    color: var(--code-string);
+  }
+  .prose-editor pre .hljs-number,
+  .prose-editor pre .hljs-type {
+    color: var(--code-number);
+  }
+  .prose-editor pre .hljs-title,
+  .prose-editor pre .hljs-section {
+    font-weight: 600;
+  }
+
   .prose-editor hr {
     border: 0;
     border-top: 1px solid var(--line);

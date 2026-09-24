@@ -88,6 +88,14 @@
   --color-danger-300: oklch(0.7315 0.1157 23.5); /* #E88A85 */
   --color-danger-dark-soft: oklch(0.31 0.05 25);
 
+  /* 代码着色的三味，与「墨」前台代码块同值：写的时候看到的，就是发表后的样子 */
+  --color-code-comment-light: oklch(0.4948 0.0552 151.5); /* #4A6B52 苔绿 */
+  --color-code-comment-dark: oklch(0.6904 0.0297 150.2); /* #8FA192 */
+  --color-code-string-light: oklch(0.4711 0.1449 31); /* #9C3122 朱砂 */
+  --color-code-string-dark: oklch(0.7442 0.1009 26.6); /* #E5938A */
+  --color-code-number-light: oklch(0.4563 0.0873 60); /* #7A4A1E 赭石 */
+  --color-code-number-dark: oklch(0.7719 0.0841 67.8); /* #D9AB7A */
+
   /*
    * 圆角四档。
    * 控件与卡片 4px 是 Halo 的 rounded-base；浮层 6px 大一档以表达高度；
@@ -205,6 +213,12 @@
   --danger-on: var(--color-neutral-0);
   --neutral-dot: var(--color-neutral-400);
 
+  /* 代码着色：关键字用现成的印，其余三味各一色，运算符与标点保持墨色 */
+  --code-keyword: var(--seal);
+  --code-comment: var(--color-code-comment-light);
+  --code-string: var(--color-code-string-light);
+  --code-number: var(--color-code-number-light);
+
   --focus-ring: var(--seal);
   --scrim: oklch(0.2 0 0 / 0.45);
 
@@ -266,6 +280,10 @@
   --danger-soft: var(--color-danger-dark-soft);
   --danger-on: var(--color-neutral-900);
   --neutral-dot: var(--color-neutral-500);
+
+  --code-comment: var(--color-code-comment-dark);
+  --code-string: var(--color-code-string-dark);
+  --code-number: var(--color-code-number-dark);
 
   --scrim: oklch(0 0 0 / 0.6);
 

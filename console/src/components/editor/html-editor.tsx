@@ -1,3 +1,5 @@
+import { BubbleToolbar } from "@/components/editor/bubble-toolbar";
+import { CodeBlock } from "@/components/editor/code-block";
 import { LinkDialog, type LinkValue } from "@/components/editor/link-dialog";
 import {
   SlashMenu,
@@ -52,8 +54,8 @@ import { createPortal } from "react-dom";
  * 内容不该被编辑器绑架 —— 换编辑器（本页右上角就能换成 Markdown）
  * 或换工具时，存下来的东西任何工具都读得懂。
  *
- * 服务端**不做 HTML 净化**（§3.4，与 Halo / Ghost 同策），信任已认证用户的输入。
- * 这也是保留 iframe 嵌入与自定义 HTML 块能力的前提。
+ * 服务端按权限决定是否净化：持有 content:unsafe_html 的作者保留 iframe 与自定义 HTML，
+ * 其余作者的正文在保存时按允许列表净化（internal/content/sanitize.go）。
  *
  * 工具条可以经 `toolbarContainer` 传送到页面的任意位置（编辑页把它放在
  * 页头之下、正文之上的那条全宽白带里，Halo 的 editor-header 同位）；
@@ -122,12 +124,13 @@ export function HtmlEditor({
     shouldRerenderOnTransaction: true,
     extensions: [
       // StarterKit 已含 bold / italic / strike / code / heading / list /
-      // blockquote / codeBlock / hr / history 等常用节点
+      // blockquote / hr / history 等常用节点
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         link: false, // 用下面的 Link 扩展，它带默认 rel 与校验
-        codeBlock: { HTMLAttributes: { class: "editor-code-block" } },
+        codeBlock: false, // 换成带语言选择与着色的 CodeBlock
       }),
+      CodeBlock,
       Link.configure({
         openOnClick: false,
         autolink: true,
@@ -324,6 +327,8 @@ export function HtmlEditor({
           </button>
         </DragHandle>
       </div>
+
+      <BubbleToolbar editor={editor} onOpenLink={openLink} />
 
       {/* 斜杠菜单：输入 / 唤出，键盘可导航 */}
       <SlashMenu open={slashOpen} onClose={() => setSlashOpen(null)} />
