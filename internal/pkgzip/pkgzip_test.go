@@ -84,6 +84,7 @@ func TestExtractRejectsTraversal(t *testing.T) {
 		"/abs/evil.css",
 		`templates\..\..\evil.css`,
 		"C:/evil.css",
+		"payload.exe:stream.css",
 	} {
 		t.Run(name, func(t *testing.T) {
 			root, err := extractInto(t, buildZip(t, entry{name: name, body: "x"}))

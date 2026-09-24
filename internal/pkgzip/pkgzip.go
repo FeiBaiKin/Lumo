@@ -251,6 +251,11 @@ func safeRelPath(name string, maxDepth int) (string, error) {
 	if strings.Contains(normalized, "\x00") {
 		return "", errors.New("包内路径含非法字符")
 	}
+	// 冒号一律拒绝：Windows 上 C:/x 是盘符，x.exe:y.css 会写成 x.exe 的备用数据流——
+	// 扩展名检查看到的是 .css，落到盘上的却是一个 x.exe。主题与插件的文件名没有理由带冒号。
+	if strings.Contains(normalized, ":") {
+		return "", fmt.Errorf("包内路径不得含冒号（%s）", name)
+	}
 
 	clean := path.Clean(normalized)
 	if clean == "." {
