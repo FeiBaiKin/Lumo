@@ -343,9 +343,7 @@ task all               # 全量构建（Console 前端 + 后端）
 task run -- serve      # 直接运行后端（不构建前端）
 task console:dev       # Console 开发服务器（HMR，代理到 :8080）
 task check             # 提交前自检：格式化 + vet + lint
-task test:integration  # 集成测试（需本机 PostgreSQL；DSN 走 LUMO_TEST_DSN）
 task console:lint      # Biome + tsc --noEmit
-task console:test      # Vitest
 task console:api       # 重新导出 OpenAPI 规范并生成 TS 类型（需 LUMO_DATABASE_DSN）
 ```
 
@@ -354,10 +352,9 @@ Console 技术栈为 Vite 6 + React 19 + TS strict + Tailwind v4 + Radix UI + Ta
 直接 `npm run build` 会绕过清理，构建 Console 请走 Task 任务。
 
 **本仓库当前不含任何自动化测试**：用例、集成测试的整机装配包 `testsupport`、Console 的
-`src/test/setup.ts` 已于 2026-09-15 全部清空。`task test` / `task test:cover` /
-`task console:test` 仍然可用，但只会报「no test files」或 0% 覆盖——留它们是为了将来加回
-用例时不用重新接线，**不要当成质量门槛**。恢复集成测试时注意：原先自动核对库名含 `test`
-的护栏已随用例删除，`LUMO_TEST_DSN` 指向哪个库现在只能自己核对。
+`src/test/setup.ts` 已于 2026-09-15 全部清空，Taskfile 与 CI 里的测试任务也已删除。
+恢复集成测试时注意：原先自动核对库名含 `test` 的护栏已随用例删除，`LUMO_TEST_DSN`
+指向哪个库只能自己核对。
 
 **模块化**：功能模块实现 `app.Module` 及可选能力接口（迁移 / 设置 / 权限 / 钩子 / 路由），
 在 `cmd/lumo/modules.go` 登记——这是核心与模块间**唯一装配点，顺序即依赖顺序**。

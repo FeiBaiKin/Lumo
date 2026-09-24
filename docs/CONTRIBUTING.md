@@ -8,7 +8,7 @@
 2. **动手前先开 Issue**。小修小补（错别字、明显 bug）直接提 PR 就好；
    涉及新功能、接口变更或架构调整的，请先开 Issue 对齐方向，避免白做。
 3. **仓库当前没有自动化测试用例**。原有用例已于 2026-09-15 整体清空，
-   `task test` 现在只是空跑，CI 也只做 lint、类型检查与构建。CI 通过并不能证明你的改动是对的——
+   Taskfile 与 CI 里都没有测试任务，CI 只做 lint、类型检查与构建。CI 通过并不能证明你的改动是对的——
    请自行在本地把受影响的页面与接口走一遍。
 
 ## 环境
@@ -58,7 +58,7 @@ task all
 | `task all` | 全量构建（前端 + 后端），发布前用这个 |
 | `task build` | 只构建后端二进制 |
 | `task run` | 本地运行后端 |
-| `task check` | **提交前自检**：fmt + vet + golangci-lint + test |
+| `task check` | **提交前自检**：fmt + vet + golangci-lint |
 | `task console:dev` | Console 开发服务器（HMR） |
 | `task console:build` | 构建 Console 到 `internal/console/dist` |
 | `task console:lint` | Console 检查：Biome + tsc |
