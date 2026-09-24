@@ -3,10 +3,13 @@ package theme
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	"io/fs"
 	"net/http"
+	"strconv"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -31,6 +34,7 @@ const (
 	pathThemeRestore   = "/themes/{name}/restore"
 	pathThemeSettings  = "/themes/{name}/settings"
 	pathThemeSettingsG = "/themes/{name}/settings/{group}"
+	pathThemeShot      = "/themes/{name}/screenshot"
 )
 
 // Handler 提供主题的 Console 管理接口。
@@ -68,6 +72,17 @@ func (h *Handler) Register(console, public huma.API) {
 		Middlewares: manage,
 		Errors:      []int{http.StatusNotFound},
 	}, h.get)
+
+	huma.Register(console, huma.Operation{
+		OperationID: "themes-screenshot",
+		Method:      http.MethodGet,
+		Path:        pathThemeShot,
+		Summary:     "获取主题截图",
+		Description: "返回主题包根目录的 screenshot.png，供后台主题页展示。主题没有截图时返回 404。",
+		Tags:        tagThemes,
+		Middlewares: manage,
+		Errors:      []int{http.StatusNotFound},
+	}, h.screenshot)
 
 	huma.Register(console, huma.Operation{
 		OperationID:   "themes-install",
@@ -255,6 +270,41 @@ func (h *Handler) get(_ context.Context, in *nameInput) (*viewOutput, error) {
 		return nil, huma.Error404NotFound(ErrNotFound.Error())
 	}
 	return &viewOutput{Body: h.viewOf(loaded)}, nil
+}
+
+// pngSignature 是 PNG 文件的前 8 个字节。
+var pngSignature = []byte("\x89PNG\r\n\x1a\n")
+
+// screenshot 读出主题截图。
+//
+// 截图来自第三方上传的主题包，只认文件头而不信扩展名：不是 PNG 的一律当作没有截图，
+// 响应头固定为 image/png 并带 nosniff，浏览器不会把它当成别的东西执行。
+func (h *Handler) screenshot(_ context.Context, in *nameInput) (*huma.StreamResponse, error) {
+	loaded, ok := h.module.registry.Get(in.Name)
+	if !ok {
+		return nil, huma.Error404NotFound(ErrNotFound.Error())
+	}
+	data, err := fs.ReadFile(loaded.FS, FileScreenshot)
+	if err != nil || !bytes.HasPrefix(data, pngSignature) {
+		return nil, huma.Error404NotFound("这个主题没有截图")
+	}
+	sum := sha256.Sum256(data)
+	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	return &huma.StreamResponse{
+		Body: func(ctx huma.Context) {
+			// 主题随时可能重装或改文件，每次都回源校验，没变时 304。
+			ctx.SetHeader("Cache-Control", "private, no-cache")
+			ctx.SetHeader("ETag", etag)
+			if ctx.Header("If-None-Match") == etag {
+				ctx.SetStatus(http.StatusNotModified)
+				return
+			}
+			ctx.SetHeader("Content-Type", "image/png")
+			ctx.SetHeader("X-Content-Type-Options", "nosniff")
+			ctx.SetHeader("Content-Length", strconv.Itoa(len(data)))
+			_, _ = ctx.BodyWriter().Write(data)
+		},
+	}, nil
 }
 
 // ---------- 安装 ----------

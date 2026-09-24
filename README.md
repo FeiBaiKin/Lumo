@@ -263,7 +263,7 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 ├── settings.yaml       # 设置项声明（可选），与站点设置同一套表单 Schema
 ├── templates/          # layouts/ 与 partials/
 ├── static/             # 静态资源，经 /theme-assets/<主题名>/ 访问
-└── screenshot.png      # 可选
+└── screenshot.png      # 可选，后台主题页的预览图（PNG，建议 16:10）
 ```
 
 **必需模板只有四个**：`index.html`、`post.html`、`page.html`、`404.html`。另有十二个可选模板

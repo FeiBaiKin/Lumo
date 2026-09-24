@@ -44,6 +44,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
   ExternalLink,
+  ImageOff,
   Lock,
   Palette,
   RefreshCw,
@@ -300,7 +301,36 @@ export function ThemesPage() {
   );
 }
 
-/** 详情标签：标题区与动作、元信息、模板齐备情况。 */
+/**
+ * 主题截图：主题包根目录的 screenshot.png，经后台接口读出（与主题页一样要 themes:manage，
+ * 故不走公开的 /theme-assets）。没有截图时占住同样的位置并说明怎么补上。
+ */
+function ThemeScreenshot({ theme }: { theme: ThemeView }) {
+  const [failed, setFailed] = useState(false);
+  const label = theme.label || theme.name;
+
+  if (!theme.hasScreenshot || failed) {
+    return (
+      <div className="flex aspect-[16/10] w-full max-w-xl flex-col items-center justify-center gap-1.5 rounded-control border border-dashed border-line bg-surface-raised px-6 text-center">
+        <ImageOff aria-hidden="true" className="size-5 text-ink-subtle" />
+        <p className="text-sm text-ink">这个主题没有附带截图</p>
+        <p className="text-xs text-ink-muted">
+          在主题包根目录放一张 screenshot.png，就会显示在这里
+        </p>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={`/api/v1/console/themes/${encodeURIComponent(theme.name)}/screenshot?v=${encodeURIComponent(theme.version)}`}
+      alt={`${label} 的首页截图`}
+      onError={() => setFailed(true)}
+      className="aspect-[16/10] w-full max-w-xl rounded-control border border-line object-cover object-top shadow-card"
+    />
+  );
+}
+
+/** 详情标签：标题区与动作、截图、元信息、模板齐备情况。 */
 function ThemeDetail({
   theme,
   onDelete,
@@ -445,6 +475,8 @@ function ThemeDetail({
           )}
         </div>
       </div>
+
+      <ThemeScreenshot key={theme.name} theme={theme} />
 
       {missing.length > 0 ? (
         <Alert tone="warn" title="缺少必需模板，这个主题无法启用">
