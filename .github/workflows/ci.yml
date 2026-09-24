@@ -1,11 +1,20 @@
 name: CI
 
-# 入口工作流：手动触发，随后调用可复用的 verify.yml。
+# 入口工作流：推送、PR 与手动运行都走这里，随后调用可复用的 verify.yml。
 #
 # 作业定义在 verify.yml 里，与 Release 共用同一套——发布前的验证因此不可能
-# 比手动验证更宽松。需要恢复「推送与 PR 自动执行」时，在下面的 on 里加回
-# push / pull_request 即可，作业本身不用动。
+# 比日常验证更宽松。
+#
+# 推送覆盖本仓库的全部分支：直接推 main 与推功能分支一视同仁。标签不在其内——
+# 推 v* 标签时 Release 自己会先跑一遍 verify，这里再跑就是重复。
+#
+# 2026-09-10 起这里曾改为仅手动触发，原因是 Go 测试作业被 goose 全局状态的
+# 数据竞态卡住、从未通过。用例清空后那个原因已不存在；将来加回集成测试时，
+# 须先解决那处竞态，否则 -race 会让每一次推送都红。
 on:
+  push:
+    branches: ["**"]
+  pull_request:
   workflow_dispatch:
 
 # 同一分支的新推送取消尚在运行的旧任务，节省额度。
@@ -18,4 +27,8 @@ permissions:
 
 jobs:
   verify:
+    # PR 只放行 fork 来的那种。同仓库分支开的 PR，它的提交在推送时已经验证过，
+    # 再跑一遍只是把同一套作业重复一次；fork 的推送不会触发本仓库的工作流，
+    # 只能靠 pull_request 接住。
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     uses: ./.github/workflows/verify.yml
