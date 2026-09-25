@@ -1,4 +1,5 @@
 import {
+  FieldErrorsContext,
   type RenderGroup,
   SchemaField,
   SecretSetContext,
@@ -451,7 +452,11 @@ export function SchemaFormFields({
     return <>{empty}</>;
   }
 
-  return <div className={cn("flex flex-col gap-8", className)}>{rendered}</div>;
+  return (
+    <FieldErrorsContext.Provider value={errors}>
+      <div className={cn("flex flex-col gap-8", className)}>{rendered}</div>
+    </FieldErrorsContext.Provider>
+  );
 }
 
 /** 每个字段占一行，行与行之间由父级的分隔线隔开。 */

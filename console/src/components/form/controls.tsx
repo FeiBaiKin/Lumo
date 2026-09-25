@@ -7,6 +7,7 @@ import {
   isVisible,
   labelFor,
   optionsFor,
+  orderedFields,
   widgetFor,
 } from "@/components/form/schema";
 import { MediaPickerDialog } from "@/components/media/media-picker";
@@ -30,6 +31,9 @@ import { Slider } from "@/components/ui/slider";
 import { CheckboxRow, Switch } from "@/components/ui/toggle";
 import { cn } from "@/lib/utils";
 import {
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Eye,
   EyeOff,
   GripVertical,
@@ -44,6 +48,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useId,
   useState,
 } from "react";
 
@@ -120,6 +125,14 @@ function textProps(
  * 要穿过分组渲染器一路传到底，传参的路径比它的意义还长。
  */
 export const SecretSetContext = createContext<readonly string[]>([]);
+
+/**
+ * 当前要显示的字段错误（键为字段路径）。
+ *
+ * 重复条目要知道「我这一条里有没有错」来决定能不能收起；错误表在表单顶层，
+ * 与口令集合一样用 context 递下去，免得穿过分组渲染器逐层传参。
+ */
+export const FieldErrorsContext = createContext<Record<string, string>>({});
 
 /**
  * 口令 / 密钥。
@@ -644,6 +657,10 @@ function ListControl({ path, value, error, disabled, onChange }: ControlProps) {
  * 排序用拖动（与「菜单」页同一套 motion Reorder）：条目数可能十几个，
  * 一组上下小箭头在那种长度下要按很多次；手柄同时是可聚焦的按钮，
  * 聚焦后按 ↑ ↓ 也能排序，键盘用户不掉队。
+ *
+ * 条目默认收起，标题行带一句摘要：十几个小组件全摊开时，一页要滚好几屏才找得到
+ * 想改的那一个。新加的条目自动展开；含校验错误的条目强制展开，否则错误摘要里的
+ * 链接会指向一个藏起来的字段。
  */
 function RepeaterControl({
   path,
@@ -657,7 +674,25 @@ function RepeaterControl({
   const items = Array.isArray(value) ? (value as unknown[]) : [];
   const itemSchema = (schema.items ?? { type: "object" }) as GroupSchema;
   const itemLabel = schema["x-item-label"] ?? "一项";
-  const update = (next: unknown[]) => onChange(next);
+  const errors = useContext(FieldErrorsContext);
+  /*
+   * 每条的展开状态，与条目同序。条目是纯数据、没有稳定标识，
+   * 所以增删移动时这张表跟着同样地动；长度对不上（外部整体换了值）时缺的按收起算。
+   */
+  const [open, setOpen] = useState<boolean[]>([]);
+
+  const hasError = (index: number) => {
+    const prefix = `${path}.${index}.`;
+    return Object.keys(errors).some((key) => key.startsWith(prefix));
+  };
+  const isOpen = (index: number) => (open[index] ?? false) || hasError(index);
+  const allOpen = items.length > 0 && items.every((_, index) => isOpen(index));
+  const flags = () => items.map((_, index) => open[index] ?? false);
+
+  function commit(next: unknown[], nextOpen: boolean[]) {
+    setOpen(nextOpen);
+    onChange(next);
+  }
 
   /** 上下移动一条。拖动之外的入口：键盘操作与拖动失败时的兜底。 */
   function move(from: number, to: number) {
@@ -665,18 +700,47 @@ function RepeaterControl({
       return;
     }
     const next = [...items];
+    const nextOpen = flags();
     const [moved] = next.splice(from, 1);
+    const [movedOpen] = nextOpen.splice(from, 1);
     next.splice(to, 0, moved);
-    update(next);
+    nextOpen.splice(to, 0, movedOpen ?? false);
+    commit(next, nextOpen);
   }
 
   return (
     <div className="flex flex-col gap-3">
+      {items.length > 1 ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setOpen(items.map(() => !allOpen))}
+          className="self-end"
+        >
+          {allOpen ? (
+            <ChevronsDownUp aria-hidden="true" />
+          ) : (
+            <ChevronsUpDown aria-hidden="true" />
+          )}
+          {allOpen ? "全部收起" : "全部展开"}
+        </Button>
+      ) : null}
+
       <Reorder.Group
         axis="y"
         values={items}
-        // 长度对不上说明拖拽期间列表变过（删了一条），宁可这次不生效
-        onReorder={(next) => next.length === items.length && update(next)}
+        onReorder={(next) => {
+          // 长度对不上说明拖拽期间列表变过（删了一条），宁可这次不生效
+          const order = next.map((item) => items.indexOf(item));
+          if (next.length !== items.length || order.includes(-1)) {
+            return;
+          }
+          const current = flags();
+          commit(
+            next,
+            order.map((from) => current[from] ?? false),
+          );
+        }}
         className="flex flex-col gap-3"
       >
         {items.map((item, index) => (
@@ -689,13 +753,25 @@ function RepeaterControl({
             itemSchema={itemSchema}
             basePath={`${path}.${index}`}
             disabled={disabled}
+            expanded={isOpen(index)}
+            locked={hasError(index)}
             renderGroup={renderGroup}
+            onToggle={() => {
+              const next = flags();
+              next[index] = !isOpen(index);
+              setOpen(next);
+            }}
             onChange={(nextValues) => {
               const next = [...items];
               next[index] = nextValues;
-              update(next);
+              onChange(next);
             }}
-            onRemove={() => update(items.filter((_, i) => i !== index))}
+            onRemove={() =>
+              commit(
+                items.filter((_, i) => i !== index),
+                flags().filter((_, i) => i !== index),
+              )
+            }
             onMove={(direction) => move(index, index + direction)}
           />
         ))}
@@ -705,7 +781,7 @@ function RepeaterControl({
         variant="secondary"
         size="sm"
         disabled={disabled}
-        onClick={() => update([...items, {}])}
+        onClick={() => commit([...items, {}], [...flags(), true])}
         className="self-start"
       >
         <Plus aria-hidden="true" />
@@ -716,7 +792,42 @@ function RepeaterControl({
   );
 }
 
-/** 一个可拖动的条目。 */
+/** 摘要不取这些控件的值：地址、色值、图标名、代码放在标题行上没有辨识度，口令更不该露出来。 */
+const SUMMARY_SKIP: ReadonlySet<WidgetKind> = new Set([
+  "secret",
+  "color",
+  "image",
+  "images",
+  "icon",
+  "code",
+]);
+
+/** 收起时标题行上的摘要：条目里第一个有值的文字或选项字段，选项显示它的名字。 */
+function itemSummary(
+  schema: GroupSchema,
+  values: Record<string, unknown>,
+): string {
+  for (const [key, field] of orderedFields(schema)) {
+    const raw = values[key];
+    if (
+      (typeof raw !== "string" && typeof raw !== "number") ||
+      SUMMARY_SKIP.has(widgetFor(field))
+    ) {
+      continue;
+    }
+    const text = String(raw).replace(/\s+/g, " ").trim();
+    if (text === "") {
+      continue;
+    }
+    return field.enum
+      ? (optionsFor(field).find((option) => option.value === text)?.label ??
+          text)
+      : text;
+  }
+  return "";
+}
+
+/** 一个可拖动、可收起的条目。 */
 function RepeaterItem({
   index,
   label,
@@ -724,7 +835,10 @@ function RepeaterItem({
   itemSchema,
   basePath,
   disabled,
+  expanded,
+  locked,
   renderGroup,
+  onToggle,
   onChange,
   onRemove,
   onMove,
@@ -735,17 +849,23 @@ function RepeaterItem({
   itemSchema: GroupSchema;
   basePath: string;
   disabled: boolean;
+  expanded: boolean;
+  /** 条目里有校验错误：必须展开，不许收起。 */
+  locked: boolean;
   renderGroup: RenderGroup;
+  onToggle: () => void;
   onChange: (values: Record<string, unknown>) => void;
   onRemove: () => void;
   onMove: (direction: -1 | 1) => void;
 }) {
   // 拖动只从手柄发起：条目里全是输入框，整条可拖会把选词与光标一起抢走
   const controls = useDragControls();
+  const bodyId = useId();
   const values =
     item && typeof item === "object" && !Array.isArray(item)
       ? (item as Record<string, unknown>)
       : {};
+  const summary = expanded ? "" : itemSummary(itemSchema, values);
 
   return (
     <Reorder.Item
@@ -754,9 +874,14 @@ function RepeaterItem({
       dragControls={controls}
       className="list-none"
     >
-      <Inset>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1">
+      <Inset className={cn(!expanded && "py-2")}>
+        <div
+          className={cn(
+            "flex items-center justify-between gap-2",
+            expanded && "mb-2",
+          )}
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-1">
             <button
               type="button"
               disabled={disabled}
@@ -776,13 +901,37 @@ function RepeaterItem({
               }}
               aria-label={`拖动${label} ${index + 1} 调整顺序，按上下方向键也可以`}
               title="拖动排序（聚焦后用 ↑ ↓ 也行）"
-              className="transition-ui flex size-6 cursor-grab touch-none items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
+              className="transition-ui flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink active:cursor-grabbing disabled:cursor-default disabled:opacity-40"
             >
               <GripVertical aria-hidden="true" className="size-4" />
             </button>
-            <span className="text-sm font-medium text-ink">
-              {label} {index + 1}
-            </span>
+            <button
+              type="button"
+              onClick={onToggle}
+              disabled={locked}
+              aria-expanded={expanded}
+              aria-controls={bodyId}
+              title={
+                locked ? "这一项里有要修改的字段，改好之前不能收起" : undefined
+              }
+              className="transition-ui flex min-w-0 flex-1 items-center gap-1.5 rounded-control py-0.5 pr-2 text-left hover:bg-surface-active disabled:cursor-default disabled:hover:bg-transparent"
+            >
+              <ChevronRight
+                aria-hidden="true"
+                className={cn(
+                  "transition-ui size-4 shrink-0 text-ink-subtle",
+                  expanded && "rotate-90",
+                )}
+              />
+              <span className="shrink-0 text-sm font-medium text-ink">
+                {label} {index + 1}
+              </span>
+              {summary ? (
+                <span className="min-w-0 truncate text-sm text-ink-muted">
+                  {summary}
+                </span>
+              ) : null}
+            </button>
           </div>
           <Button
             variant="ghost"
@@ -795,14 +944,18 @@ function RepeaterItem({
             <X aria-hidden="true" />
           </Button>
         </div>
-        {renderGroup({
-          basePath,
-          schema: itemSchema,
-          values,
-          disabled,
-          onChange,
-          stacked: true,
-        })}
+        {expanded ? (
+          <div id={bodyId}>
+            {renderGroup({
+              basePath,
+              schema: itemSchema,
+              values,
+              disabled,
+              onChange,
+              stacked: true,
+            })}
+          </div>
+        ) : null}
       </Inset>
     </Reorder.Item>
   );
