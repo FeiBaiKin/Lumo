@@ -236,6 +236,8 @@ type PostView struct {
 	URL string
 	// Content 是渲染后的 HTML。模板里须用 safeHTML 输出。
 	Content string
+	// source 是高亮之前的正文，content.render 过滤器处理的是它（高亮的结构经不起再净化一遍）。
+	source  string
 	Excerpt string
 	// CoverURL 是封面图地址，可能为空。
 	CoverURL string
@@ -372,12 +374,7 @@ func (p *Pagination) Pages() []int {
 //
 // 与 internal/seo 和 internal/menu 的约定保持一致：文章在 /posts/<slug>，
 // 独立页面直接挂在根路径 /<slug>。
-func ContentPath(kind, slug string) string {
-	if kind == string(content.TypePage) {
-		return "/" + slug
-	}
-	return PathPosts + slug
-}
+func ContentPath(kind, slug string) string { return content.Path(content.Type(kind), slug) }
 
 // containsByte 报告字符串是否包含某个字节。
 func containsByte(s string, b byte) bool {

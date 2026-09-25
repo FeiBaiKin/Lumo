@@ -19,7 +19,7 @@ import (
 
 // 前台路径前缀，与 internal/seo、internal/menu 的约定保持一致。
 const (
-	PathPosts      = "/posts/"
+	PathPosts      = content.PostsPrefix
 	PathCategories = "/categories/"
 	PathTags       = "/tags/"
 	PathArchives   = "/archives/"
@@ -192,6 +192,7 @@ func (r *postRow) toView(author *AuthorView, loc *time.Location) PostView {
 		// 代码高亮在读取期做而不是写入期：库里存的始终是语义化的
 		// <pre><code class="language-go">，换主题、换配色都不必重存全库
 		// （理由见 internal/content/highlight.go 的开头）。着色结果有缓存。
+		view.source = r.Content
 		view.Content = content.Highlight(r.Content)
 	}
 	return view

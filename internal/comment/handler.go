@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -12,8 +13,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/FeiBaiKin/lumo/internal/api"
+	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 )
 
@@ -40,14 +43,46 @@ type Handler struct {
 	cfg    ConfigFunc
 	spam   SpamChecker
 	notify Notifier
+	events app.Events
+	logger *slog.Logger
 }
 
-// NewHandler 构造 Handler；notify 可为 nil，spam 为 nil 时用内置判定器。
-func NewHandler(store *Store, cfg ConfigFunc, spam SpamChecker, notify Notifier) *Handler {
+// NewHandler 构造 Handler；notify 与 events 可为 nil，spam 为 nil 时用内置判定器。
+func NewHandler(store *Store, cfg ConfigFunc, spam SpamChecker, notify Notifier, events app.Events, logger *slog.Logger) *Handler {
 	if spam == nil {
 		spam = NewSpamChecker()
 	}
-	return &Handler{store: store, cfg: cfg, spam: spam, notify: notify}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Handler{store: store, cfg: cfg, spam: spam, notify: notify, events: events, logger: logger}
+}
+
+// emit 在评论变动之后通知插件。
+func (h *Handler) emit(ctx context.Context, action string, c *Comment, post *PostRef) {
+	if h.events != nil {
+		h.events.Emit(ctx, action, hookComment(c, post))
+	}
+}
+
+// hookComment 把评论转成派给插件的数据。
+func hookComment(c *Comment, post *PostRef) hooks.Comment {
+	out := hooks.Comment{
+		ID:       c.ID,
+		ParentID: c.ParentID,
+		Author: hooks.CommentAuthor{
+			Name: c.AuthorName, Email: c.AuthorEmail, URL: c.AuthorURL, UserID: c.UserID,
+		},
+		Content:   c.Content,
+		Status:    string(c.Status),
+		IP:        c.IP,
+		UserAgent: c.UserAgent,
+		CreatedAt: c.CreatedAt,
+	}
+	if post != nil {
+		out.Post = hooks.PostRef{ID: post.ID, Type: post.Type, Title: post.Title, Path: hooks.PostPath(post.Type, post.Slug)}
+	}
+	return out
 }
 
 // Register 挂载接口。
@@ -246,7 +281,13 @@ func (h *Handler) setStatus(ctx context.Context, id int64, status Status) (*comm
 	if err := h.store.UpdateStatus(ctx, id, status); err != nil {
 		return nil, mapError(err)
 	}
+	previous := c.Status
 	c.Status = status
+	if status == StatusApproved && previous != StatusApproved {
+		if post, postErr := h.store.PostRef(ctx, c.PostID); postErr == nil {
+			h.emit(ctx, hooks.CommentApproved, c, post)
+		}
+	}
 	return &commentOutput{Body: *c}, nil
 }
 
@@ -285,6 +326,9 @@ func (h *Handler) reply(ctx context.Context, in *commentInput) (*commentOutput, 
 	}
 	if err := h.store.Create(ctx, c); err != nil {
 		return nil, mapError(err)
+	}
+	if post, postErr := h.store.PostRef(ctx, c.PostID); postErr == nil {
+		h.emit(ctx, hooks.CommentCreated, c, post)
 	}
 	return &commentOutput{Body: *c}, nil
 }
@@ -396,14 +440,21 @@ func (h *Handler) publicCreate(ctx context.Context, in *createInput) (*createOut
 		IP:          ip,
 		UserAgent:   userAgent(ctx),
 	}
+	// 插件判定在事务之外：反垃圾插件可能要调几秒外部服务，不能占着按 IP 的锁和数据库连接等它。
+	verdict := h.pluginJudge(ctx, c, post, h.moderate(ctx, cfg, post))
 	err = h.store.SerializeByIP(ctx, ip, func(ctx context.Context, tx *Store) error {
-		c.Status = h.judge(ctx, tx, cfg, &in.Body, content, post)
+		// 内置的频率限制与蜜罐说是垃圾，插件改不回来
+		c.Status = verdict
+		if h.isSpam(ctx, tx, cfg, &in.Body, content) {
+			c.Status = StatusSpam
+		}
 		return tx.Create(ctx, c)
 	})
 	if err != nil {
 		return nil, mapError(err)
 	}
 	status := c.Status
+	h.emit(ctx, hooks.CommentCreated, c, post)
 
 	if h.notify != nil {
 		h.notify.CommentCreated(ctx, &NotifyEvent{
@@ -475,27 +526,10 @@ func (h *Handler) settings(ctx context.Context) Settings {
 	return h.cfg(ctx)
 }
 
-// judge 决定新评论的状态。
-func (h *Handler) judge(ctx context.Context, store *Store, cfg Settings, body *createBody, content string, post *PostRef) Status {
-	var last time.Time
-	if at, err := store.LastByIP(ctx, httpx.ClientIPFromContext(ctx)); err == nil {
-		last = at
-	}
-	// 查不到最近记录不该让评论发不出去：err 非 nil 时 last 保持零值，
-	// 判定器据此视为「没有历史」继续往下走。
-	verdict := h.spam.Check(&cfg, &SpamInput{
-		AuthorName: body.Name,
-		AuthorURL:  body.URL,
-		Content:    content,
-		Honeypot:   body.Honeypot,
-		LastFromIP: last,
-		Now:        nowFunc(),
-	})
-	if verdict.Spam {
-		return StatusSpam
-	}
-	// 内容作者自己的评论直接通过：站长在自己的文章下回复访客是高频场景，
-	// 走一遍审核只会让对话断掉。
+// moderate 决定新评论在不看反垃圾时该是什么状态：内容作者本人直接通过，其余按「需要审核」设置。
+//
+// 内容作者自己的评论直接通过：站长在自己的文章下回复访客是高频场景，走一遍审核只会让对话断掉。
+func (h *Handler) moderate(ctx context.Context, cfg Settings, post *PostRef) Status {
 	if p, ok := auth.FromContext(ctx); ok && p.User != nil && p.User.ID == post.AuthorID {
 		return StatusApproved
 	}
@@ -503,6 +537,43 @@ func (h *Handler) judge(ctx context.Context, store *Store, cfg Settings, body *c
 		return StatusPending
 	}
 	return StatusApproved
+}
+
+// pluginJudge 把评论交给订阅了 comment.judge 的插件，返回它们给出的状态；没人订阅时原样返回。
+func (h *Handler) pluginJudge(ctx context.Context, c *Comment, post *PostRef, status Status) Status {
+	if h.events == nil || !h.events.Subscribed(hooks.CommentJudge) {
+		return status
+	}
+	in := hooks.CommentJudgement{Comment: hookComment(c, post), Status: string(status)}
+	out := app.ApplyFilter(ctx, h.events, hooks.CommentJudge, in)
+	switch next := Status(out.Status); next {
+	case StatusApproved, StatusPending, StatusSpam:
+		if next != status {
+			h.logger.Info("插件改变了新评论的状态",
+				slog.String("from", string(status)), slog.String("to", string(next)), slog.String("reason", out.Reason))
+		}
+		return next
+	default:
+		return status
+	}
+}
+
+// isSpam 跑内置的反垃圾判定。要读同 IP 最近一条评论的时间，故在 SerializeByIP 的事务里调用。
+func (h *Handler) isSpam(ctx context.Context, store *Store, cfg Settings, body *createBody, content string) bool {
+	var last time.Time
+	if at, err := store.LastByIP(ctx, httpx.ClientIPFromContext(ctx)); err == nil {
+		last = at
+	}
+	// 查不到最近记录不该让评论发不出去：err 非 nil 时 last 保持零值，
+	// 判定器据此视为「没有历史」继续往下走。
+	return h.spam.Check(&cfg, &SpamInput{
+		AuthorName: body.Name,
+		AuthorURL:  body.URL,
+		Content:    content,
+		Honeypot:   body.Honeypot,
+		LastFromIP: last,
+		Now:        nowFunc(),
+	}).Spam
 }
 
 // checkParent 校验被回复的评论存在、属于同一篇内容且已通过，并返回它供通知使用。

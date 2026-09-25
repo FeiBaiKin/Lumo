@@ -8,6 +8,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 )
 
 // User 是用户实体。
@@ -44,6 +45,11 @@ type User struct {
 }
 
 // Name 返回用于展示的名称，显示名缺失时回退到用户名。
+// HookUser 把用户转成派给插件的动作数据：只有公开资料。
+func HookUser(u *User) hooks.User {
+	return hooks.User{ID: u.ID, Username: u.Username, DisplayName: u.DisplayName}
+}
+
 func (u *User) Name() string {
 	if u.DisplayName != "" {
 		return u.DisplayName

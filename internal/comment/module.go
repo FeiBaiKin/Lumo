@@ -45,7 +45,7 @@ func (m *Module) Register(a *app.App) error {
 		m.store = NewStore(db.DB)
 	}
 	m.handler = NewHandler(m.store, configFunc(a, m.logger), NewSpamChecker(),
-		&notifier{mail: mail.From(a), logger: m.logger})
+		&notifier{mail: mail.From(a), logger: m.logger}, a.Events(), m.logger)
 	return nil
 }
 

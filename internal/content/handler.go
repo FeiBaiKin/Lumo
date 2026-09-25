@@ -11,8 +11,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/FeiBaiKin/lumo/internal/api"
+	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 	"github.com/FeiBaiKin/lumo/internal/slug"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
 )
@@ -74,14 +76,22 @@ type Slugger func(ctx context.Context, text string) string
 type Handler struct {
 	store   *Store
 	slugify Slugger
+	events  app.Events
 }
 
-// NewHandler 构造 Handler；slugify 为 nil 时使用保留中文的缺省策略。
-func NewHandler(store *Store, slugify Slugger) *Handler {
+// NewHandler 构造 Handler；slugify 为 nil 时使用保留中文的缺省策略，events 为 nil 时不派发动作。
+func NewHandler(store *Store, slugify Slugger, events app.Events) *Handler {
 	if slugify == nil {
 		slugify = func(_ context.Context, text string) string { return slug.Make(text) }
 	}
-	return &Handler{store: store, slugify: slugify}
+	return &Handler{store: store, slugify: slugify, events: events}
+}
+
+// emit 在内容变动之后通知插件。
+func (h *Handler) emit(ctx context.Context, action string, post *Post) {
+	if h.events != nil {
+		h.events.Emit(ctx, action, HookPost(post))
+	}
 }
 
 // Register 为文章与页面各挂一套接口。
@@ -330,6 +340,7 @@ func (h *Handler) create(k *kind) func(context.Context, *createInput) (*postOutp
 		if err != nil {
 			return nil, mapError(err)
 		}
+		h.emit(ctx, hooks.PostUpdated, post)
 		return &postOutput{Body: *post}, nil
 	}
 }
@@ -355,6 +366,7 @@ func (h *Handler) update(k *kind) func(context.Context, *updateInput) (*postOutp
 		if err := h.store.Update(ctx, post, in.Body.CategoryIDs, in.Body.TagIDs, snapshot, principal.UserID()); err != nil {
 			return nil, mapError(err)
 		}
+		h.emit(ctx, hooks.PostUpdated, post)
 		return &postOutput{Body: *post}, nil
 	}
 }
@@ -383,6 +395,12 @@ func (h *Handler) publish(k *kind) func(context.Context, *publishInput) (*postOu
 		if err := h.store.UpdateStatus(ctx, post); err != nil {
 			return nil, mapError(err)
 		}
+		if post.Status == StatusPublished {
+			h.emit(ctx, hooks.PostPublished, post)
+		} else {
+			// 定时发布：到点时由 PublishDue 发 post.published
+			h.emit(ctx, hooks.PostUpdated, post)
+		}
 		return &postOutput{Body: *post}, nil
 	}
 }
@@ -397,6 +415,7 @@ func (h *Handler) unpublish(k *kind) func(context.Context, *idInput) (*postOutpu
 		if err := h.store.UpdateStatus(ctx, post); err != nil {
 			return nil, mapError(err)
 		}
+		h.emit(ctx, hooks.PostUpdated, post)
 		return &postOutput{Body: *post}, nil
 	}
 }
@@ -413,6 +432,7 @@ func (h *Handler) trash(k *kind) func(context.Context, *idInput) (*struct{}, err
 		if err := h.store.UpdateStatus(ctx, post); err != nil {
 			return nil, mapError(err)
 		}
+		h.emit(ctx, hooks.PostTrashed, post)
 		return nil, nil //nolint:nilnil // 无响应体，huma 按 DefaultStatus 返回 204
 	}
 }
@@ -431,6 +451,7 @@ func (h *Handler) restore(k *kind) func(context.Context, *idInput) (*postOutput,
 		if err := h.store.UpdateStatus(ctx, post); err != nil {
 			return nil, mapError(err)
 		}
+		h.emit(ctx, hooks.PostUpdated, post)
 		return &postOutput{Body: *post}, nil
 	}
 }
@@ -448,6 +469,7 @@ func (h *Handler) deletePermanently(k *kind) func(context.Context, *idInput) (*s
 		err = h.store.DeletePermanently(ctx, k.typ, post.ID)
 		switch {
 		case err == nil:
+			h.emit(ctx, hooks.PostDeleted, post)
 		case errors.Is(err, ErrNotTrashed):
 			return nil, huma.Error409Conflict("内容已不在回收站（可能刚被恢复），请刷新后重试")
 		default:

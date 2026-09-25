@@ -100,6 +100,8 @@ type Spec struct {
 	Runtime string `yaml:"runtime" json:"runtime"`
 	// Capabilities 是插件要用的宿主能力，启用时由站长逐项确认。
 	Capabilities Capabilities `yaml:"capabilities" json:"capabilities"`
+	// Hooks 是插件订阅的动作与过滤器。
+	Hooks Hooks `yaml:"hooks" json:"hooks"`
 }
 
 // Author 是作者信息。
@@ -191,6 +193,9 @@ func (m *Manifest) validate(dirName string) error {
 		return fmt.Errorf("%w：spec.runtime 只能留空或写 %s，实际 %q", ErrInvalidPackage, RuntimeWasm, m.Spec.Runtime)
 	}
 	if err := m.Spec.Capabilities.normalize(); err != nil {
+		return err
+	}
+	if err := m.Spec.Hooks.normalize(&m.Spec.Capabilities, m.Spec.Runtime == RuntimeWasm); err != nil {
 		return err
 	}
 	if m.Spec.Runtime == "" && m.Spec.Capabilities.NeedsBackend() {

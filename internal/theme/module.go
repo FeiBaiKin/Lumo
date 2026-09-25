@@ -124,7 +124,7 @@ func (m *Module) Register(a *app.App) error {
 	if m.store != nil {
 		m.store.UseTimezone(m.renderer.Location)
 	}
-	m.frontend = NewFrontend(m.renderer, m.store)
+	m.frontend = NewFrontend(m.renderer, m.store, a.Events())
 
 	a.Provide(Name, m)
 	return nil

@@ -29,11 +29,17 @@ type testSite struct {
 
 func newTestSite(t *testing.T) *testSite {
 	t.Helper()
+	return newTestSiteLogging(t, io.Discard)
+}
+
+// newTestSiteLogging 同 newTestSite，但日志写到 w：要确认后台发生了什么（如插件收到动作）时用。
+func newTestSiteLogging(t *testing.T, w io.Writer) *testSite {
+	t.Helper()
 	cfg := config.Default()
 	cfg.Database.DSN = testdb.DSN(t)
 	cfg.DataDir = t.TempDir()
 	cfg.Update.Enabled = false
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.NewTextHandler(w, nil))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	db, err := database.Open(ctx, cfg.Database, false)

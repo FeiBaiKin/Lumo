@@ -195,7 +195,7 @@ type capabilityLine struct {
 func (m *Module) describeCapabilities(c *Capabilities) []capabilityLine {
 	out := []capabilityLine{}
 	if c.Content.Read {
-		out = append(out, capabilityLine{Key: "content.read", Title: "读取站点内容", Detail: "文章、页面、分类、标签、评论与用户的公开资料"})
+		out = append(out, capabilityLine{Key: "content.read", Title: "读取站点内容", Detail: "文章、页面、分类、标签、用户的公开资料，以及评论（含评论者的邮箱与 IP）"})
 	}
 	if len(c.Content.Write) > 0 {
 		labels := map[string]string{}

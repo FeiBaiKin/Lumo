@@ -17,6 +17,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/auth/password"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 	"github.com/FeiBaiKin/lumo/internal/httpx"
 	"github.com/FeiBaiKin/lumo/internal/media"
 	"github.com/FeiBaiKin/lumo/internal/settings"
@@ -432,6 +433,9 @@ func (m *Module) postRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if m.events != nil {
+		m.events.Emit(ctx, hooks.UserRegistered, auth.HookUser(user))
+	}
 	if err := m.sendVerification(ctx, user.ID, email, siteTitle, baseURL); err != nil {
 		m.logger.Error("发送验证邮件失败", slog.Any("error", err))
 		m.renderRegisterFailure(w, r, http.StatusInternalServerError, errNotice(noticeRegisterFail), filledForm(values))

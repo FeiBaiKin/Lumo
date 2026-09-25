@@ -5,6 +5,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
 )
 
@@ -135,4 +136,24 @@ type RevisionSummary struct {
 	Title     string    `bun:"title"            json:"title"`
 	RawType   RawType   `bun:"raw_type"         json:"rawType" enum:"html,markdown"`
 	CreatedAt time.Time `bun:"created_at,nullzero" json:"createdAt"`
+}
+
+// PostsPrefix 是文章详情页的路径前缀；页面直接挂在站点根下。
+const PostsPrefix = hooks.PostsPrefix
+
+// Path 返回一条内容在前台的路径。
+func Path(t Type, slug string) string { return hooks.PostPath(string(t), slug) }
+
+// HookPost 把内容转成派给插件的动作数据。
+func HookPost(p *Post) hooks.Post {
+	return hooks.Post{
+		ID:          p.ID,
+		Type:        string(p.Type),
+		Title:       p.Title,
+		Slug:        p.Slug,
+		Path:        Path(p.Type, p.Slug),
+		Status:      string(p.Status),
+		AuthorID:    p.AuthorID,
+		PublishedAt: p.PublishedAt,
+	}
 }

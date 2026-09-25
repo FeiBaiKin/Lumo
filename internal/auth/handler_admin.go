@@ -9,8 +9,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/FeiBaiKin/lumo/internal/api"
+	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/password"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 )
 
 // tagUsers 与 tagRoles 是 OpenAPI 分组标签。
@@ -46,12 +48,13 @@ type AdminHandler struct {
 	store   *Store
 	service *Service
 	// perms 延迟取权限清单：模块在注册期声明权限，而本处理器在模块之前构造。
-	perms func() []PermissionInfo
+	perms  func() []PermissionInfo
+	events app.Events
 }
 
-// NewAdminHandler 构造 AdminHandler；perms 可为 nil，此时权限清单只有权限串本身。
-func NewAdminHandler(store *Store, service *Service, perms func() []PermissionInfo) *AdminHandler {
-	return &AdminHandler{store: store, service: service, perms: perms}
+// NewAdminHandler 构造 AdminHandler；perms 可为 nil，此时权限清单只有权限串本身；events 为 nil 时不派发动作。
+func NewAdminHandler(store *Store, service *Service, perms func() []PermissionInfo, events app.Events) *AdminHandler {
+	return &AdminHandler{store: store, service: service, perms: perms, events: events}
 }
 
 // Register 挂载管理端点，全部要求 users:manage 或 roles:manage。
@@ -377,6 +380,9 @@ func (h *AdminHandler) createUser(ctx context.Context, in *createUserInput) (*us
 	})
 	if err != nil {
 		return nil, mapAdminError(err)
+	}
+	if h.events != nil {
+		h.events.Emit(ctx, hooks.UserRegistered, HookUser(u))
 	}
 	return &userOutput{Body: *u}, nil
 }

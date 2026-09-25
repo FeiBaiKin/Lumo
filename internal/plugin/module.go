@@ -51,6 +51,9 @@ type Module struct {
 
 	crashMu sync.Mutex
 	crashes map[string]int
+
+	// jobs 是待派发给插件的动作，见 hooks.go。
+	jobs chan actionJob
 }
 
 // New 构造模块。
@@ -67,6 +70,9 @@ func (m *Module) Register(a *app.App) error {
 	m.root = filepath.Join(cfg.DataDir, workdir.PluginsDirName)
 	m.cacheDir = filepath.Join(cfg.DataDir, workdir.CacheDirName, "plugins")
 	m.crashes = map[string]int{}
+	m.jobs = make(chan actionJob, actionQueueSize)
+	// 内核经 App 的事件总线发动作、跑过滤器，插件模块是它的实现
+	a.SetEvents(m)
 	if db := a.DB(); db != nil {
 		m.store = NewStore(db.DB)
 	}
@@ -120,6 +126,9 @@ func (m *Module) Start(ctx context.Context) error {
 	} else {
 		m.engine = engine
 		m.registry.SetEngine(engine)
+	}
+	for range actionWorkers {
+		go m.runActions(ctx)
 	}
 	if err := m.registry.Load(ctx); err != nil {
 		return err

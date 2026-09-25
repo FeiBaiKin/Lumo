@@ -10,8 +10,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/content"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 )
 
 // urlQueryEscape 是 url.QueryEscape 的本地别名，供拼接分页地址使用。
@@ -24,11 +26,12 @@ func urlQueryEscape(s string) string { return url.QueryEscape(s) }
 type Frontend struct {
 	renderer *Renderer
 	store    *Store
+	events   app.Events
 }
 
-// NewFrontend 构造前台处理器。
-func NewFrontend(renderer *Renderer, store *Store) *Frontend {
-	return &Frontend{renderer: renderer, store: store}
+// NewFrontend 构造前台处理器；events 为 nil 时正文不经插件过滤。
+func NewFrontend(renderer *Renderer, store *Store, events app.Events) *Frontend {
+	return &Frontend{renderer: renderer, store: store, events: events}
 }
 
 // Mount 把前台路由挂到根路由上。
@@ -202,11 +205,31 @@ func (f *Frontend) renderSingle(w http.ResponseWriter, r *http.Request, view *Po
 		return
 	}
 
+	f.filterContent(ctx, view)
 	pageCtx.Post = view
 	pageCtx.Title = view.Title
 	pageCtx.Description = view.Excerpt
 	pageCtx.Canonical = absoluteURL(pageCtx.Site.URL, view.URL)
 	f.renderer.Render(w, r, http.StatusOK, tmpl, pageCtx)
+}
+
+// filterContent 把正文交给订阅了 content.render 的插件改写。
+//
+// 只在详情页跑：列表页每篇都跑一遍，一页十篇就是十次插件调用。插件改过的结果
+// 按普通作者的规则重新净化，再做代码高亮——插件拿不到往正文里塞脚本的机会；
+// 代价是正文里只有 content:unsafe_html 作者才能放的内容（如 iframe），经插件改写后也会被净化掉。
+func (f *Frontend) filterContent(ctx context.Context, view *PostView) {
+	if f.events == nil || view.source == "" || !f.events.Subscribed(hooks.ContentRender) {
+		return
+	}
+	in := hooks.RenderedContent{
+		HTML: view.source,
+		Post: hooks.PostRef{ID: view.ID, Type: view.Type, Title: view.Title, Path: view.URL},
+	}
+	out := app.ApplyFilter(ctx, f.events, hooks.ContentRender, in)
+	if out.HTML != in.HTML {
+		view.Content = content.Highlight(content.Sanitize(out.HTML))
+	}
 }
 
 // category 渲染分类归档页。

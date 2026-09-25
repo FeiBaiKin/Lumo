@@ -33,6 +33,10 @@ func zipOf(t *testing.T, files map[string][]byte) *bytes.Reader {
 	return bytes.NewReader(buf.Bytes())
 }
 
+// guestSpec 是测试插件要的声明：它登记的钩子与订阅这些钩子所需的能力。
+const guestSpec = "  runtime: wasm\n  hooks:\n    actions: [comment.created, post.updated]\n" +
+	"    filters: [comment.judge, content.render]\n"
+
 func manifest(extra string) []byte {
 	return []byte("apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: demo\nspec:\n  version: 1.0.0\n" + extra)
 }
@@ -85,7 +89,8 @@ func TestUpgradeWithMoreCapabilitiesSuspends(t *testing.T) {
 	m := testModule(t)
 	ctx := context.Background()
 	binary := wasmtest.Guest(t)
-	v1 := map[string][]byte{FileManifest: manifest("  runtime: wasm\n  capabilities:\n    mail: true\n"), FileWasm: binary}
+	caps := "  capabilities:\n    content: {read: true}\n    frontend: true\n    mail: true\n"
+	v1 := map[string][]byte{FileManifest: manifest(guestSpec + caps), FileWasm: binary}
 	if err := install(t, m.registry, v1); err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +111,7 @@ func TestUpgradeWithMoreCapabilitiesSuspends(t *testing.T) {
 		t.Fatal("升级后后端应换成新版本继续运行")
 	}
 
-	v2 := map[string][]byte{FileManifest: manifest("  runtime: wasm\n  capabilities:\n    mail: true\n    http: [api.example.com]\n"), FileWasm: binary}
+	v2 := map[string][]byte{FileManifest: manifest(guestSpec + caps + "    http: [api.example.com]\n"), FileWasm: binary}
 	if err := install(t, m.registry, v2); err != nil {
 		t.Fatal(err)
 	}
@@ -123,21 +128,22 @@ func TestUpgradeWithMoreCapabilitiesSuspends(t *testing.T) {
 func TestConsecutiveCrashesSuspendPlugin(t *testing.T) {
 	m := testModule(t)
 	ctx := context.Background()
-	files := map[string][]byte{FileManifest: manifest("  runtime: wasm\n"), FileWasm: wasmtest.Guest(t)}
+	caps := "  capabilities:\n    content: {read: true}\n    frontend: true\n"
+	files := map[string][]byte{FileManifest: manifest(guestSpec + caps), FileWasm: wasmtest.Guest(t)}
 	if err := install(t, m.registry, files); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.registry.SetEnabled(ctx, "demo", true, false); err != nil {
+	if err := m.registry.SetEnabled(ctx, "demo", true, true); err != nil {
 		t.Fatal(err)
 	}
 	for range maxConsecutiveCrashes * 2 {
-		_, _ = m.Invoke(ctx, "demo", wasm.Request{Type: "action", Name: "test.fail"}, time.Second)
+		_, _ = m.Invoke(ctx, "demo", wasm.Request{Type: "action", Name: "post.updated", Payload: map[string]string{"mode": "fail"}}, time.Second)
 	}
 	if loaded, _ := m.registry.Get("demo"); !loaded.Enabled {
 		t.Fatal("处理函数返回的错误不该让插件被停用")
 	}
 	for range maxConsecutiveCrashes {
-		_, _ = m.Invoke(ctx, "demo", wasm.Request{Type: "action", Name: "test.panic"}, time.Second)
+		_, _ = m.Invoke(ctx, "demo", wasm.Request{Type: "action", Name: "post.updated", Payload: map[string]string{"mode": "panic"}}, time.Second)
 	}
 	loaded, _ := m.registry.Get("demo")
 	if loaded.Enabled || !strings.Contains(loaded.DisabledReason, "连续") {

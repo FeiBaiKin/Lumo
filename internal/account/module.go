@@ -73,6 +73,8 @@ type Module struct {
 	logger  *slog.Logger
 	// db 供周期任务认领执行权。
 	db bun.IDB
+	// events 是派发给插件的动作总线。
+	events app.Events
 	// renderer 非 nil 表示可以渲染页面，路由才装得上。
 	// migrate 命令走的是同一条注册链但没有认证栈，那时这里是 nil。
 	renderer *theme.Renderer
@@ -90,6 +92,7 @@ func (m *Module) Name() string { return Name }
 // theme（页面渲染器）、settings 与 mail（站点信息与发信能力）。
 func (m *Module) Register(a *app.App) error {
 	m.logger = a.Logger().With(slog.String("module", Name))
+	m.events = a.Events()
 	m.settings = settings.From(a)
 	m.mail = mail.From(a)
 	// media 排在 account 之前装配（见 cmd/lumo/modules.go），此时它的上传服务已登记。

@@ -37,6 +37,8 @@ type App struct {
 	navProviders []NavigationProvider
 	// provided 是模块登记的共享服务。
 	provided map[string]any
+	// events 是派发给插件的动作与过滤器总线，见 events.go。
+	events eventBus
 }
 
 // NamedFS 是带来源模块名的迁移文件系统，便于错误定位与版本表命名。

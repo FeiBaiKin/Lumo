@@ -15,6 +15,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 )
 
@@ -32,6 +33,7 @@ type Module struct {
 	store   *Store
 	logger  *slog.Logger
 	slugify Slugger
+	events  app.Events
 }
 
 // New 构造模块。
@@ -47,6 +49,7 @@ func (m *Module) Name() string { return Name }
 // 若 settings 模块先于本模块装配，slug 生成策略跟随站点设置；否则退回保留中文的缺省策略。
 func (m *Module) Register(a *app.App) error {
 	m.logger = a.Logger()
+	m.events = a.Events()
 	if db := a.DB(); db != nil {
 		m.store = NewStore(db.DB, auth.NewStore(db.DB))
 	}
@@ -70,7 +73,7 @@ func (m *Module) Routes(r app.Router) {
 	if m.store == nil {
 		return
 	}
-	NewHandler(m.store, m.slugify).Register(r.Console(), r.Public())
+	NewHandler(m.store, m.slugify, m.events).Register(r.Console(), r.Public())
 }
 
 // Permissions 实现 app.PermissionProvider。
@@ -113,14 +116,17 @@ func (m *Module) Start(ctx context.Context) error {
 
 // PublishDue 立即执行一次定时发布扫描，返回推进条数；供后台任务与测试调用。
 func (m *Module) PublishDue(ctx context.Context) (int64, error) {
-	count, err := m.store.PublishDue(ctx)
+	published, err := m.store.PublishDue(ctx)
 	if err != nil {
 		return 0, err
 	}
-	if count > 0 && m.logger != nil {
-		m.logger.Info("定时内容已发布", slog.Int64("count", count))
+	for i := range published {
+		m.events.Emit(ctx, hooks.PostPublished, HookPost(&published[i]))
 	}
-	return count, nil
+	if len(published) > 0 && m.logger != nil {
+		m.logger.Info("定时内容已发布", slog.Int("count", len(published)))
+	}
+	return int64(len(published)), nil
 }
 
 // Navigation 实现 app.NavigationProvider。

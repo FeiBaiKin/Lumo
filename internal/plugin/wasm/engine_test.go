@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -56,8 +57,9 @@ func load(t *testing.T) (*wasm.Plugin, *hostLog) {
 	return p, host
 }
 
-func action(name string) wasm.Request {
-	return wasm.Request{Type: "action", Name: name, Payload: map[string]string{"hello": "世界"}}
+// action 构造一次 post.updated：测试插件按 mode 切换行为。
+func action(mode string) wasm.Request {
+	return wasm.Request{Type: "action", Name: "post.updated", Payload: map[string]string{"mode": mode}}
 }
 
 func TestLoadDescribesHandlers(t *testing.T) {
@@ -66,14 +68,12 @@ func TestLoadDescribesHandlers(t *testing.T) {
 	if desc.ABI != wasm.ABIVersion || desc.SDK == "" {
 		t.Fatalf("describe 不对：%+v", desc)
 	}
-	got := desc.Handlers["action"]
-	want := []string{"test.echo", "test.fail", "test.panic", "test.settings", "test.spin"}
-	if len(got) != len(want) {
-		t.Fatalf("登记的动作 = %v，应为 %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("登记的动作 = %v，应为 %v", got, want)
+	for kind, want := range map[string]string{
+		"action": "comment.created,post.updated",
+		"filter": "comment.judge,content.render",
+	} {
+		if got := strings.Join(desc.Handlers[kind], ","); got != want {
+			t.Fatalf("登记的 %s = %s，应为 %s", kind, got, want)
 		}
 	}
 }
@@ -81,13 +81,13 @@ func TestLoadDescribesHandlers(t *testing.T) {
 func TestCallRoundTripsThroughHost(t *testing.T) {
 	p, host := load(t)
 	ctx := context.Background()
-	if _, err := p.Call(ctx, action("test.echo"), time.Second); err != nil {
+	if _, err := p.Call(ctx, action("echo"), time.Second); err != nil {
 		t.Fatalf("正常动作失败：%v", err)
 	}
 	if !host.seen("guest:log") {
 		t.Fatal("插件的日志没有经宿主调用送出来")
 	}
-	if _, err := p.Call(ctx, action("test.settings"), time.Second); err != nil {
+	if _, err := p.Call(ctx, action("settings"), time.Second); err != nil {
 		t.Fatalf("宿主调用的结果没回到插件里：%v", err)
 	}
 }
@@ -97,14 +97,14 @@ func TestFailuresAreClassifiedAndRecoverable(t *testing.T) {
 	p, _ := load(t)
 	ctx := context.Background()
 
-	_, err := p.Call(ctx, action("test.fail"), time.Second)
+	_, err := p.Call(ctx, action("fail"), time.Second)
 	var guest *wasm.GuestError
 	if !errors.As(err, &guest) || guest.Message != "故意失败" || wasm.IsCrash(err) {
 		t.Fatalf("处理函数的错误应原样返回且不算崩溃，得到 %v", err)
 	}
 
 	start := time.Now()
-	_, err = p.Call(ctx, action("test.spin"), 100*time.Millisecond)
+	_, err = p.Call(ctx, action("spin"), 100*time.Millisecond)
 	if !errors.Is(err, wasm.ErrTimeout) || !wasm.IsCrash(err) {
 		t.Fatalf("死循环应被超时中断并算作崩溃，得到 %v", err)
 	}
@@ -112,14 +112,15 @@ func TestFailuresAreClassifiedAndRecoverable(t *testing.T) {
 		t.Fatalf("超时中断用了 %s，太久", elapsed)
 	}
 
-	if _, err = p.Call(ctx, action("test.panic"), time.Second); !wasm.IsCrash(err) {
+	if _, err = p.Call(ctx, action("panic"), time.Second); !wasm.IsCrash(err) {
 		t.Fatalf("panic 应算作崩溃，得到 %v", err)
 	}
 
-	if _, err := p.Call(ctx, action("test.echo"), time.Second); err != nil {
+	if _, err := p.Call(ctx, action("echo"), time.Second); err != nil {
 		t.Fatalf("实例坏掉之后应能换一个继续用：%v", err)
 	}
-	if _, err := p.Call(ctx, action("missing"), time.Second); !errors.As(err, &guest) {
+	missing := wasm.Request{Type: "action", Name: "user.registered"}
+	if _, err := p.Call(ctx, missing, time.Second); !errors.As(err, &guest) {
 		t.Fatalf("没登记的处理函数应返回插件错误，得到 %v", err)
 	}
 }
@@ -133,7 +134,7 @@ func TestConcurrentCallsShareThePool(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := p.Call(ctx, action("test.echo"), 5*time.Second); err != nil {
+			if _, err := p.Call(ctx, action("echo"), 5*time.Second); err != nil {
 				errs <- err
 			}
 		}()
@@ -151,7 +152,7 @@ func TestClosedPluginRefusesCalls(t *testing.T) {
 	if err := p.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Call(ctx, action("test.echo"), time.Second); !errors.Is(err, wasm.ErrClosed) || wasm.IsCrash(err) {
+	if _, err := p.Call(ctx, action("echo"), time.Second); !errors.Is(err, wasm.ErrClosed) || wasm.IsCrash(err) {
 		t.Fatalf("停止后的插件应返回 ErrClosed 且不算崩溃，得到 %v", err)
 	}
 }

@@ -406,7 +406,15 @@ func (r *Registry) startBackend(ctx context.Context, loaded *Loaded) (*wasm.Plug
 	if err != nil {
 		return nil, fmt.Errorf("读取 %s: %w", FileWasm, err)
 	}
-	return r.engine.Load(ctx, loaded.ID(), binary)
+	backend, err := r.engine.Load(ctx, loaded.ID(), binary)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkHandlers(loaded.Manifest, backend.Description()); err != nil {
+		closeBackend(backend)
+		return nil, err
+	}
+	return backend, nil
 }
 
 // persist 写入启用状态；没有库时什么也不做。

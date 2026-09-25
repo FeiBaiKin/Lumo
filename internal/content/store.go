@@ -222,23 +222,22 @@ func (s *Store) DeletePermanently(ctx context.Context, typ Type, id int64) error
 	return nil
 }
 
-// PublishDue 把计划时间已到的定时内容推进为已发布，返回推进条数。
+// PublishDue 把计划时间已到的定时内容推进为已发布，返回被推进的那些。
 //
-// 单条幂等 UPDATE：多实例同时执行也不会重复发布或互相干扰。
-func (s *Store) PublishDue(ctx context.Context) (int64, error) {
-	res, err := s.db.NewUpdate().Model((*Post)(nil)).
+// 单条幂等 UPDATE：多实例同时执行也不会重复发布或互相干扰；只有真正改到行的那个实例
+// 拿得到 RETURNING 的结果，post.published 因此只发一次。
+func (s *Store) PublishDue(ctx context.Context) ([]Post, error) {
+	var out []Post
+	err := s.db.NewUpdate().Model(&out).
 		Set("status = ?", StatusPublished).
 		Set("updated_at = now()").
 		Where("status = ? AND published_at <= now()", StatusScheduled).
-		Exec(ctx)
+		Returning("id, type, title, slug, status, author_id, published_at").
+		Scan(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("推进定时发布: %w", err)
+		return nil, fmt.Errorf("推进定时发布: %w", err)
 	}
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return 0, nil //nolint:nilerr // 驱动不支持计数时不视为失败
-	}
-	return affected, nil
+	return out, nil
 }
 
 // ---------- 修订 ----------

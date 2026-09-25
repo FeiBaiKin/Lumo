@@ -43,7 +43,7 @@ func registerAPI(c *auth.Core, planes *api.Planes, application *app.App, install
 			out = append(out, auth.PermissionInfo{Key: p.Key, Label: p.Label, Description: p.Description})
 		}
 		return out
-	}).Register(planes.Console())
+	}, application.Events()).Register(planes.Console())
 
 	// 侧边栏菜单。挂在核心而不是某个模块下：它汇总的是全部模块的声明，
 	// 而模块清单要到下一行才装配完，故这里传的是取值函数而不是一份快照。
