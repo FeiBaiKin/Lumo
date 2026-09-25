@@ -48,6 +48,9 @@ spec:
   capabilities:
     content: {read: true}
     frontend: true
+    cron: true
+  cron:
+    - {name: tick, every: 1h}
   hooks:
     actions: [comment.created, post.updated]
     filters: [comment.judge, content.render]
@@ -177,7 +180,12 @@ func TestPluginHooks(t *testing.T) {
 // installProbe 上传测试插件并确认能力后启用。
 func installProbe(t *testing.T, admin *client) {
 	t.Helper()
-	pkg := zipPlugin(t, map[string][]byte{"plugin.yaml": []byte(guestManifest), "plugin.wasm": wasmtest.Guest(t)})
+	installProbeWith(t, admin, guestManifest)
+}
+
+func installProbeWith(t *testing.T, admin *client, manifest string) {
+	t.Helper()
+	pkg := zipPlugin(t, map[string][]byte{"plugin.yaml": []byte(manifest), "plugin.wasm": wasmtest.Guest(t)})
 	status, out := admin.upload("/api/v1/console/plugins", pkg)
 	mustStatus(t, "上传插件", status, http.StatusCreated, out)
 	status, out = admin.do(http.MethodPut, "/api/v1/console/plugins/hook-probe/enabled",
@@ -268,6 +276,78 @@ func TestPluginData(t *testing.T) {
 		mustStatus(t, "卸载后的数据量", status, http.StatusOK, out)
 		if out["kv"].(float64) != 0 || out["records"].(float64) != 0 || out["settings"].(float64) != 0 {
 			t.Fatalf("缺省卸载应把数据一并删掉：%v", out)
+		}
+	})
+}
+
+// fakeUpstream 把插件的对外请求接到本地：白名单核对照常发生，只是不真的出网。
+type fakeUpstream struct{}
+
+func (fakeUpstream) RoundTrip(req *http.Request) (*http.Response, error) {
+	body := "not found"
+	status := http.StatusNotFound
+	if req.URL.Host == "api.example.com" && req.URL.Path == "/ping" {
+		body, status = "pong", http.StatusOK
+	}
+	return &http.Response{
+		StatusCode: status, Header: http.Header{"Content-Type": {"text/plain"}},
+		Body: io.NopCloser(strings.NewReader(body)), Request: req,
+	}, nil
+}
+
+// 插件经宿主读写站点内容、访问外部网络、跑定时任务；没被授予的写权限用不了。
+func TestPluginCapabilities(t *testing.T) {
+	s := newTestSite(t)
+	s.createUser(t, "admin", "super-admin")
+	admin := s.client(t)
+	mustStatus(t, "管理员登录", admin.login("admin", "password-admin"), http.StatusOK, nil)
+	granted := strings.Replace(guestManifest, "    content: {read: true}\n",
+		"    content:\n      write: [posts:write, posts:write_any, posts:publish, comments:manage_any]\n"+
+			"    http: [api.example.com]\n    mail: true\n", 1)
+	installProbeWith(t, admin, granted)
+	mod := plugin.From(s.site.application)
+	mod.UseFetchTransport(fakeUpstream{})
+	ctx := context.Background()
+	run := func(mode string) error {
+		req := wasm.Request{Type: "action", Name: "post.updated", Payload: map[string]string{"mode": mode}}
+		_, err := mod.Invoke(ctx, "hook-probe", req, 10*time.Second)
+		return err
+	}
+
+	t.Run("读写站点内容", func(t *testing.T) {
+		if err := run("content"); err != nil {
+			t.Fatalf("插件走查内容读写失败：%v", err)
+		}
+		status, html := s.client(t).page("/posts")
+		if status != http.StatusOK || !strings.Contains(html, "插件改过的文章") {
+			t.Fatalf("插件发的文章应出现在前台文章列表里（%d）", status)
+		}
+	})
+
+	t.Run("访问外部网络只限白名单，发信要站点配好邮件", func(t *testing.T) {
+		if err := run("fetch"); err != nil {
+			t.Fatalf("插件走查外部网络失败：%v", err)
+		}
+	})
+
+	t.Run("定时任务", func(t *testing.T) {
+		if n := mod.RunDueJobs(ctx); n != 1 {
+			t.Fatalf("应跑了 1 个到期任务，实际 %d", n)
+		}
+		if n := mod.RunDueJobs(ctx); n != 0 {
+			t.Fatalf("同一周期里不该再跑，实际又跑了 %d 个", n)
+		}
+		if err := run("ticks"); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("没授予的写权限用不了", func(t *testing.T) {
+		status, out := admin.do(http.MethodDelete, "/api/v1/console/plugins/hook-probe", nil)
+		mustStatus(t, "卸载", status, http.StatusNoContent, out)
+		installProbe(t, admin)
+		if err := run("content"); err == nil || !strings.Contains(err.Error(), "content.write") {
+			t.Fatalf("没有写权限时发文章应被拒绝并说明该声明什么，得到 %v", err)
 		}
 	})
 }

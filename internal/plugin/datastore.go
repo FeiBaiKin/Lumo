@@ -400,6 +400,8 @@ func (s *DataStore) Purge(ctx context.Context, plugin string) error {
 			{`DELETE FROM plugin_kv WHERE plugin = ?`, []any{plugin}},
 			{`DELETE FROM extensions WHERE api_group = ?`, []any{ResourceGroup(plugin)}},
 			{`DELETE FROM plugin_retained WHERE name = ?`, []any{plugin}},
+			// 定时任务的执行记录（见 cron.go 的 cronRunName）
+			{`DELETE FROM job_runs WHERE name LIKE ? ESCAPE '\'`, []any{escapeLike("plugin.cron."+plugin+".") + "%"}},
 		} {
 			if _, err := tx.NewRaw(q.sql, q.args...).Exec(ctx); err != nil {
 				return fmt.Errorf("清除插件数据: %w", err)

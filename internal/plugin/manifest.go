@@ -104,6 +104,8 @@ type Spec struct {
 	Hooks Hooks `yaml:"hooks" json:"hooks"`
 	// Resources 是插件自己的数据类型：宿主替它存，后台替它出列表页与编辑页。
 	Resources []ResourceDecl `yaml:"resources" json:"resources"`
+	// Cron 是按固定间隔在后台运行的任务。
+	Cron []CronJob `yaml:"cron" json:"cron"`
 }
 
 // Author 是作者信息。
@@ -198,6 +200,9 @@ func (m *Manifest) validate(dirName string) error {
 		return err
 	}
 	if err := m.Spec.Hooks.normalize(&m.Spec.Capabilities, m.Spec.Runtime == RuntimeWasm); err != nil {
+		return err
+	}
+	if err := normalizeCron(m.Spec.Cron, &m.Spec.Capabilities, m.Spec.Runtime == RuntimeWasm); err != nil {
 		return err
 	}
 	if m.Spec.Runtime == "" && m.Spec.Capabilities.NeedsBackend() {

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"path/filepath"
 	"sync"
 	"time"
@@ -20,7 +21,10 @@ import (
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/comment"
+	"github.com/FeiBaiKin/lumo/internal/content"
 	"github.com/FeiBaiKin/lumo/internal/database"
+	"github.com/FeiBaiKin/lumo/internal/mail"
 	"github.com/FeiBaiKin/lumo/internal/plugin/wasm"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/workdir"
@@ -49,6 +53,10 @@ type Module struct {
 	data     *DataStore
 	db       *bun.DB
 	settings *settings.Service
+	// content 与 comments 是宿主写内容时转交的模块，mail 是发邮件用的服务；Start 时从 App 上取。
+	content  *content.Module
+	comments *comment.Module
+	mail     *mail.Service
 	logger   *slog.Logger
 	root     string
 	cacheDir string
@@ -59,7 +67,15 @@ type Module struct {
 
 	// jobs 是待派发给插件的动作，见 hooks.go。
 	jobs chan actionJob
+	// cronRunning 是本实例上还没跑完的定时任务，见 cron.go。
+	cronRunning *runningJobs
+	// transport 替换对外请求的传输层，只在测试里用；nil 时用带地址核对的 fetchTransport。
+	transport http.RoundTripper
 }
+
+// UseFetchTransport 替换插件对外请求的传输层。测试用：把请求路由到本地的假服务器，
+// 域名白名单照常核对（那一步在传输层之前）。
+func (m *Module) UseFetchTransport(rt http.RoundTripper) { m.transport = rt }
 
 // New 构造模块。
 func New() *Module { return &Module{} }
@@ -76,6 +92,7 @@ func (m *Module) Register(a *app.App) error {
 	m.cacheDir = filepath.Join(cfg.DataDir, workdir.CacheDirName, "plugins")
 	m.crashes = map[string]int{}
 	m.jobs = make(chan actionJob, actionQueueSize)
+	m.cronRunning = &runningJobs{keys: map[string]bool{}}
 	// 内核经 App 的事件总线发动作、跑过滤器，插件模块是它的实现
 	a.SetEvents(m)
 	if db := a.DB(); db != nil {
@@ -128,6 +145,9 @@ func (m *Module) Start(ctx context.Context) error {
 		return nil
 	}
 	m.settings = settings.From(m.app)
+	m.content = content.From(m.app)
+	m.comments = comment.From(m.app)
+	m.mail = mail.From(m.app)
 	engine, err := wasm.NewEngine(ctx, wasm.Options{CacheDir: m.cacheDir, Host: m.host, Logger: m.logger})
 	if err != nil {
 		m.logger.Error("插件运行时启动失败，带后端的插件暂时用不了", slog.Any("error", err))
@@ -139,6 +159,7 @@ func (m *Module) Start(ctx context.Context) error {
 		go m.runActions(ctx)
 	}
 	go m.sweepKV(ctx)
+	go m.runCron(ctx)
 	if err := m.registry.Load(ctx); err != nil {
 		return err
 	}

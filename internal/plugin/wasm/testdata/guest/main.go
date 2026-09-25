@@ -31,6 +31,15 @@ func init() {
 			panic("故意崩溃")
 		case "data":
 			return exerciseData()
+		case "content":
+			return exerciseContent()
+		case "fetch":
+			return exerciseFetch()
+		case "ticks":
+			var ticks int
+			if found, err := lumo.KV.Get("ticks", &ticks); err != nil || !found || ticks < 1 {
+				return fmt.Errorf("定时任务没有跑过：%v %v %d", found, err, ticks)
+			}
 		case "settings":
 			var s struct {
 				Answer int `json:"answer"`
@@ -50,6 +59,10 @@ func init() {
 			j.Status, j.Reason = lumo.CommentSpam, "含广告词"
 		}
 		return nil
+	})
+	lumo.OnCron("tick", func(*lumo.Context) error {
+		_, err := lumo.KV.Incr("ticks", 1, 0)
+		return err
 	})
 	lumo.OnContentRender(func(_ *lumo.Context, c *lumo.RenderedContent) error {
 		c.HTML += `<p class="from-plugin">插件追加</p><script>alert(1)</script>`
@@ -103,6 +116,62 @@ func exerciseData() error {
 	}
 	if _, err := notes.Create(map[string]any{"score": "不是数字"}); err == nil {
 		return errors.New("不合字段声明的记录应被拒绝")
+	}
+	return nil
+}
+
+// exerciseContent 走一遍读写站点内容：发文章、读回、改写、按标题查、审核评论。
+func exerciseContent() error {
+	post, err := lumo.Content.CreatePost(lumo.PostInput{
+		Title: "插件发的文章", Raw: `<p>来自插件</p><script>alert(1)</script>`, Publish: true,
+	})
+	if err != nil {
+		return fmt.Errorf("发文章：%w", err)
+	}
+	if post.Status != "published" || post.Path == "" {
+		return fmt.Errorf("发出的文章状态不对：%+v", post)
+	}
+	got, err := lumo.Content.Post(post.ID)
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(got.Content, "来自插件") || strings.Contains(got.Content, "<script") {
+		return fmt.Errorf("插件发的正文应被净化：%s", got.Content)
+	}
+	if _, err := lumo.Content.UpdatePost(post.ID, lumo.PostInput{Title: "插件改过的文章", Raw: "<p>改过</p>"}); err != nil {
+		return fmt.Errorf("改文章：%w", err)
+	}
+	items, total, err := lumo.Content.Posts(lumo.PostQuery{Search: "插件改过"})
+	if err != nil || total != 1 || items[0].ID != post.ID {
+		return fmt.Errorf("按标题查不到改过的文章：%v %d", err, total)
+	}
+	spam, _, err := lumo.Content.Comments(lumo.CommentQuery{Status: lumo.CommentSpam})
+	if err != nil {
+		return err
+	}
+	for _, c := range spam {
+		if err := lumo.Content.ModerateComment(c.ID, lumo.CommentApproved); err != nil {
+			return fmt.Errorf("审核评论：%w", err)
+		}
+	}
+	return nil
+}
+
+// exerciseFetch 访问白名单里的域名应成功，白名单外的应被拒；站点没配邮件时发信应得到明确的错误。
+func exerciseFetch() error {
+	resp, err := lumo.Fetch(lumo.FetchRequest{URL: "https://api.example.com/ping"})
+	if err != nil {
+		return fmt.Errorf("访问白名单域名：%w", err)
+	}
+	if resp.Status != 200 || string(resp.Body) != "pong" {
+		return fmt.Errorf("响应不对：%d %q", resp.Status, resp.Body)
+	}
+	if _, err := lumo.Fetch(lumo.FetchRequest{URL: "https://evil.example.net/"}); err == nil {
+		return errors.New("白名单外的域名应被拒绝")
+	}
+	err = lumo.SendMail(lumo.Mail{To: []string{"owner@example.com"}, Subject: "测试", Text: "测试"})
+	if err == nil || !strings.Contains(err.Error(), "邮件") {
+		return fmt.Errorf("站点没配邮件时应说明原因，得到 %v", err)
 	}
 	return nil
 }

@@ -34,6 +34,7 @@ type Module struct {
 	logger  *slog.Logger
 	slugify Slugger
 	events  app.Events
+	handler *Handler
 }
 
 // New 构造模块。
@@ -56,7 +57,29 @@ func (m *Module) Register(a *app.App) error {
 	if svc := settings.From(a); svc != nil {
 		m.slugify = svc.Slug
 	}
+	if m.store != nil {
+		m.handler = NewHandler(m.store, m.slugify, m.events)
+	}
+	a.Provide(Name, m)
 	return nil
+}
+
+// Writer 返回给插件这类内部调用方用的写入口；没有数据库时为 nil。
+func (m *Module) Writer() *Writer {
+	if m.handler == nil {
+		return nil
+	}
+	return &Writer{h: m.handler}
+}
+
+// From 取回内容模块；未装配时返回 nil。
+func From(a *app.App) *Module {
+	v, ok := a.Lookup(Name)
+	if !ok {
+		return nil
+	}
+	mod, _ := v.(*Module)
+	return mod
 }
 
 // Migrations 实现 app.Migrator。
@@ -73,7 +96,7 @@ func (m *Module) Routes(r app.Router) {
 	if m.store == nil {
 		return
 	}
-	NewHandler(m.store, m.slugify, m.events).Register(r.Console(), r.Public())
+	m.handler.Register(r.Console(), r.Public())
 }
 
 // Permissions 实现 app.PermissionProvider。

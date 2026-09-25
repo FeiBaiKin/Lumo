@@ -9,11 +9,13 @@ package comment
 import (
 	"context"
 	"embed"
+	"fmt"
 	"io/fs"
 	"log/slog"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 	"github.com/FeiBaiKin/lumo/internal/mail"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 )
@@ -46,7 +48,53 @@ func (m *Module) Register(a *app.App) error {
 	}
 	m.handler = NewHandler(m.store, configFunc(a, m.logger), NewSpamChecker(),
 		&notifier{mail: mail.From(a), logger: m.logger}, a.Events(), m.logger)
+	a.Provide(Name, m)
 	return nil
+}
+
+// From 取回评论模块；未装配时返回 nil。
+func From(a *app.App) *Module {
+	v, ok := a.Lookup(Name)
+	if !ok {
+		return nil
+	}
+	mod, _ := v.(*Module)
+	return mod
+}
+
+// Moderate 改一条评论的状态，给插件这类内部调用方用：权限由调用方判定。
+// 从别的状态改成通过时派发 comment.approved，与后台审核一致。
+func (m *Module) Moderate(ctx context.Context, id int64, status Status) error {
+	switch status {
+	case StatusApproved, StatusPending, StatusSpam:
+	default:
+		return fmt.Errorf("评论状态只能是 approved、pending 或 spam，实际 %q", status)
+	}
+	if m.store == nil {
+		return ErrNotFound
+	}
+	c, err := m.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err := m.store.UpdateStatus(ctx, id, status); err != nil {
+		return err
+	}
+	if status == StatusApproved && c.Status != StatusApproved {
+		c.Status = status
+		if post, postErr := m.store.PostRef(ctx, c.PostID); postErr == nil {
+			m.handler.emit(ctx, hooks.CommentApproved, c, post)
+		}
+	}
+	return nil
+}
+
+// Delete 删一条评论，给插件这类内部调用方用：权限由调用方判定。
+func (m *Module) Delete(ctx context.Context, id int64) error {
+	if m.store == nil {
+		return ErrNotFound
+	}
+	return m.store.Delete(ctx, id)
 }
 
 // Migrations 实现 app.Migrator。

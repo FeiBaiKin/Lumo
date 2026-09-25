@@ -26,6 +26,12 @@ func init() {
 	}
 }
 
+// listResult 是列表类宿主调用的结果：这一页，以及（有的话）总数。
+type listResult struct {
+	Items any `json:"items"`
+	Total int `json:"total,omitempty"`
+}
+
 // maxTTL 是键值存活时长的上限（一年）：更久的就该是不过期。
 const maxTTL = 365 * 24 * time.Hour
 
@@ -135,7 +141,7 @@ func hostKVList(ctx context.Context, m *Module, loaded *Loaded, args json.RawMes
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"items": items}, nil
+	return listResult{Items: items}, nil
 }
 
 // resourceOf 按种类取插件声明的资源。
@@ -183,7 +189,7 @@ func hostResourcesList(ctx context.Context, m *Module, loaded *Loaded, args json
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"items": items, "total": total}, nil
+	return listResult{Items: items, Total: total}, nil
 }
 
 // recordArgs 是按 ID 操作一条记录的参数。

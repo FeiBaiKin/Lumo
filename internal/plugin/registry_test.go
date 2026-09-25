@@ -35,7 +35,7 @@ func zipOf(t *testing.T, files map[string][]byte) *bytes.Reader {
 
 // guestSpec 是测试插件要的声明：它登记的钩子与订阅这些钩子所需的能力。
 const guestSpec = "  runtime: wasm\n  hooks:\n    actions: [comment.created, post.updated]\n" +
-	"    filters: [comment.judge, content.render]\n"
+	"    filters: [comment.judge, content.render]\n  cron:\n    - {name: tick, every: 1h}\n"
 
 func manifest(extra string) []byte {
 	return []byte("apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: demo\nspec:\n  version: 1.0.0\n" + extra)
@@ -89,7 +89,7 @@ func TestUpgradeWithMoreCapabilitiesSuspends(t *testing.T) {
 	m := testModule(t)
 	ctx := context.Background()
 	binary := wasmtest.Guest(t)
-	caps := "  capabilities:\n    content: {read: true}\n    frontend: true\n    mail: true\n"
+	caps := "  capabilities:\n    content: {read: true}\n    frontend: true\n    cron: true\n    mail: true\n"
 	v1 := map[string][]byte{FileManifest: manifest(guestSpec + caps), FileWasm: binary}
 	if err := install(t, m.registry, v1); err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestUpgradeWithMoreCapabilitiesSuspends(t *testing.T) {
 func TestConsecutiveCrashesSuspendPlugin(t *testing.T) {
 	m := testModule(t)
 	ctx := context.Background()
-	caps := "  capabilities:\n    content: {read: true}\n    frontend: true\n"
+	caps := "  capabilities:\n    content: {read: true}\n    frontend: true\n    cron: true\n"
 	files := map[string][]byte{FileManifest: manifest(guestSpec + caps), FileWasm: wasmtest.Guest(t)}
 	if err := install(t, m.registry, files); err != nil {
 		t.Fatal(err)
