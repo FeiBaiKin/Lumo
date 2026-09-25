@@ -1,7 +1,7 @@
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check, MoreHorizontal } from "lucide-react";
+import { Check, ChevronRight, MoreHorizontal } from "lucide-react";
 import type { ComponentProps } from "react";
 
 /**
@@ -15,6 +15,7 @@ export const DropdownMenu = DropdownMenuPrimitive.Root;
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuGroup = DropdownMenuPrimitive.Group;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
+export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 
 export function DropdownMenuContent({
   className,
@@ -59,6 +60,46 @@ export function DropdownMenuItem({
       )}
       {...props}
     />
+  );
+}
+
+/** 子菜单的入口：长得和普通项一样，右侧一个箭头；展开时保持高亮，看得出子菜单是从哪一项出来的。 */
+export function DropdownMenuSubTrigger({
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>) {
+  return (
+    <DropdownMenuPrimitive.SubTrigger
+      className={cn(
+        itemClass,
+        "data-[state=open]:bg-surface-active",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRight aria-hidden="true" className="ml-auto" />
+    </DropdownMenuPrimitive.SubTrigger>
+  );
+}
+
+export function DropdownMenuSubContent({
+  className,
+  sideOffset = 6,
+  ...props
+}: ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
+  return (
+    <DropdownMenuPrimitive.Portal>
+      <DropdownMenuPrimitive.SubContent
+        sideOffset={sideOffset}
+        className={cn(
+          "popover-in z-popover min-w-[10rem] overflow-hidden rounded-overlay border border-line bg-surface p-1 shadow-popover",
+          className,
+        )}
+        {...props}
+      />
+    </DropdownMenuPrimitive.Portal>
   );
 }
 

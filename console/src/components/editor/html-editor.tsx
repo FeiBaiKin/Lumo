@@ -1,8 +1,10 @@
+import { BlockHandle } from "@/components/editor/block-menu";
 import { BubbleToolbar } from "@/components/editor/bubble-toolbar";
 import { CodeBlock } from "@/components/editor/code-block";
 import { LinkDialog, type LinkValue } from "@/components/editor/link-dialog";
 import {
   SlashMenu,
+  buildCommands,
   createSlashCommand,
   useSlashMenuState,
 } from "@/components/editor/slash-menu";
@@ -13,7 +15,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Range } from "@tiptap/core";
-import { DragHandle } from "@tiptap/extension-drag-handle-react";
 import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -25,7 +26,6 @@ import {
   Bold,
   Code,
   Code2,
-  GripVertical,
   Heading1,
   Heading2,
   Heading3,
@@ -115,6 +115,12 @@ export function HtmlEditor({
         onRequestImage: requestImage,
       }),
     [setSlashOpen, requestImage],
+  );
+
+  // 手柄菜单「在下方插入」用的块类型，与斜杠菜单同一份
+  const blockCommands = useMemo(
+    () => buildCommands({ requestImage }),
+    [requestImage],
   );
 
   const editor = useEditor({
@@ -312,20 +318,8 @@ export function HtmlEditor({
       <div className="relative">
         <EditorContent editor={editor} />
 
-        {/*
-          块拖拽手柄（开源扩展）。
-          DragHandle 会渲染一个浮动的把手，用它把整块上下移动。
-        */}
-        <DragHandle editor={editor}>
-          <button
-            type="button"
-            className="flex size-6 cursor-grab items-center justify-center rounded-control text-ink-subtle hover:bg-surface-active hover:text-ink active:cursor-grabbing"
-            aria-label="拖动这一块"
-            tabIndex={-1}
-          >
-            <GripVertical aria-hidden="true" className="size-4" />
-          </button>
-        </DragHandle>
+        {/* 块手柄：拖动排序，单击或右键打开这一块的菜单 */}
+        <BlockHandle editor={editor} commands={blockCommands} />
       </div>
 
       <BubbleToolbar editor={editor} onOpenLink={openLink} />

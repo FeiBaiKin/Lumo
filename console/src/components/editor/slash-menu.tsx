@@ -36,6 +36,8 @@ import { useCallback, useEffect, useState } from "react";
  */
 
 export type Command = {
+  /** 稳定标识，供别处按类型挑选（手柄菜单的「在下方插入」不列「正文」）。 */
+  id: string;
   title: string;
   hint: string;
   icon: LucideIcon;
@@ -56,9 +58,11 @@ export type SlashHandlers = {
   requestImage: (range: Range) => void;
 };
 
-function buildCommands(handlers: SlashHandlers): Command[] {
+/** 内容块命令表。斜杠菜单与块手柄菜单的「在下方插入」共用它。 */
+export function buildCommands(handlers: SlashHandlers): Command[] {
   return [
     {
+      id: "paragraph",
       title: "正文",
       hint: "普通段落",
       icon: Type,
@@ -67,6 +71,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
         editor.chain().focus().deleteRange(range).setParagraph().run(),
     },
     {
+      id: "heading1",
       title: "一级标题",
       hint: "文章内的大标题",
       icon: Heading1,
@@ -80,6 +85,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
           .run(),
     },
     {
+      id: "heading2",
       title: "二级标题",
       hint: "小节标题",
       icon: Heading2,
@@ -93,6 +99,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
           .run(),
     },
     {
+      id: "heading3",
       title: "三级标题",
       hint: "更细的分节",
       icon: Heading3,
@@ -106,6 +113,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
           .run(),
     },
     {
+      id: "bulletList",
       title: "无序列表",
       hint: "圆点列表",
       icon: List,
@@ -114,6 +122,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
         editor.chain().focus().deleteRange(range).toggleBulletList().run(),
     },
     {
+      id: "orderedList",
       title: "有序列表",
       hint: "带序号",
       icon: ListOrdered,
@@ -122,6 +131,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
         editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
     },
     {
+      id: "blockquote",
       title: "引用",
       hint: "引述他人的话",
       icon: Quote,
@@ -130,6 +140,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
         editor.chain().focus().deleteRange(range).toggleBlockquote().run(),
     },
     {
+      id: "codeBlock",
       title: "代码块",
       hint: "等宽字体、保留缩进",
       icon: Code2,
@@ -138,6 +149,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
         editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
     },
     {
+      id: "table",
       title: "表格",
       hint: "三行三列，带表头",
       icon: TableIcon,
@@ -151,6 +163,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
           .run(),
     },
     {
+      id: "image",
       title: "图片",
       hint: "从附件库选，或传一张",
       icon: ImageIcon,
@@ -158,6 +171,7 @@ function buildCommands(handlers: SlashHandlers): Command[] {
       run: (_editor, range) => handlers.requestImage(range),
     },
     {
+      id: "horizontalRule",
       title: "分隔线",
       hint: "一条水平线",
       icon: Minus,
