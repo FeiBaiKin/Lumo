@@ -1,8 +1,12 @@
 package theme
 
 import (
+	"context"
 	"html/template"
 	"time"
+
+	"github.com/FeiBaiKin/lumo/internal/app"
+	"github.com/FeiBaiKin/lumo/internal/hooks"
 
 	"github.com/FeiBaiKin/lumo/internal/content"
 	"github.com/FeiBaiKin/lumo/internal/taxonomy"
@@ -116,11 +120,62 @@ type Context struct {
 	// 表单页（登录、注册、账户等）请用 .Form.CSRFToken，那是同一枚令牌。
 	CSRFToken string
 
+	// plugins 与 reqCtx 供 Slot 与 Widget 调插件：插件渲染要绑定当次请求的超时与取消。
+	plugins app.Frontend
+	reqCtx  context.Context
+
 	// Form 是表单页的状态：回填值、逐字段错误、提示与令牌。
 	//
 	// 做成显式结构而不是塞进 Params：值与错误混在一个 map 里，
 	// 主题作者要靠键名前缀区分，那是约定而不是契约。
 	Form *FormState
+}
+
+// Slot 输出插件放进某个插槽的内容：head、footer、content.before、content.after、comments.after。
+//
+// 主题在对应位置各调一次，如 {{ .Slot "head" }} 放在 </head> 之前、{{ .Slot "footer" }} 放在 </body> 之前。
+// 插件的样式表与脚本也是经 head 与 footer 两个插槽放进来的；主题不调它们，插件就进不了前台。
+// 内容已由插件模块净化，原样输出即可。
+func (c *Context) Slot(name string) template.HTML {
+	if c == nil || c.plugins == nil {
+		return ""
+	}
+	return c.plugins.Slot(c.requestContext(), name, c.pluginPage())
+}
+
+// PluginWidget 是一个插件小组件渲染出的内容。
+type PluginWidget struct {
+	// Label 是插件给小组件起的名字，站长没填标题时可用作标题。
+	Label string
+	HTML  template.HTML
+}
+
+// Widget 渲染插件提供的侧栏小组件，id 形如 <插件>/<小组件>；插件没启用或没有内容时为 nil。
+func (c *Context) Widget(id string) *PluginWidget {
+	if c == nil || c.plugins == nil || id == "" {
+		return nil
+	}
+	label, html, ok := c.plugins.Widget(c.requestContext(), id, c.pluginPage())
+	if !ok {
+		return nil
+	}
+	return &PluginWidget{Label: label, HTML: html}
+}
+
+func (c *Context) requestContext() context.Context {
+	if c.reqCtx != nil {
+		return c.reqCtx
+	}
+	return context.Background()
+}
+
+// pluginPage 是交给插件的当前页面。
+func (c *Context) pluginPage() *hooks.Page {
+	page := &hooks.Page{Kind: c.Kind, Path: c.Path, Title: c.Title}
+	if c.Post != nil {
+		page.Post = &hooks.PostRef{ID: c.Post.ID, Type: c.Post.Type, Title: c.Post.Title, Path: c.Post.URL}
+	}
+	return page
 }
 
 // Setting 读取某个设置分组的公开字段值；分组未注册或字段未公开时返回 nil。

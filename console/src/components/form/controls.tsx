@@ -1,4 +1,5 @@
 import { IconPicker } from "@/components/form/icon-picker";
+import { PluginWidgetPicker } from "@/components/form/plugin-widget-picker";
 import {
   type FieldSchema,
   type FormValues,
@@ -800,6 +801,7 @@ const SUMMARY_SKIP: ReadonlySet<WidgetKind> = new Set([
   "images",
   "icon",
   "code",
+  "plugin-widget",
 ]);
 
 /** 收起时标题行上的摘要：条目里第一个有值的文字或选项字段，选项显示它的名字。 */
@@ -1106,6 +1108,8 @@ function renderControl(
       return <DateControl {...control} />;
     case "icon":
       return <IconControl {...control} />;
+    case "plugin-widget":
+      return <PluginWidgetControl {...control} />;
     case "color":
       return <ColorControl {...control} />;
     case "image":
@@ -1328,6 +1332,29 @@ function IconControl({
     <IconPicker
       id={fieldId(path)}
       value={String(value ?? "")}
+      disabled={disabled}
+      onChange={(next) => {
+        onChange(next);
+        onBlur();
+      }}
+    />
+  );
+}
+
+function PluginWidgetControl({
+  path,
+  value,
+  error,
+  disabled,
+  onChange,
+  onBlur,
+}: ControlProps) {
+  return (
+    <PluginWidgetPicker
+      id={fieldId(path)}
+      value={String(value ?? "")}
+      invalid={Boolean(error)}
+      describedBy={error ? `${fieldId(path)}-error` : undefined}
       disabled={disabled}
       onChange={(next) => {
         onChange(next);

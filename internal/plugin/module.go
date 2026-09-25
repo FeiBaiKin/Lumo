@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/uptrace/bun"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
@@ -41,6 +42,9 @@ const Name = "plugin"
 // 与接口的 /plugins 恰好同名，但两者是不同的东西：这一条是前端路由。
 // 写成一个常量是为了让「它们恰好一样」这件事是显式的，而不是靠人记得两边一起改。
 const PathPlugins = "/plugins"
+
+// defaultIcon 是插件与它的资源页、后台页面没写图标时用的拼图。
+const defaultIcon = "puzzle"
 
 // maxConsecutiveCrashes 是自动停用前允许的连续崩溃次数（超时、panic、违反调用约定）。
 const maxConsecutiveCrashes = 5
@@ -93,8 +97,9 @@ func (m *Module) Register(a *app.App) error {
 	m.crashes = map[string]int{}
 	m.jobs = make(chan actionJob, actionQueueSize)
 	m.cronRunning = &runningJobs{keys: map[string]bool{}}
-	// 内核经 App 的事件总线发动作、跑过滤器，插件模块是它的实现
+	// 内核经 App 的事件总线发动作、跑过滤器，主题经前台入口拿插槽、小组件与短代码，插件模块是两者的实现
 	a.SetEvents(m)
+	a.SetFrontend(m)
 	if db := a.DB(); db != nil {
 		m.db = db.DB
 		m.store = NewStore(db.DB)
@@ -195,6 +200,24 @@ func (m *Module) sweepKV(ctx context.Context) {
 	}
 }
 
+// MountRoutes 把插件的接口与静态文件挂到根路由上，由 serve 在模块启动之后调用。
+//
+// 插件接口不经 huma：路径由插件在运行时声明，进不了启动期生成的接口规范。resolve 解析凭据但不强制
+// （失效的会话按匿名处理，不回 401）；CSRF 由 serveRoute 按接口是否公开分别处置。
+// 静态文件不套会话解析，理由同主题静态资源。
+func (m *Module) MountRoutes(r chi.Router, resolve func(http.Handler) http.Handler) {
+	if m.store == nil {
+		return
+	}
+	r.Mount(AssetsPath, m.AssetsHandler())
+	var handler http.Handler = http.HandlerFunc(m.serveRoute)
+	if resolve != nil {
+		handler = resolve(handler)
+	}
+	r.Handle(RoutesPrefix+"/{plugin}/*", handler)
+	r.Handle(RoutesPrefix+"/{plugin}", handler)
+}
+
 // Close 实现 app.Closer：停掉全部后端并关闭运行时。
 func (m *Module) Close(ctx context.Context) error {
 	if m.registry != nil {
@@ -266,7 +289,7 @@ func From(a *app.App) *Module {
 // 每次取菜单时现算，启停插件后侧栏立即跟着变。
 func (m *Module) Navigation() app.Navigation {
 	nav := app.Navigation{Items: []app.NavItem{{
-		Key: "plugins", Label: "插件", Path: PathPlugins, Icon: "puzzle",
+		Key: "plugins", Label: "插件", Path: PathPlugins, Icon: defaultIcon,
 		Group: app.NavGroupSystem, Order: 30, Permission: perm.PluginsManage.String(),
 		Keywords: "plugins chajian kuozhan",
 		// 插件的资源页也在 /plugins/ 之下，前缀匹配会让「插件」跟着一起亮
@@ -285,12 +308,28 @@ func (m *Module) Navigation() app.Navigation {
 			}
 			icon := res.Icon
 			if icon == "" {
-				icon = "puzzle"
+				icon = defaultIcon
 			}
 			nav.Items = append(nav.Items, app.NavItem{
 				Key: group + "-" + res.Path, Label: res.Label, Path: PathPlugins + "/" + loaded.ID() + "/" + res.Path,
 				Icon: icon, Group: group, Order: j, Permission: res.Permission.String(),
 				Keywords: loaded.ID() + " " + res.Path, Description: res.Description,
+			})
+			added = true
+		}
+		for j := range loaded.Manifest.Spec.Pages {
+			page := &loaded.Manifest.Spec.Pages[j]
+			if !page.InMenu() {
+				continue
+			}
+			icon := page.Icon
+			if icon == "" {
+				icon = defaultIcon
+			}
+			nav.Items = append(nav.Items, app.NavItem{
+				Key: group + "-p-" + page.Path, Label: page.Label, Path: PathPlugins + "/" + loaded.ID() + "/p/" + page.Path,
+				Icon: icon, Group: group, Order: len(loaded.Resources) + j, Permission: page.RequiredPermission().String(),
+				Keywords: loaded.ID() + " " + page.Path, Description: page.Description,
 			})
 			added = true
 		}

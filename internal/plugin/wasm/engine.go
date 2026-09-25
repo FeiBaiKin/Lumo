@@ -61,6 +61,9 @@ var ErrTimeout = errors.New("插件调用超时")
 // ErrClosed 表示插件已卸下。
 var ErrClosed = errors.New("插件已停止运行")
 
+// ErrBusy 表示时限内等不到空闲实例：插件没坏，只是忙不过来。
+var ErrBusy = errors.New("插件正忙，这次没排上")
+
 // GuestError 是插件的处理函数自己返回的错误。插件没有崩，只是这次没做成。
 type GuestError struct{ Message string }
 
@@ -75,7 +78,8 @@ func IsCrash(err error) bool {
 		return false
 	}
 	var guest *GuestError
-	return !errors.As(err, &guest) && !errors.Is(err, context.Canceled) && !errors.Is(err, ErrClosed)
+	return !errors.As(err, &guest) && !errors.Is(err, context.Canceled) && !errors.Is(err, ErrClosed) &&
+		!errors.Is(err, ErrBusy)
 }
 
 // Request 是宿主发给插件的一次请求。
@@ -304,8 +308,9 @@ func (p *Plugin) Call(ctx context.Context, req Request, timeout time.Duration) (
 	defer cancel()
 	mod, err := p.acquire(callCtx)
 	if err != nil {
+		// 排队排到超时不算崩溃：公开接口被刷时实例全忙，不能因此把插件停掉
 		if errors.Is(callCtx.Err(), context.DeadlineExceeded) {
-			return nil, ErrTimeout
+			return nil, ErrBusy
 		}
 		return nil, err
 	}

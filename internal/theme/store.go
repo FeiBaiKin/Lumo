@@ -52,6 +52,8 @@ type Store struct {
 	searcher  Searcher
 	favorites Favoriter
 	timezone  TimezoneFunc
+	// excerpt 在摘要进模板前加工一遍（去掉插件的短代码）；nil 时原样。
+	excerpt func(string) string
 }
 
 // NewStore 构造 Store。
@@ -62,6 +64,9 @@ func NewStore(db *bun.DB) *Store { return &Store{db: db} }
 // 库里的时间戳一律是 UTC，进模板前必须换算成站点时区：否则东八区凌晨
 // 零点到八点发布的内容，前台显示的日期会早一天。
 type TimezoneFunc func(context.Context) *time.Location
+
+// UseExcerptFilter 注入摘要的加工函数：摘要是从正文取的纯文字，插件的短代码在里面只是一串方括号。
+func (s *Store) UseExcerptFilter(fn func(string) string) { s.excerpt = fn }
 
 // UseTimezone 注入站点时区来源；不注入时一切时间按 UTC 渲染。
 func (s *Store) UseTimezone(fn TimezoneFunc) { s.timezone = fn }
@@ -407,6 +412,9 @@ func (s *Store) attach(ctx context.Context, rows []postRow) ([]PostView, error) 
 	out := make([]PostView, 0, len(rows))
 	for i := range rows {
 		view := rows[i].toView(authors[rows[i].AuthorID], loc)
+		if s.excerpt != nil {
+			view.Excerpt = s.excerpt(view.Excerpt)
+		}
 		for _, t := range categories[rows[i].ID] {
 			view.Categories = append(view.Categories, taxonomy.Category{
 				ID: t.ID, Name: t.Name, Slug: t.Slug, Description: t.Description, CoverURL: t.CoverURL,

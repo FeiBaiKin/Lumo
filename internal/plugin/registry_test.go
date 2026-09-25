@@ -33,9 +33,14 @@ func zipOf(t *testing.T, files map[string][]byte) *bytes.Reader {
 	return bytes.NewReader(buf.Bytes())
 }
 
-// guestSpec 是测试插件要的声明：它登记的钩子与订阅这些钩子所需的能力。
+// guestSpec 是测试插件要的声明：它登记的钩子、定时任务、接口与前台片段。
 const guestSpec = "  runtime: wasm\n  hooks:\n    actions: [comment.created, post.updated]\n" +
-	"    filters: [comment.judge, content.render]\n  cron:\n    - {name: tick, every: 1h}\n"
+	"    filters: [comment.judge, content.render]\n  cron:\n    - {name: tick, every: 1h}\n" +
+	"  routes:\n    - {name: echo, method: POST, path: \"/echo/{id}\", public: true}\n" +
+	"    - {name: whoami, path: /whoami}\n    - {name: whoami-write, method: POST, path: /whoami}\n" +
+	"    - {name: broken, path: /broken, public: true}\n" +
+	"  frontend:\n    slots: [content.after, head]\n    widgets:\n      - {name: counter}\n" +
+	"    shortcodes:\n      - {name: hello}\n"
 
 func manifest(extra string) []byte {
 	return []byte("apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: demo\nspec:\n  version: 1.0.0\n" + extra)

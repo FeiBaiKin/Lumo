@@ -769,6 +769,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/plugin-widgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 插件提供的侧栏小组件
+         * @description 主题设置里「插件小组件」的可选项：启用中、且被授予了前台能力的插件提供的全部小组件。
+         */
+        get: operations["plugin-widgets"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/plugins": {
         parameters: {
             query?: never;
@@ -826,6 +846,26 @@ export interface paths {
          * @description 启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。
          */
         put: operations["plugin-set-enabled"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/plugins/{name}/pages/{page}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 插件的后台页面
+         * @description 按页面声明的权限串判定；插件须已启用。
+         */
+        get: operations["plugin-page"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
@@ -2961,6 +3001,16 @@ export interface components {
              */
             total: number;
         };
+        PageView: {
+            api: string;
+            description: string;
+            icon: string;
+            label: string;
+            path: string;
+            plugin: string;
+            pluginLabel: string;
+            src: string;
+        };
         PasswordBody: {
             password: string;
         };
@@ -3575,6 +3625,16 @@ export interface components {
             source: string;
             templates: components["schemas"]["TemplateStatus"][] | null;
             version: string;
+        };
+        WidgetInfo: {
+            description: string;
+            id: string;
+            label: string;
+            plugin: string;
+            pluginLabel: string;
+        };
+        WidgetListOutputBody: {
+            items: components["schemas"]["WidgetInfo"][] | null;
         };
     };
     responses: never;
@@ -6399,6 +6459,35 @@ export interface operations {
             };
         };
     };
+    "plugin-widgets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WidgetListOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     "plugin-list": {
         parameters: {
             query?: never;
@@ -6579,6 +6668,65 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "plugin-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                page: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

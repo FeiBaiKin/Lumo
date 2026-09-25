@@ -100,6 +100,9 @@ func newSanitizer() *bluemonday.Policy {
 	return p
 }
 
+// NewPolicy 返回一份新的正文允许列表策略，供要在它之上再放行几样东西的调用方扩展（插件的前台片段）。
+func NewPolicy() *bluemonday.Policy { return newSanitizer() }
+
 // Sanitize 按允许列表净化 HTML。仅用于没有 content:unsafe_html 权限的作者产出的正文。
 func Sanitize(html string) string {
 	if strings.TrimSpace(html) == "" {

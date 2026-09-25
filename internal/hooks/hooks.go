@@ -115,3 +115,31 @@ type User struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"displayName"`
 }
+
+// 前台插槽：主题在页面的固定位置调 {{ .Slot "名字" }}，插件往里放东西。
+const (
+	// SlotHead 在 </head> 之前：插件的样式表与 meta 标签。
+	SlotHead = "head"
+	// SlotFooter 在 </body> 之前：页脚内容与插件的脚本。
+	SlotFooter = "footer"
+	// SlotContentBefore 在文章与页面的正文之前。
+	SlotContentBefore = "content.before"
+	// SlotContentAfter 在文章与页面的正文之后。
+	SlotContentAfter = "content.after"
+	// SlotCommentsAfter 在评论区之后。
+	SlotCommentsAfter = "comments.after"
+)
+
+// Slots 是全部插槽，按在页面里出现的先后排。
+var Slots = []string{SlotHead, SlotContentBefore, SlotContentAfter, SlotCommentsAfter, SlotFooter}
+
+// Page 是插槽、小组件与短代码收到的当前页面。
+type Page struct {
+	// Kind 是页面种类：index、post、page、category、tag、archive、search、author、posts、404 等。
+	Kind string `json:"kind"`
+	// Path 是请求路径。
+	Path  string `json:"path"`
+	Title string `json:"title"`
+	// Post 在文章与页面上是当前内容，其余为 nil。
+	Post *PostRef `json:"post,omitempty"`
+}

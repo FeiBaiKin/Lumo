@@ -1,0 +1,11 @@
+{{- /*
+插件小组件：内容由插件渲染、插件模块净化过，这里只套上侧栏区块的外壳。
+插件停用或这次没产出内容时整块不出现，站长的设置原样留着。
+*/ -}}
+{{ $w := .W }}
+{{ with .Page.Widget $w.widget }}
+<section class="side-block side-plugin">
+  <h2 class="side-title">{{ or $w.title .Label }}</h2>
+  <div class="side-html">{{ .HTML }}</div>
+</section>
+{{ end }}

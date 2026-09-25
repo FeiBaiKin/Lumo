@@ -26,11 +26,14 @@
           <h1 class="article-title">{{ $post.Title }}</h1>
         </header>
 
+        {{ .Slot "content.before" }}
         <div class="prose">{{ safeHTML $post.Content }}</div>
+        {{ .Slot "content.after" }}
       </article>
 
       {{ if .Theme.Settings.content.showComments }}
       {{ template "partials/comments.html" . }}
+      {{ .Slot "comments.after" }}
       {{ end }}
     </div>
     {{ if $side }}

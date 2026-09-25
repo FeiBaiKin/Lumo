@@ -23,6 +23,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/install"
 	"github.com/FeiBaiKin/lumo/internal/logging"
 	"github.com/FeiBaiKin/lumo/internal/media"
+	"github.com/FeiBaiKin/lumo/internal/plugin"
 	"github.com/FeiBaiKin/lumo/internal/server"
 	"github.com/FeiBaiKin/lumo/internal/theme"
 	"github.com/FeiBaiKin/lumo/internal/update"
@@ -282,6 +283,11 @@ func assembleSite(ctx context.Context, cfg config.Config, db *database.DB, dataD
 	// 迁移完成，模块可以开始播种数据、启动后台任务。
 	if startErr := application.Start(ctx); startErr != nil {
 		return nil, startErr
+	}
+
+	// 插件的接口与静态文件：路径由插件在运行时声明，不进接口规范，挂在根路由上。
+	if plugins := plugin.From(application); plugins != nil {
+		plugins.MountRoutes(root, core.Authenticator.Optional)
 	}
 
 	// 访客前台必须最后挂载：它的兜底路由 /{slug}（独立页面）与 NotFound

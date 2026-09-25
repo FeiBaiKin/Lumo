@@ -25,9 +25,13 @@ type Hooks struct {
 
 // 钩子的两个类别，也是发给插件的请求类别（wasm.Request.Type）。
 const (
-	kindAction = "action"
-	kindFilter = "filter"
-	kindCron   = "cron"
+	kindAction    = "action"
+	kindFilter    = "filter"
+	kindCron      = "cron"
+	kindRoute     = "route"
+	kindSlot      = "slot"
+	kindWidget    = "widget"
+	kindShortcode = "shortcode"
 )
 
 // hookSpec 是一个钩子在插件一侧的约定：订阅它要什么能力、过滤器给多少时间。
@@ -121,14 +125,28 @@ func (h *Hooks) normalize(caps *Capabilities, hasBackend bool) error {
 // 两个方向都要查：声明了却没登记，动作派过去只会报错；登记了却没声明，站长确认时
 // 看不到它，而那段代码在作者看来「写了却不生效」。
 func checkHandlers(m *Manifest, desc wasm.Description) error {
-	cron := make([]string, 0, len(m.Spec.Cron))
+	var cron, routes, widgets, shortcodes []string
 	for i := range m.Spec.Cron {
 		cron = append(cron, m.Spec.Cron[i].Name)
 	}
+	for i := range m.Spec.Routes {
+		routes = append(routes, m.Spec.Routes[i].Name)
+	}
+	fe := &m.Spec.Frontend
+	for i := range fe.Widgets {
+		widgets = append(widgets, fe.Widgets[i].Name)
+	}
+	for i := range fe.Shortcodes {
+		shortcodes = append(shortcodes, fe.Shortcodes[i].Name)
+	}
 	for kind, declared := range map[string][]string{
-		kindAction: m.Spec.Hooks.Actions,
-		kindFilter: m.Spec.Hooks.Filters,
-		kindCron:   cron,
+		kindAction:    m.Spec.Hooks.Actions,
+		kindFilter:    m.Spec.Hooks.Filters,
+		kindCron:      cron,
+		kindRoute:     routes,
+		kindSlot:      fe.Slots,
+		kindWidget:    widgets,
+		kindShortcode: shortcodes,
 	} {
 		registered := desc.Handlers[kind]
 		for _, name := range declared {
@@ -138,7 +156,8 @@ func checkHandlers(m *Manifest, desc wasm.Description) error {
 		}
 		for _, name := range registered {
 			if !slices.Contains(declared, name) {
-				return fmt.Errorf("插件登记了 %s %s 的处理函数，但清单没有声明它（钩子在 spec.hooks，定时任务在 spec.cron）", kind, name)
+				return fmt.Errorf("插件登记了 %s %s 的处理函数，但清单没有声明它"+
+					"（钩子在 spec.hooks，定时任务在 spec.cron，接口在 spec.routes，插槽、小组件与短代码在 spec.frontend）", kind, name)
 			}
 		}
 	}

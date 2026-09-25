@@ -110,6 +110,9 @@
     }
   </style>
   {{ end }}
+
+  {{- /* 插件的样式表与 meta 标签。放在主题样式之后，插件才盖得住主题的默认样式。 */}}
+  {{ .Slot "head" }}
 </head>
 <body>
   <a class="skip-link" href="#main">跳到正文</a>
@@ -186,5 +189,8 @@
   <script defer src="{{ $.Theme.AssetsBase }}/vendor/lenis.min.js?v={{ $.Theme.AssetsVersion }}"></script>
   <script defer src="{{ $.Theme.AssetsBase }}/motion.js?v={{ $.Theme.AssetsVersion }}"></script>
   {{ end }}{{ end }}
+
+  {{- /* 插件放在页尾的内容与脚本。脚本只会是插件包里的文件，且都是 defer。 */}}
+  {{ .Slot "footer" }}
 </body>
 </html>

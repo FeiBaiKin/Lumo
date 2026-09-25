@@ -363,13 +363,13 @@ groups:
             additionalProperties: false
             required: [type]
             # 与首页模块同理：条目里字段多，顺序必须显式给，否则类型选择器会掉到最下面
-            x-order: [type, scope, title, source, term, count, thumb, by, menu, text]
+            x-order: [type, scope, title, widget, source, term, count, thumb, by, menu, text]
             properties:
               type:
                 type: string
                 title: 小组件
-                enum: [about, search, posts, related, categories, tags, comments, archives, links, html]
-                enumNames: [站点简介, 搜索框, 文章列表, 相关文章, 分类导航, 标签云, 最新评论, 归档, 友情链接, 自定义内容]
+                enum: [about, search, posts, related, categories, tags, comments, archives, links, html, plugin]
+                enumNames: [站点简介, 搜索框, 文章列表, 相关文章, 分类导航, 标签云, 最新评论, 归档, 友情链接, 自定义内容, 插件小组件]
                 x-widget: select
               scope:
                 type: string
@@ -383,6 +383,13 @@ groups:
                 title: 区块标题
                 maxLength: 32
                 description: 留空则用小组件的默认标题
+              widget:
+                type: string
+                title: 哪个插件小组件
+                maxLength: 130
+                x-widget: plugin-widget
+                description: 列出的是启用中的插件提供的小组件。插件停用后这一条在前台不显示，设置保留
+                x-show-if: { field: type, op: eq, value: plugin }
               source:
                 type: string
                 title: 取哪些文章

@@ -157,6 +157,9 @@ func validateContents(dir string) (*Manifest, error) {
 	if err := validateBackend(fsys, manifest); err != nil {
 		return nil, err
 	}
+	if err := validateStaticFiles(fsys, manifest); err != nil {
+		return nil, err
+	}
 	if _, err := compileResources(manifest.Spec.Resources); err != nil {
 		return nil, err
 	}

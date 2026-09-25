@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth"
 	"github.com/FeiBaiKin/lumo/internal/seo"
 	"github.com/FeiBaiKin/lumo/internal/settings"
@@ -36,6 +37,8 @@ type Renderer struct {
 	assetsBase string
 	// formCSRF 签发页眉表单要用的令牌；未接上时页眉不渲染那张表单。
 	formCSRF FormCSRFFunc
+	// plugins 是插件往前台放东西的入口；nil 时插槽为空、短代码原样保留。
+	plugins app.Frontend
 }
 
 // UseFormCSRF 接上表单令牌的签发钩子。
@@ -48,6 +51,8 @@ type RendererOptions struct {
 	Settings *settings.Service
 	Themes   *SettingsStore
 	Logger   *slog.Logger
+	// Plugins 是插件的前台入口，可为 nil。
+	Plugins app.Frontend
 }
 
 // NewRenderer 构造 Renderer。
@@ -59,6 +64,7 @@ func NewRenderer(opts *RendererOptions) *Renderer {
 		themeCfg:   opts.Themes,
 		logger:     opts.Logger,
 		assetsBase: AssetsPath,
+		plugins:    opts.Plugins,
 	}
 }
 
@@ -318,6 +324,8 @@ func (r *Renderer) NewContext(ctx context.Context, req *http.Request, kind strin
 		Params:      map[string]string{},
 		Public:      r.publicSettings(ctx),
 		CurrentUser: currentUser(req.Context()),
+		plugins:     r.plugins,
+		reqCtx:      ctx,
 	}, nil
 }
 

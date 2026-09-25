@@ -2321,6 +2321,46 @@
         ],
         "type": "object"
       },
+      "PageView": {
+        "additionalProperties": false,
+        "properties": {
+          "api": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "plugin": {
+            "type": "string"
+          },
+          "pluginLabel": {
+            "type": "string"
+          },
+          "src": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "plugin",
+          "pluginLabel",
+          "path",
+          "label",
+          "description",
+          "icon",
+          "src",
+          "api"
+        ],
+        "type": "object"
+      },
       "PasswordBody": {
         "additionalProperties": false,
         "properties": {
@@ -4280,6 +4320,52 @@
           "pageTemplates",
           "hasCover",
           "settingGroups"
+        ],
+        "type": "object"
+      },
+      "WidgetInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "plugin": {
+            "type": "string"
+          },
+          "pluginLabel": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "description",
+          "plugin",
+          "pluginLabel"
+        ],
+        "type": "object"
+      },
+      "WidgetListOutputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WidgetInfo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items"
         ],
         "type": "object"
       }
@@ -8446,6 +8532,46 @@
         ]
       }
     },
+    "/api/v1/console/plugin-widgets": {
+      "get": {
+        "description": "主题设置里「插件小组件」的可选项：启用中、且被授予了前台能力的插件提供的全部小组件。",
+        "operationId": "plugin-widgets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetListOutputBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "插件提供的侧栏小组件",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
     "/api/v1/console/plugins": {
       "get": {
         "description": "包含加载失败或目录被手工删除的插件，其 broken 字段说明原因。",
@@ -8742,6 +8868,98 @@
           }
         ],
         "summary": "启用或停用插件",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/api/v1/console/plugins/{name}/pages/{page}": {
+      "get": {
+        "description": "按页面声明的权限串判定；插件须已启用。",
+        "operationId": "plugin-page",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "page",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageView"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "插件的后台页面",
         "tags": [
           "plugins"
         ]

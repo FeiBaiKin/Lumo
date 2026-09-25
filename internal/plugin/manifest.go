@@ -106,6 +106,12 @@ type Spec struct {
 	Resources []ResourceDecl `yaml:"resources" json:"resources"`
 	// Cron 是按固定间隔在后台运行的任务。
 	Cron []CronJob `yaml:"cron" json:"cron"`
+	// Routes 是插件自己的 HTTP 接口，挂在 /api/v1/plugins/<插件>/ 之下。
+	Routes []Route `yaml:"routes" json:"routes"`
+	// Frontend 是插件往前台页面里放的东西：样式、脚本、插槽、小组件与短代码。
+	Frontend FrontendDecl `yaml:"frontend" json:"frontend"`
+	// Pages 是后台的自定义页面，放在隔离的 iframe 里。
+	Pages []PageDecl `yaml:"pages" json:"pages"`
 }
 
 // Author 是作者信息。
@@ -203,6 +209,15 @@ func (m *Manifest) validate(dirName string) error {
 		return err
 	}
 	if err := normalizeCron(m.Spec.Cron, &m.Spec.Capabilities, m.Spec.Runtime == RuntimeWasm); err != nil {
+		return err
+	}
+	if err := normalizeRoutes(m.Spec.Routes, m.Spec.Runtime == RuntimeWasm); err != nil {
+		return err
+	}
+	if err := m.Spec.Frontend.normalize(&m.Spec.Capabilities, m.Spec.Runtime == RuntimeWasm); err != nil {
+		return err
+	}
+	if err := normalizePages(m.Spec.Pages); err != nil {
 		return err
 	}
 	if m.Spec.Runtime == "" && m.Spec.Capabilities.NeedsBackend() {

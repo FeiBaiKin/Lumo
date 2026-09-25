@@ -2,7 +2,7 @@
 侧栏：按「主题设置 → 侧边栏」里的小组件自上而下拼出来。
 
 分派写成 if 链而不是「按名字查模板」，与首页模块同一个理由：模板里没有
-按名字取模板这一步，而分支是固定的十种，漏掉一种会在打开页面时立刻发现。
+按名字取模板这一步，而分支是固定的十一种，漏掉一种会在打开页面时立刻发现。
 
 入参 dict：Page 整页上下文 / Scope 当前页属于哪一类（list / post）
 */ -}}
@@ -22,6 +22,7 @@
     {{ else if eq $w.type "comments" }}{{ template "partials/widget-comments.html" $ctx }}
     {{ else if eq $w.type "links" }}{{ template "partials/widget-links.html" $ctx }}
     {{ else if eq $w.type "html" }}{{ template "partials/widget-html.html" $ctx }}
+    {{ else if eq $w.type "plugin" }}{{ template "partials/widget-plugin.html" $ctx }}
     {{ end }}
   {{ end }}
 {{ end }}

@@ -1667,6 +1667,12 @@ textarea.field-input,
   margin: var(--s10) 0 0;
 }
 
+/* 插件放在正文前后、评论区下面的内容：与正文同宽，上下留出一段呼吸 */
+.plugin-slot {
+  max-width: var(--measure);
+  margin-block: var(--s6);
+}
+
 /*
  * 文末的动作区：目前只有收藏一个按钮，右边跟一行收藏数。
  *

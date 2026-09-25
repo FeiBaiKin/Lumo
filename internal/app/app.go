@@ -39,6 +39,8 @@ type App struct {
 	provided map[string]any
 	// events 是派发给插件的动作与过滤器总线，见 events.go。
 	events eventBus
+	// frontend 是插件往前台页面里放东西的入口，见 frontend.go。
+	frontend frontendHolder
 }
 
 // NamedFS 是带来源模块名的迁移文件系统，便于错误定位与版本表命名。

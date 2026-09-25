@@ -89,7 +89,9 @@
         {{ end }}
 
         {{- /* 正文是服务端渲染好的 HTML，主题只消费不加工。 */ -}}
+        {{ .Slot "content.before" }}
         <div class="prose">{{ safeHTML $post.Content }}</div>
+        {{ .Slot "content.after" }}
 
         {{ if $post.Tags }}
         <p class="article-tags">
@@ -160,6 +162,7 @@
 
       {{ if $content.showComments }}
       {{ template "partials/comments.html" . }}
+      {{ .Slot "comments.after" }}
       {{ end }}
     </div>
     {{ if $side }}

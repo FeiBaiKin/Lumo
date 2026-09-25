@@ -33,6 +33,7 @@ export type WidgetKind =
   | "images"
   | "date"
   | "icon"
+  | "plugin-widget"
   | "number"
   | "slider"
   | "switch"
@@ -164,6 +165,7 @@ const WIDGETS = new Set<string>([
   "images",
   "date",
   "icon",
+  "plugin-widget",
   "number",
   "slider",
   "switch",

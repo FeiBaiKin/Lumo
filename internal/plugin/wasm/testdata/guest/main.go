@@ -1,5 +1,5 @@
 // 测试用插件：登记真实的钩子名，post.updated 按数据里的 mode 切换行为，
-// 覆盖正常返回、处理函数报错、死循环、panic 与宿主往返调用。
+// 覆盖正常返回、处理函数报错、死循环、panic 与宿主往返调用；接口与前台片段见 frontend.go。
 package main
 
 import (
@@ -68,6 +68,7 @@ func init() {
 		c.HTML += `<p class="from-plugin">插件追加</p><script>alert(1)</script>`
 		return nil
 	})
+	registerFrontend()
 }
 
 func main() {}

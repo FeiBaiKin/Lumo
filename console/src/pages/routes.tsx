@@ -91,6 +91,11 @@ const PluginResourcePage = lazy(() =>
     default: m.PluginResourcePage,
   })),
 );
+const PluginPage = lazy(() =>
+  import("@/pages/system/plugin-page").then((m) => ({
+    default: m.PluginPage,
+  })),
+);
 
 /** 按需加载页面的占位：与真实页面同为「页头 + 主体」两段，加载完不跳。 */
 function PageFallback() {
@@ -187,6 +192,11 @@ export const APP_ROUTES = [
   {
     path: "plugins/:plugin/:resource",
     element: () => <LazyPage element={<PluginResourcePage />} />,
+  },
+  // 插件的后台自定义页（隔离的 iframe）
+  {
+    path: "plugins/:plugin/p/:page",
+    element: () => <LazyPage element={<PluginPage />} />,
   },
   { path: "logs", element: () => <LazyPage element={<LogsPage />} /> },
 ];

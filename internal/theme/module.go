@@ -112,6 +112,7 @@ func (m *Module) Register(a *app.App) error {
 		if favorites := favorite.From(a); favorites != nil {
 			m.store.UseFavorites(favorites)
 		}
+		m.store.UseExcerptFilter(a.Frontend().StripShortcodes)
 	}
 	m.renderer = NewRenderer(&RendererOptions{
 		Registry: registry,
@@ -119,6 +120,7 @@ func (m *Module) Register(a *app.App) error {
 		Settings: settings.From(a),
 		Themes:   m.settings,
 		Logger:   m.logger,
+		Plugins:  a.Frontend(),
 	})
 	// 内容时间要按站点时区渲染，时区来自站点设置，因此得等 renderer 装好再回注。
 	if m.store != nil {

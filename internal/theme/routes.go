@@ -205,7 +205,7 @@ func (f *Frontend) renderSingle(w http.ResponseWriter, r *http.Request, view *Po
 		return
 	}
 
-	f.filterContent(ctx, view)
+	f.filterContent(ctx, view, kind)
 	pageCtx.Post = view
 	pageCtx.Title = view.Title
 	pageCtx.Description = view.Excerpt
@@ -213,22 +213,33 @@ func (f *Frontend) renderSingle(w http.ResponseWriter, r *http.Request, view *Po
 	f.renderer.Render(w, r, http.StatusOK, tmpl, pageCtx)
 }
 
-// filterContent 把正文交给订阅了 content.render 的插件改写。
+// filterContent 把正文交给插件：先过订阅了 content.render 的插件，再展开短代码。
 //
-// 只在详情页跑：列表页每篇都跑一遍，一页十篇就是十次插件调用。插件改过的结果
-// 按普通作者的规则重新净化，再做代码高亮——插件拿不到往正文里塞脚本的机会；
-// 代价是正文里只有 content:unsafe_html 作者才能放的内容（如 iframe），经插件改写后也会被净化掉。
-func (f *Frontend) filterContent(ctx context.Context, view *PostView) {
-	if f.events == nil || view.source == "" || !f.events.Subscribed(hooks.ContentRender) {
+// 只在详情页跑：列表页每篇都跑一遍，一页十篇就是十次插件调用。插件改写过的正文
+// 按普通作者的规则重新净化——插件拿不到往正文里塞脚本的机会；代价是正文里只有
+// content:unsafe_html 作者才能放的内容（如 iframe），经插件改写后也会被净化掉。
+// 短代码的输出由插件模块自己净化（它还放行表单控件），这里不再过正文那一道。
+// 两步都做完才高亮代码（主题视图里另存了高亮前的 source）。
+func (f *Frontend) filterContent(ctx context.Context, view *PostView, kind string) {
+	if view.source == "" {
 		return
 	}
-	in := hooks.RenderedContent{
-		HTML: view.source,
-		Post: hooks.PostRef{ID: view.ID, Type: view.Type, Title: view.Title, Path: view.URL},
+	src, changed := view.source, false
+	ref := hooks.PostRef{ID: view.ID, Type: view.Type, Title: view.Title, Path: view.URL}
+	if f.events != nil && f.events.Subscribed(hooks.ContentRender) {
+		out := app.ApplyFilter(ctx, f.events, hooks.ContentRender, hooks.RenderedContent{HTML: src, Post: ref})
+		if out.HTML != src {
+			src, changed = content.Sanitize(out.HTML), true
+		}
 	}
-	out := app.ApplyFilter(ctx, f.events, hooks.ContentRender, in)
-	if out.HTML != in.HTML {
-		view.Content = content.Highlight(content.Sanitize(out.HTML))
+	if plugins := f.renderer.plugins; plugins != nil {
+		page := &hooks.Page{Kind: kind, Path: view.URL, Title: view.Title, Post: &ref}
+		if out, ok := plugins.Shortcodes(ctx, src, page); ok {
+			src, changed = out, true
+		}
+	}
+	if changed {
+		view.Content = content.Highlight(src)
 	}
 }
 

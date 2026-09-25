@@ -205,6 +205,7 @@ func (h *Handler) Register(console huma.API) {
 	}, h.updateSettings)
 
 	h.registerData(console)
+	h.registerFrontend(console)
 }
 
 // viewOf 把注册表里的插件转成接口视图。

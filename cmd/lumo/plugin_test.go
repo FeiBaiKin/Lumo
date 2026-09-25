@@ -54,6 +54,17 @@ spec:
   hooks:
     actions: [comment.created, post.updated]
     filters: [comment.judge, content.render]
+  routes:
+    - {name: echo, method: POST, path: "/echo/{id}", public: true}
+    - {name: whoami, path: /whoami}
+    - {name: whoami-write, method: POST, path: /whoami}
+    - {name: broken, path: /broken, public: true}
+  frontend:
+    slots: [content.after, head]
+    widgets:
+      - {name: counter, label: 访问计数}
+    shortcodes:
+      - {name: hello}
   resources:
     - kind: Note
       label: 笔记
@@ -185,7 +196,17 @@ func installProbe(t *testing.T, admin *client) {
 
 func installProbeWith(t *testing.T, admin *client, manifest string) {
 	t.Helper()
-	pkg := zipPlugin(t, map[string][]byte{"plugin.yaml": []byte(manifest), "plugin.wasm": wasmtest.Guest(t)})
+	installProbeFiles(t, admin, manifest, nil)
+}
+
+// installProbeFiles 同 installProbeWith，包里再多放几个文件（静态资源）。
+func installProbeFiles(t *testing.T, admin *client, manifest string, extra map[string][]byte) {
+	t.Helper()
+	files := map[string][]byte{"plugin.yaml": []byte(manifest), "plugin.wasm": wasmtest.Guest(t)}
+	for name, data := range extra {
+		files[name] = data
+	}
+	pkg := zipPlugin(t, files)
 	status, out := admin.upload("/api/v1/console/plugins", pkg)
 	mustStatus(t, "上传插件", status, http.StatusCreated, out)
 	status, out = admin.do(http.MethodPut, "/api/v1/console/plugins/hook-probe/enabled",
