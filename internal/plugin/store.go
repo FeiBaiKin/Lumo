@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -14,15 +15,19 @@ import (
 type Record struct {
 	bun.BaseModel `bun:"table:plugins,alias:p"`
 
-	Name        string    `bun:"name,pk"`
-	Version     string    `bun:"version,notnull"`
-	DisplayName string    `bun:"display_name,notnull"`
-	Description string    `bun:"description,notnull"`
-	Author      string    `bun:"author,notnull"`
-	Enabled     bool      `bun:"enabled,notnull"`
-	Manifest    []byte    `bun:"manifest,type:jsonb,notnull"`
-	InstalledAt time.Time `bun:"installed_at,nullzero,notnull,default:now()"`
-	UpdatedAt   time.Time `bun:"updated_at,nullzero,notnull,default:now()"`
+	Name        string `bun:"name,pk"`
+	Version     string `bun:"version,notnull"`
+	DisplayName string `bun:"display_name,notnull"`
+	Description string `bun:"description,notnull"`
+	Author      string `bun:"author,notnull"`
+	Enabled     bool   `bun:"enabled,notnull"`
+	Manifest    []byte `bun:"manifest,type:jsonb,notnull"`
+	// Granted 是站长授予过的能力；nil 表示从没授予过。
+	Granted *Capabilities `bun:"granted,type:jsonb,nullzero"`
+	// DisabledReason 是系统停用插件的原因，手动停用时为空串。
+	DisabledReason string    `bun:"disabled_reason,notnull"`
+	InstalledAt    time.Time `bun:"installed_at,nullzero,notnull,default:now()"`
+	UpdatedAt      time.Time `bun:"updated_at,nullzero,notnull,default:now()"`
 }
 
 // Store 持久化插件状态与设置值。
@@ -83,13 +88,30 @@ func (s *Store) Put(ctx context.Context, manifest *Manifest, raw []byte) error {
 	return nil
 }
 
-// SetEnabled 启用或停用一个插件。
-func (s *Store) SetEnabled(ctx context.Context, name string, enabled bool) error {
-	res, err := s.db.NewUpdate().Model((*Record)(nil)).
-		Set("enabled = ?", enabled).
+// State 是插件的启用状态。
+type State struct {
+	Enabled bool
+	// Reason 是系统停用的原因，手动启停时为空串。
+	Reason string
+	// Granted 是授予过的能力；nil 表示不改动库里已有的值。
+	Granted *Capabilities
+}
+
+// SetState 写入插件的启用状态。
+func (s *Store) SetState(ctx context.Context, name string, st State) error {
+	q := s.db.NewUpdate().Model((*Record)(nil)).
+		Set("enabled = ?", st.Enabled).
+		Set("disabled_reason = ?", st.Reason).
 		Set("updated_at = now()").
-		Where("p.name = ?", name).
-		Exec(ctx)
+		Where("p.name = ?", name)
+	if st.Granted != nil {
+		raw, err := json.Marshal(st.Granted)
+		if err != nil {
+			return fmt.Errorf("编码插件 %s 授予的能力: %w", name, err)
+		}
+		q = q.Set("granted = ?::jsonb", string(raw))
+	}
+	res, err := q.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("更新插件 %s 的启用状态: %w", name, err)
 	}

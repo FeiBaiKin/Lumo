@@ -33,9 +33,17 @@ import { PluginSettingsDialog } from "@/pages/system/plugin-settings";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  BookOpen,
+  Clock,
   ExternalLink,
+  Globe,
+  LayoutTemplate,
+  type LucideIcon,
+  Mail,
+  PenLine,
   Puzzle,
   Settings,
+  ShieldCheck,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -43,11 +51,11 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 /**
- * 插件管理。
+ * 插件管理：装、卸、启用 / 停用、改设置。
  *
- * 第一期的插件是**纯声明式**的：包内有清单与设置声明，没有可执行代码。
- * 这一页因此只做四件事：装、卸、启用/停用、改设置。插件的自定义页面与
- * 扩展点要等后面几期。
+ * 插件分两种：纯声明式的只有清单、设置与静态资源；「带后端」的另有一段在沙箱里运行的代码。
+ * 声明了能力（读写内容、访问网络、发邮件……）的插件，启用前先把这些能力逐条列给站长确认；
+ * 被系统停用的（连续出错、新版本多要了能力、后端加载失败），行内写明原因。
  *
  * 与主题页的差别值得说明：主题**同一时刻只有一个生效**，所以那边是「选一个」；
  * 插件可以同时启用多个，所以这里是逐个开合。这个差别来自产品语义，不是排版偏好。
@@ -60,6 +68,7 @@ export function PluginsPage() {
   const [installing, setInstalling] = useState(false);
   const [removing, setRemoving] = useState<PluginView | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
+  const [consentFor, setConsentFor] = useState<PluginView | null>(null);
 
   const query = useQuery({
     queryKey: ["plugins"],
@@ -77,12 +86,19 @@ export function PluginsPage() {
   const plugins = query.data ?? [];
 
   const setEnabled = useMutation({
-    mutationFn: async (input: { name: string; enabled: boolean }) =>
+    mutationFn: async (input: {
+      name: string;
+      enabled: boolean;
+      accept?: boolean;
+    }) =>
       runMutation(
         () =>
           api.PUT("/api/v1/console/plugins/{name}/enabled", {
             params: { path: { name: input.name } },
-            body: { enabled: input.enabled },
+            body: {
+              enabled: input.enabled,
+              ...(input.accept ? { acceptCapabilities: true } : {}),
+            },
           }),
         {
           success: input.enabled ? "插件已启用" : "插件已停用",
@@ -149,9 +165,14 @@ export function PluginsPage() {
                     key={plugin.name}
                     plugin={plugin}
                     busy={setEnabled.isPending || uninstall.isPending}
-                    onToggle={(enabled) =>
-                      setEnabled.mutate({ name: plugin.name, enabled })
-                    }
+                    onToggle={(enabled) => {
+                      // 声明了能力而还没确认过的，先让站长看清它要做什么
+                      if (enabled && plugin.needsConsent) {
+                        setConsentFor(plugin);
+                        return;
+                      }
+                      setEnabled.mutate({ name: plugin.name, enabled });
+                    }}
                     onSettings={() => setSettingsFor(plugin.name)}
                     onRemove={() => setRemoving(plugin)}
                   />
@@ -163,6 +184,22 @@ export function PluginsPage() {
       </PageBody>
 
       <InstallDialog open={installing} onOpenChange={setInstalling} />
+
+      <ConsentDialog
+        plugin={consentFor}
+        pending={setEnabled.isPending}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConsentFor(null);
+          }
+        }}
+        onConfirm={(name) =>
+          setEnabled.mutate(
+            { name, enabled: true, accept: true },
+            { onSuccess: () => setConsentFor(null) },
+          )
+        }
+      />
 
       <PluginSettingsDialog
         plugin={settingsFor}
@@ -221,10 +258,24 @@ function PluginRow({
           <span className="flex items-center gap-2">
             <span className="font-medium text-ink">{plugin.displayName}</span>
             <Badge tone="neutral">v{plugin.version}</Badge>
+            {plugin.runtime === "wasm" ? (
+              <Badge tone="outline">带后端</Badge>
+            ) : null}
           </span>
         </EntityField>
         {plugin.description ? (
           <EntityMeta>{plugin.description}</EntityMeta>
+        ) : null}
+        {!plugin.enabled && plugin.disabledReason ? (
+          <EntityMeta>
+            <span className="flex items-start gap-1.5 text-warn">
+              <AlertTriangle
+                aria-hidden="true"
+                className="mt-0.5 size-3.5 shrink-0"
+              />
+              {plugin.disabledReason}
+            </span>
+          </EntityMeta>
         ) : null}
         <EntityMeta>
           {[plugin.author, plugin.license].filter(Boolean).join(" · ")}
@@ -274,6 +325,84 @@ function PluginRow({
         )}
       </EntityEnd>
     </Entity>
+  );
+}
+
+/** 能力类别对应的图标，与后端 capabilityLine.key 一一对应。 */
+const CAPABILITY_ICONS: Record<string, LucideIcon> = {
+  "content.read": BookOpen,
+  "content.write": PenLine,
+  http: Globe,
+  mail: Mail,
+  cron: Clock,
+  frontend: LayoutTemplate,
+};
+
+/**
+ * 启用前的能力确认。
+ *
+ * 逐条说清插件启用后能做什么、范围到哪（哪些权限、哪些域名），按钮直接写「确认并启用」：
+ * 这一步就是站长点头的那一下，不该藏在一个泛泛的「确定」后面。
+ */
+function ConsentDialog({
+  plugin,
+  pending,
+  onOpenChange,
+  onConfirm,
+}: {
+  plugin: PluginView | null;
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (name: string) => void;
+}) {
+  const lines = plugin?.capabilities ?? [];
+  return (
+    <Dialog open={plugin !== null} onOpenChange={onOpenChange}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>启用「{plugin?.displayName}」之前</DialogTitle>
+          <DialogDescription>
+            启用后它可以做下面这些事。以后升级如果多要了能力，插件会先停下来，等你再次确认。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <ul className="flex flex-col divide-y divide-line">
+            {lines.map((line) => {
+              const Icon = CAPABILITY_ICONS[line.key] ?? ShieldCheck;
+              return (
+                <li key={line.key} className="flex gap-3 py-2.5">
+                  <Icon
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0 text-ink-muted"
+                  />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-sm font-medium text-ink">
+                      {line.title}
+                    </span>
+                    <span className="text-xs break-words text-ink-muted">
+                      {line.detail}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            loading={pending}
+            disabled={!plugin || pending}
+            onClick={() => plugin && onConfirm(plugin.name)}
+          >
+            确认并启用
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

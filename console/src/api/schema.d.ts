@@ -799,7 +799,7 @@ export interface paths {
         get?: never;
         /**
          * 启用或停用插件
-         * @description 启用后插件的设置分组立即可用，不需要重启。
+         * @description 启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。
          */
         put: operations["plugin-set-enabled"];
         post?: never;
@@ -2138,6 +2138,11 @@ export interface components {
             /** @description 语义化版本号；源码直接构建时为 0.0.0-dev */
             version: string;
         };
+        CapabilityLine: {
+            detail: string;
+            key: string;
+            title: string;
+        };
         Category: {
             /** @description 封面图地址 */
             coverUrl: string;
@@ -2344,6 +2349,8 @@ export interface components {
             user?: string;
         };
         EnabledInputBody: {
+            /** @description 启用声明了能力的插件时须为 true，表示站长已确认 */
+            acceptCapabilities?: boolean;
             enabled: boolean;
         };
         Entry: {
@@ -2881,15 +2888,21 @@ export interface components {
         PluginView: {
             author: string;
             broken?: string;
+            capabilities: components["schemas"]["CapabilityLine"][] | null;
             description: string;
+            disabledReason: string;
             displayName: string;
             enabled: boolean;
             homepage: string;
             license: string;
             name: string;
+            needsConsent: boolean;
             repo: string;
             /** @description 所需的 Lumo 版本范围；空串表示不限制 */
             requires: string;
+            running: boolean;
+            runtime: string;
+            sdk: string;
             settingGroups: string[] | null;
             version: string;
         };
@@ -6303,6 +6316,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

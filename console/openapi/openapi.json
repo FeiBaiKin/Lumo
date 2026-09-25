@@ -358,6 +358,26 @@
         ],
         "type": "object"
       },
+      "CapabilityLine": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "detail"
+        ],
+        "type": "object"
+      },
       "Category": {
         "additionalProperties": false,
         "properties": {
@@ -900,6 +920,10 @@
       "EnabledInputBody": {
         "additionalProperties": false,
         "properties": {
+          "acceptCapabilities": {
+            "description": "启用声明了能力的插件时须为 true，表示站长已确认",
+            "type": "boolean"
+          },
           "enabled": {
             "type": "boolean"
           }
@@ -2394,7 +2418,19 @@
           "broken": {
             "type": "string"
           },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/CapabilityLine"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "description": {
+            "type": "string"
+          },
+          "disabledReason": {
             "type": "string"
           },
           "displayName": {
@@ -2412,11 +2448,23 @@
           "name": {
             "type": "string"
           },
+          "needsConsent": {
+            "type": "boolean"
+          },
           "repo": {
             "type": "string"
           },
           "requires": {
             "description": "所需的 Lumo 版本范围；空串表示不限制",
+            "type": "string"
+          },
+          "running": {
+            "type": "boolean"
+          },
+          "runtime": {
+            "type": "string"
+          },
+          "sdk": {
             "type": "string"
           },
           "settingGroups": {
@@ -2443,7 +2491,13 @@
           "license",
           "requires",
           "enabled",
-          "settingGroups"
+          "settingGroups",
+          "runtime",
+          "capabilities",
+          "needsConsent",
+          "disabledReason",
+          "running",
+          "sdk"
         ],
         "type": "object"
       },
@@ -8241,7 +8295,7 @@
     },
     "/api/v1/console/plugins/{name}/enabled": {
       "put": {
-        "description": "启用后插件的设置分组立即可用，不需要重启。",
+        "description": "启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。",
         "operationId": "plugin-set-enabled",
         "parameters": [
           {
@@ -8285,6 +8339,16 @@
               }
             },
             "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "422": {
             "content": {

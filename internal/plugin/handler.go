@@ -52,6 +52,18 @@ type pluginView struct {
 	Broken string `json:"broken,omitempty"`
 	// SettingGroups 是该插件声明的设置分组名。
 	SettingGroups []string `json:"settingGroups"`
+	// Runtime 是后端的运行方式：空串为纯声明式，wasm 为带后端。
+	Runtime string `json:"runtime"`
+	// Capabilities 是插件要用的能力，逐条写成给站长看的话。
+	Capabilities []capabilityLine `json:"capabilities"`
+	// NeedsConsent 为真表示启用前要先确认这些能力。
+	NeedsConsent bool `json:"needsConsent"`
+	// DisabledReason 是系统停用它的原因（连续出错、新版本多要了能力、后端加载失败）；手动停用时为空串。
+	DisabledReason string `json:"disabledReason"`
+	// Running 为真表示后端正在运行。
+	Running bool `json:"running"`
+	// SDK 是后端编译时用的 SDK 版本；没在运行时为空串。
+	SDK string `json:"sdk"`
 }
 
 type pluginListBody struct {
@@ -70,6 +82,8 @@ type enabledInput struct {
 	Name string `path:"name" minLength:"1" maxLength:"64"`
 	Body struct {
 		Enabled bool `json:"enabled"`
+		// AcceptCapabilities 表示站长已看过并同意插件要用的能力。
+		AcceptCapabilities bool `json:"acceptCapabilities,omitempty" doc:"启用声明了能力的插件时须为 true，表示站长已确认"`
 	}
 }
 
@@ -143,10 +157,11 @@ func (h *Handler) Register(console huma.API) {
 		Method:      http.MethodPut,
 		Path:        "/plugins/{name}/enabled",
 		Summary:     "启用或停用插件",
-		Description: "启用后插件的设置分组立即可用，不需要重启。",
+		Description: "启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，" +
+			"启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。",
 		Tags:        tagPlugins,
 		Middlewares: manage,
-		Errors:      []int{http.StatusNotFound},
+		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
 	}, h.setEnabled)
 
 	huma.Register(console, huma.Operation{
@@ -188,19 +203,27 @@ func (h *Handler) viewOf(loaded *Loaded) pluginView {
 	for i := range loaded.Groups {
 		groups = append(groups, loaded.Groups[i].Name)
 	}
-	return pluginView{
-		Name:          loaded.ID(),
-		DisplayName:   loaded.Manifest.Spec.DisplayName,
-		Version:       loaded.Manifest.Spec.Version,
-		Description:   loaded.Manifest.Spec.Description,
-		Author:        loaded.Manifest.Spec.Author.Name,
-		Homepage:      loaded.Manifest.Spec.Homepage,
-		Repo:          loaded.Manifest.Spec.Repo,
-		License:       loaded.Manifest.Spec.License,
-		Requires:      loaded.Manifest.Spec.Requires,
-		Enabled:       loaded.Enabled,
-		SettingGroups: groups,
+	view := pluginView{
+		Name:           loaded.ID(),
+		DisplayName:    loaded.Manifest.Spec.DisplayName,
+		Version:        loaded.Manifest.Spec.Version,
+		Description:    loaded.Manifest.Spec.Description,
+		Author:         loaded.Manifest.Spec.Author.Name,
+		Homepage:       loaded.Manifest.Spec.Homepage,
+		Repo:           loaded.Manifest.Spec.Repo,
+		License:        loaded.Manifest.Spec.License,
+		Requires:       loaded.Manifest.Spec.Requires,
+		Enabled:        loaded.Enabled,
+		SettingGroups:  groups,
+		Runtime:        loaded.Manifest.Spec.Runtime,
+		Capabilities:   h.module.describeCapabilities(&loaded.Manifest.Spec.Capabilities),
+		NeedsConsent:   loaded.NeedsConsent(),
+		DisabledReason: loaded.DisabledReason,
 	}
+	if backend, ok := h.module.registry.Backend(loaded.ID()); ok {
+		view.Running, view.SDK = true, backend.Description().SDK
+	}
+	return view
 }
 
 func (h *Handler) list(_ context.Context, _ *struct{}) (*pluginListOutput, error) {
@@ -256,7 +279,7 @@ func (h *Handler) install(ctx context.Context, in *installInput) (*pluginOutput,
 }
 
 func (h *Handler) setEnabled(ctx context.Context, in *enabledInput) (*pluginOutput, error) {
-	if err := h.module.registry.SetEnabled(ctx, in.Name, in.Body.Enabled); err != nil {
+	if err := h.module.registry.SetEnabled(ctx, in.Name, in.Body.Enabled, in.Body.AcceptCapabilities); err != nil {
 		return nil, mapError(err)
 	}
 	loaded, ok := h.module.registry.Get(in.Name)
@@ -351,8 +374,10 @@ func mapError(err error) error {
 		return huma.Error404NotFound(err.Error())
 	case errors.Is(err, ErrAlreadyExists):
 		return huma.Error409Conflict(err.Error())
-	case errors.Is(err, ErrInvalidPackage):
+	case errors.Is(err, ErrInvalidPackage), errors.Is(err, ErrBackend):
 		return huma.Error422UnprocessableEntity(err.Error())
+	case errors.Is(err, ErrConsentRequired):
+		return huma.Error409Conflict(err.Error())
 	default:
 		return err
 	}

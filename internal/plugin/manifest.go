@@ -18,7 +18,12 @@ const (
 	FileSettings = "settings.yaml"
 	// FileLogo 是后台展示用的图标，可缺省。
 	FileLogo = "logo.png"
+	// FileWasm 是插件的后端代码，spec.runtime 为 wasm 时必需。
+	FileWasm = "plugin.wasm"
 )
+
+// RuntimeWasm 表示插件带 WebAssembly 后端（包根目录的 plugin.wasm）。
+const RuntimeWasm = "wasm"
 
 // APIVersion 与 Kind 是 plugin.yaml 里的固定写法。
 //
@@ -91,6 +96,10 @@ type Spec struct {
 	// v1 只做语法校验，不做范围求解与拒绝安装——「不满足就装不上」需要一套
 	// 完整的版本比较，而那要等插件间依赖一起做（§14.2 期 3）。届时这里会被真正用上。
 	Requires string `yaml:"requires" json:"requires"`
+	// Runtime 是后端的运行方式：留空表示纯声明式插件，wasm 表示包里带 plugin.wasm。
+	Runtime string `yaml:"runtime" json:"runtime"`
+	// Capabilities 是插件要用的宿主能力，启用时由站长逐项确认。
+	Capabilities Capabilities `yaml:"capabilities" json:"capabilities"`
 }
 
 // Author 是作者信息。
@@ -176,8 +185,24 @@ func (m *Manifest) validate(dirName string) error {
 	if len(m.Spec.License) > maxLicenseLength {
 		return fmt.Errorf("%w：spec.license 超过 %d 个字符", ErrInvalidPackage, maxLicenseLength)
 	}
+	switch m.Spec.Runtime {
+	case "", RuntimeWasm:
+	default:
+		return fmt.Errorf("%w：spec.runtime 只能留空或写 %s，实际 %q", ErrInvalidPackage, RuntimeWasm, m.Spec.Runtime)
+	}
+	if err := m.Spec.Capabilities.normalize(); err != nil {
+		return err
+	}
+	if m.Spec.Runtime == "" && m.Spec.Capabilities.NeedsBackend() {
+		// 声明了却用不上：纯声明式插件没有代码去读内容、发请求，站长却要为这些权限点头。
+		return fmt.Errorf("%w：读写内容、访问网络、发邮件与定时任务都要由后端代码使用，请同时声明 spec.runtime: %s",
+			ErrInvalidPackage, RuntimeWasm)
+	}
 	return nil
 }
+
+// HasBackend 判断插件带不带后端代码。
+func (m *Manifest) HasBackend() bool { return m.Spec.Runtime == RuntimeWasm }
 
 // readManifest 从插件文件系统读取并解析清单。
 func readManifest(fsys fs.FS, dirName string) (*Manifest, error) {

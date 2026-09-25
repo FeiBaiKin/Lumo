@@ -13,6 +13,7 @@ require (
 	github.com/mozillazg/go-pinyin v0.21.0
 	github.com/pressly/goose/v3 v3.28.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
+	github.com/tetratelabs/wazero v1.12.0
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
 	github.com/uptrace/bun/extra/bundebug v1.2.18

@@ -2,11 +2,13 @@ package plugin
 
 import (
 	"archive/zip"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -23,7 +25,10 @@ const (
 	// 目录条目不占字节也不计入文件数，只有文件上限时挡不住空目录洪水。
 	maxPackageEntries = 2500
 	// maxFileSize 是单个文件解压后的字节上限。
-	maxFileSize int64 = 8 << 20
+	//
+	// 比主题宽一倍：标准 Go 编出来的 plugin.wasm 光运行时就有两三兆，带上 encoding/json
+	// 等常用包就到四五兆，8 MiB 会把稍大一点的插件挡在门外。
+	maxFileSize int64 = 16 << 20
 	// maxTotalSize 是整包解压后的字节上限。
 	maxTotalSize int64 = 64 << 20
 	// maxPathDepth 是包内路径的层级上限。
@@ -38,11 +43,10 @@ const (
 
 // allowedExtensions 是插件包内允许出现的文件扩展名。
 //
-// 白名单而非黑名单：v1 的插件是纯声明式的，包内只该有清单、设置与展示图。
-// 到了能执行后端代码的那一期（期 4），.wasm 与插件的迁移 .sql
-// 才会加进来——现在放行它们等于收下一堆永远不会被执行的文件，
-// 而作者会以为自己写的逻辑生效了。
+// 白名单而非黑名单：包内只该有清单、设置、展示图、前台静态资源与后端代码。
+// .wasm 只认包根目录的 plugin.wasm（见 validateBackend）；插件碰不到 SQL，故没有 .sql。
 var allowedExtensions = map[string]bool{
+	".wasm": true,
 	".yaml": true, ".yml": true, ".json": true,
 	".html": true, ".css": true, ".js": true,
 	".svg": true, ".png": true, ".jpg": true, ".jpeg": true,
@@ -150,7 +154,56 @@ func validateContents(dir string) (*Manifest, error) {
 	if _, err := loadSettings(fsys); err != nil {
 		return nil, err
 	}
+	if err := validateBackend(fsys, manifest); err != nil {
+		return nil, err
+	}
 	return manifest, nil
+}
+
+// wasmHeader 是 WebAssembly 二进制格式 1 版的文件头：魔数（00 61 73 6d，即 NUL 加 asm）与版本号 1。
+var wasmHeader = []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}
+
+// validateBackend 核对后端代码与清单一致：声明了 wasm 就得有 plugin.wasm，没声明就不该有。
+//
+// 只认包根目录那一个：别处的 .wasm 永远不会被加载，作者会以为自己写的逻辑生效了。
+func validateBackend(fsys fs.FS, manifest *Manifest) error {
+	var stray string
+	walkErr := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.EqualFold(path.Ext(p), ".wasm") && p != FileWasm {
+			stray = p
+			return fs.SkipAll
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return fmt.Errorf("检查插件文件: %w", walkErr)
+	}
+	if stray != "" {
+		return fmt.Errorf("%w：%s 不会被加载，后端代码只能放在包根目录、名为 %s", ErrInvalidPackage, stray, FileWasm)
+	}
+
+	head := make([]byte, len(wasmHeader))
+	file, err := fsys.Open(FileWasm)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		if manifest.HasBackend() {
+			return fmt.Errorf("%w：清单声明了 spec.runtime: %s，但包里没有 %s", ErrInvalidPackage, RuntimeWasm, FileWasm)
+		}
+		return nil
+	case err != nil:
+		return fmt.Errorf("读取 %s: %w", FileWasm, err)
+	}
+	defer func() { _ = file.Close() }()
+	if !manifest.HasBackend() {
+		return fmt.Errorf("%w：包里有 %s，但清单没有声明 spec.runtime: %s", ErrInvalidPackage, FileWasm, RuntimeWasm)
+	}
+	if _, err := io.ReadFull(file, head); err != nil || !bytes.Equal(head, wasmHeader) {
+		return fmt.Errorf("%w：%s 不是 WebAssembly 模块", ErrInvalidPackage, FileWasm)
+	}
+	return nil
 }
 
 // Validate 校验一个**已安装**的插件目录，返回其元信息。
