@@ -27,7 +27,8 @@ import {
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { EmptyState, EntitySkeleton, ErrorState } from "@/components/ui/states";
 import { StatusDot } from "@/components/ui/status-dot";
-import { Switch } from "@/components/ui/toggle";
+import { CheckboxRow, Switch } from "@/components/ui/toggle";
+import { relativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { PluginSettingsDialog } from "@/pages/system/plugin-settings";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -62,6 +63,8 @@ import { toast } from "sonner";
  */
 
 type PluginView = components["schemas"]["PluginView"];
+type Retained = components["schemas"]["Retained"];
+type DataCounts = components["schemas"]["DataCounts"];
 
 export function PluginsPage() {
   useDocumentTitle("插件");
@@ -72,18 +75,24 @@ export function PluginsPage() {
 
   const query = useQuery({
     queryKey: ["plugins"],
-    queryFn: async (): Promise<PluginView[]> => {
+    queryFn: async () => {
       const { data, error, response } = await api.GET(
         "/api/v1/console/plugins",
       );
       if (!response.ok) {
         throw new Error(problemMessage(error));
       }
-      return data?.items ?? [];
+      return data;
     },
   });
 
-  const plugins = query.data ?? [];
+  const plugins = query.data?.items ?? [];
+  const retained = query.data?.retained ?? [];
+  const [purging, setPurging] = useState<Retained | null>(null);
+  const queryClient = useQueryClient();
+  // 插件的资源页入口在侧栏里，启停与卸载之后要让侧栏重取
+  const refreshNav = () =>
+    queryClient.invalidateQueries({ queryKey: ["navigation"] });
 
   const setEnabled = useMutation({
     mutationFn: async (input: {
@@ -105,18 +114,40 @@ export function PluginsPage() {
           invalidate: ["plugins"],
         },
       ),
+    onSuccess: refreshNav,
   });
 
   const uninstall = useMutation({
-    mutationFn: async (name: string) =>
+    mutationFn: async (input: { name: string; keepData: boolean }) =>
       runMutation(
         () =>
           api.DELETE("/api/v1/console/plugins/{name}", {
+            params: {
+              path: { name: input.name },
+              query: input.keepData ? { keepData: true } : {},
+            },
+          }),
+        {
+          success: input.keepData ? "插件已卸载，数据保留着" : "插件已卸载",
+          invalidate: ["plugins"],
+        },
+      ),
+    onSuccess: () => {
+      setRemoving(null);
+      void refreshNav();
+    },
+  });
+
+  const purge = useMutation({
+    mutationFn: async (name: string) =>
+      runMutation(
+        () =>
+          api.DELETE("/api/v1/console/plugin-data/{name}", {
             params: { path: { name } },
           }),
-        { success: "插件已卸载", invalidate: ["plugins"] },
+        { success: "保留的数据已删除", invalidate: ["plugins"] },
       ),
-    onSuccess: () => setRemoving(null),
+    onSuccess: () => setPurging(null),
   });
 
   return (
@@ -134,10 +165,7 @@ export function PluginsPage() {
       />
       <PageBody>
         <Card>
-          <CardHeader>
-            <h2 className="text-base font-medium text-ink">已安装</h2>
-            <p className="text-xs text-ink-muted">共 {plugins.length} 个</p>
-          </CardHeader>
+          <CardHeader title="已安装" description={`共 ${plugins.length} 个`} />
           <CardBody>
             {query.isLoading ? (
               <EntitySkeleton />
@@ -150,7 +178,7 @@ export function PluginsPage() {
               <EmptyState
                 icon={Puzzle}
                 title="还没有安装插件"
-                description="插件是 zip 包，里面是清单与设置声明。装好之后这一页可以启停它们并调整设置。"
+                description="插件是一个 zip 包，里面有清单、设置声明，也可能有一段在沙箱里运行的后端代码。装好之后在这一页启用它、调整设置。"
                 action={
                   <Button variant="primary" onClick={() => setInstalling(true)}>
                     <Upload aria-hidden="true" />
@@ -181,6 +209,47 @@ export function PluginsPage() {
             )}
           </CardBody>
         </Card>
+
+        {retained.length > 0 ? (
+          <Card>
+            <CardHeader
+              title="卸载后保留的数据"
+              description="重新安装同名插件，这些数据会原样接回去"
+            />
+            <CardBody>
+              <EntityList>
+                {retained.map((item) => (
+                  <Entity key={item.name}>
+                    <EntityStart>
+                      <EntityField>
+                        <span className="flex items-center gap-2">
+                          <span className="font-medium text-ink">
+                            {item.displayName}
+                          </span>
+                          <Badge tone="neutral">v{item.version}</Badge>
+                        </span>
+                      </EntityField>
+                      <EntityMeta>
+                        {dataSummary(item.counts)}，卸载于{" "}
+                        {relativeTime(item.retainedAt)}
+                      </EntityMeta>
+                    </EntityStart>
+                    <EntityEnd>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setPurging(item)}
+                      >
+                        <Trash2 aria-hidden="true" />
+                        删除数据
+                      </Button>
+                    </EntityEnd>
+                  </Entity>
+                ))}
+              </EntityList>
+            </CardBody>
+          </Card>
+        ) : null}
       </PageBody>
 
       <InstallDialog open={installing} onOpenChange={setInstalling} />
@@ -211,21 +280,40 @@ export function PluginsPage() {
         }}
       />
 
-      <ConfirmDialog
-        open={removing !== null}
+      <UninstallDialog
+        plugin={removing}
+        pending={uninstall.isPending}
         onOpenChange={(open) => {
           if (!open) {
             setRemoving(null);
           }
         }}
-        title={`卸载 ${removing?.displayName ?? ""}`}
-        consequence="插件目录、启用状态与它的全部设置都会被删除，无法撤销。"
-        confirmLabel="卸载"
-        destructive
-        pending={uninstall.isPending}
-        onConfirm={() => {
+        onConfirm={(keepData) => {
           if (removing) {
-            uninstall.mutate(removing.name);
+            uninstall.mutate({ name: removing.name, keepData });
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={purging !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPurging(null);
+          }
+        }}
+        title={`删除「${purging?.displayName ?? ""}」保留的数据？`}
+        consequence={
+          <p>
+            {purging ? dataSummary(purging.counts) : ""}
+            会被删掉，无法撤销。以后再装这个插件，就从空白开始。
+          </p>
+        }
+        confirmLabel="删除数据"
+        pending={purge.isPending}
+        onConfirm={() => {
+          if (purging) {
+            purge.mutate(purging.name);
           }
         }}
       />
@@ -325,6 +413,101 @@ function PluginRow({
         )}
       </EntityEnd>
     </Entity>
+  );
+}
+
+/** 数据量写成一句话：设置 2 组、记录 30 条、键值 5 个。 */
+function dataSummary(counts: DataCounts): string {
+  const parts: string[] = [];
+  if (counts.settings > 0) {
+    parts.push(`设置 ${counts.settings} 组`);
+  }
+  if (counts.records > 0) {
+    parts.push(`记录 ${counts.records} 条`);
+  }
+  if (counts.kv > 0) {
+    parts.push(`键值 ${counts.kv} 个`);
+  }
+  return parts.length > 0 ? parts.join("、") : "没有数据";
+}
+
+/**
+ * 卸载确认。
+ *
+ * 先说清这个插件名下有多少数据，再让站长选：缺省连数据一起删；勾上「保留数据」
+ * 则只删程序，数据留在库里，重装同名插件时接回去。
+ */
+function UninstallDialog({
+  plugin,
+  pending,
+  onOpenChange,
+  onConfirm,
+}: {
+  plugin: PluginView | null;
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (keepData: boolean) => void;
+}) {
+  const [keepData, setKeepData] = useState(false);
+  const counts = useQuery({
+    queryKey: ["plugin-data", plugin?.name],
+    enabled: plugin !== null,
+    queryFn: async () => {
+      const { data, error, response } = await api.GET(
+        "/api/v1/console/plugin-data/{name}",
+        { params: { path: { name: plugin?.name ?? "" } } },
+      );
+      if (!response.ok) {
+        throw new Error(problemMessage(error));
+      }
+      return data;
+    },
+  });
+  const hasData =
+    counts.data !== undefined &&
+    counts.data.settings + counts.data.records + counts.data.kv > 0;
+  const summary = counts.isLoading
+    ? "正在统计的数据"
+    : counts.data
+      ? dataSummary(counts.data)
+      : "读不出数据量";
+
+  return (
+    <ConfirmDialog
+      open={plugin !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setKeepData(false);
+        }
+        onOpenChange(open);
+      }}
+      title={`卸载「${plugin?.displayName ?? ""}」？`}
+      consequence={
+        <div className="flex flex-col gap-3">
+          <p>插件的程序与启用状态会被删掉。它名下现在有：{summary}。</p>
+          {hasData ? (
+            <CheckboxRow
+              id="uninstall-keep-data"
+              checked={keepData}
+              onCheckedChange={setKeepData}
+              label="保留数据"
+              description="只删程序，设置与数据留在库里；重装同名插件时原样接回"
+              className="-mx-2"
+            />
+          ) : null}
+          {hasData && !keepData ? (
+            <p>
+              <strong className="font-medium text-ink">
+                数据会一并删除，无法撤销。
+              </strong>
+            </p>
+          ) : null}
+        </div>
+      }
+      confirmLabel="卸载"
+      pending={pending}
+      onConfirm={() => onConfirm(keepData)}
+    />
   );
 }
 

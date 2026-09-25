@@ -745,6 +745,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/plugin-data/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 插件的数据量
+         * @description 设置分组、键值与资源记录各有多少，卸载前给站长看。插件卸载后（保留了数据）也能查。
+         */
+        get: operations["plugin-data-counts"];
+        put?: never;
+        post?: never;
+        /**
+         * 删除卸载后保留的插件数据
+         * @description 只能删已卸载插件留下的数据；已安装的插件请走卸载。不可撤销。
+         */
+        delete: operations["plugin-data-purge"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/plugins": {
         parameters: {
             query?: never;
@@ -781,7 +805,7 @@ export interface paths {
         post?: never;
         /**
          * 卸载插件
-         * @description 删除插件目录及其状态与设置值。不可撤销。
+         * @description 删除插件目录与状态。缺省连同它的设置、键值与资源记录一并删除，不可撤销；keepData=true 时数据留在库里，列在插件列表的 retained 里。
          */
         delete: operations["plugin-uninstall"];
         options?: never;
@@ -804,6 +828,63 @@ export interface paths {
         put: operations["plugin-set-enabled"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/plugins/{name}/resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 插件声明的资源
+         * @description 只列出当前用户有权限查看的那些。插件须已启用。
+         */
+        get: operations["plugin-resources"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/plugins/{name}/resources/{resource}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 列出资源记录 */
+        get: operations["plugin-records"];
+        put?: never;
+        /** 新建资源记录 */
+        post: operations["plugin-record-create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/console/plugins/{name}/resources/{resource}/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 读取资源记录 */
+        get: operations["plugin-record-get"];
+        /** 修改资源记录 */
+        put: operations["plugin-record-update"];
+        post?: never;
+        /** 删除资源记录 */
+        delete: operations["plugin-record-delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2316,6 +2397,23 @@ export interface components {
             roles?: string[] | null;
             username: string;
         };
+        DataCounts: {
+            /**
+             * Format: int64
+             * @description 键值条数
+             */
+            kv: number;
+            /**
+             * Format: int64
+             * @description 资源记录条数
+             */
+            records: number;
+            /**
+             * Format: int64
+             * @description 保存过的设置分组数
+             */
+            settings: number;
+        };
         DatabaseInfo: {
             database: string;
             encoding: string;
@@ -2806,6 +2904,25 @@ export interface components {
              */
             total: number;
         };
+        PageResourceRecord: {
+            /** @description 当前页的条目 */
+            items: components["schemas"]["ResourceRecord"][] | null;
+            /**
+             * Format: int64
+             * @description 当前页码
+             */
+            page: number;
+            /**
+             * Format: int64
+             * @description 每页条数
+             */
+            size: number;
+            /**
+             * Format: int64
+             * @description 总条数
+             */
+            total: number;
+        };
         PageTag: {
             /** @description 当前页的条目 */
             items: components["schemas"]["Tag"][] | null;
@@ -2863,6 +2980,7 @@ export interface components {
         };
         PluginListBody: {
             items: components["schemas"]["PluginView"][] | null;
+            retained: components["schemas"]["Retained"][] | null;
         };
         PluginSettingsListBody: {
             items: components["schemas"]["PluginSettingsView"][] | null;
@@ -3020,6 +3138,18 @@ export interface components {
             /** @description 触到扫描上限，更早的日志未纳入 */
             truncated: boolean;
         };
+        RecordUpdateInputBody: {
+            /** @description 记录的字段值，整体替换 */
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        RecordWriteInputBody: {
+            /** @description 记录的字段值 */
+            data: {
+                [key: string]: unknown;
+            };
+        };
         ReindexOutputBody: {
             /**
              * Format: int64
@@ -3036,6 +3166,49 @@ export interface components {
             /** Format: date-time */
             publishedAt: string;
             tag: string;
+        };
+        ResourceListBody: {
+            items: components["schemas"]["ResourceView"][] | null;
+        };
+        ResourceRecord: {
+            /** Format: date-time */
+            createdAt: string;
+            data: {
+                [key: string]: unknown;
+            };
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ResourceView: {
+            /** @description 列表页显示的字段 */
+            columns: string[] | null;
+            defaults: {
+                [key: string]: unknown;
+            };
+            description: string;
+            /** @description 为 false 时后台只能查看 */
+            editable: boolean;
+            icon: string;
+            kind: string;
+            label: string;
+            /** @description URL 里的复数段 */
+            path: string;
+            /** @description JSON Schema 2020-12 子集 + x-widget */
+            schema: {
+                [key: string]: unknown;
+            };
+            /** @description 用作记录标题的字段 */
+            title: string;
+        };
+        Retained: {
+            counts: components["schemas"]["DataCounts"];
+            displayName: string;
+            name: string;
+            /** Format: date-time */
+            retainedAt: string;
+            version: string;
         };
         Revision: {
             /**
@@ -6148,6 +6321,84 @@ export interface operations {
             };
         };
     };
+    "plugin-data-counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataCounts"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "plugin-data-purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     "plugin-list": {
         parameters: {
             query?: never;
@@ -6245,7 +6496,10 @@ export interface operations {
     };
     "plugin-uninstall": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 为 true 时保留插件的设置与数据，同名插件重装后接回；缺省连数据一并删除 */
+                keepData?: boolean;
+            };
             header?: never;
             path: {
                 name: string;
@@ -6325,6 +6579,368 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "plugin-resources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceListBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "plugin-records": {
+        parameters: {
+            query?: {
+                /** @description 页码，从 1 开始 */
+                page?: number;
+                /** @description 每页条数，最大 100 */
+                size?: number;
+                /** @description 在标题字段里模糊查找 */
+                q?: string;
+                /** @description 排序字段；前面加 - 为倒序；留空按新建先后倒序 */
+                sort?: string;
+            };
+            header?: never;
+            path: {
+                name: string;
+                resource: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageResourceRecord"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "plugin-record-create": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                resource: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordWriteInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceRecord"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "plugin-record-get": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                resource: string;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceRecord"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "plugin-record-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                resource: string;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordUpdateInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResourceRecord"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "plugin-record-delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+                resource: string;
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

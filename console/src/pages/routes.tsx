@@ -86,6 +86,11 @@ const LogsPage = lazy(() =>
 const PluginsPage = lazy(() =>
   import("@/pages/system/plugins").then((m) => ({ default: m.PluginsPage })),
 );
+const PluginResourcePage = lazy(() =>
+  import("@/pages/system/plugin-resource").then((m) => ({
+    default: m.PluginResourcePage,
+  })),
+);
 
 /** 按需加载页面的占位：与真实页面同为「页头 + 主体」两段，加载完不跳。 */
 function PageFallback() {
@@ -178,5 +183,10 @@ export const APP_ROUTES = [
   // ---- 系统 ----
   { path: "about", element: AboutPage },
   { path: "plugins", element: () => <LazyPage element={<PluginsPage />} /> },
+  // 插件声明的资源页：地址段由插件模块在侧栏里给出
+  {
+    path: "plugins/:plugin/:resource",
+    element: () => <LazyPage element={<PluginResourcePage />} />,
+  },
   { path: "logs", element: () => <LazyPage element={<LogsPage />} /> },
 ];

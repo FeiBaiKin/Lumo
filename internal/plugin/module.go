@@ -16,8 +16,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/uptrace/bun"
+
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
+	"github.com/FeiBaiKin/lumo/internal/database"
 	"github.com/FeiBaiKin/lumo/internal/plugin/wasm"
 	"github.com/FeiBaiKin/lumo/internal/settings"
 	"github.com/FeiBaiKin/lumo/internal/workdir"
@@ -43,6 +46,8 @@ type Module struct {
 	app      *app.App
 	registry *Registry
 	store    *Store
+	data     *DataStore
+	db       *bun.DB
 	settings *settings.Service
 	logger   *slog.Logger
 	root     string
@@ -74,11 +79,14 @@ func (m *Module) Register(a *app.App) error {
 	// 内核经 App 的事件总线发动作、跑过滤器，插件模块是它的实现
 	a.SetEvents(m)
 	if db := a.DB(); db != nil {
+		m.db = db.DB
 		m.store = NewStore(db.DB)
+		m.data = NewDataStore(db.DB)
 	}
 	m.registry = NewRegistry(&RegistryOptions{
 		Root:   m.root,
 		Store:  m.store,
+		Data:   m.data,
 		Logger: m.logger,
 	})
 	a.Provide(Name, m)
@@ -130,6 +138,7 @@ func (m *Module) Start(ctx context.Context) error {
 	for range actionWorkers {
 		go m.runActions(ctx)
 	}
+	go m.sweepKV(ctx)
 	if err := m.registry.Load(ctx); err != nil {
 		return err
 	}
@@ -140,6 +149,29 @@ func (m *Module) Start(ctx context.Context) error {
 		slog.Int("installed", len(m.registry.List())),
 		slog.Int("enabled", len(m.registry.Enabled())))
 	return nil
+}
+
+// kvSweepInterval 是清理过期键值的间隔。
+const kvSweepInterval = time.Hour
+
+// sweepKV 定时清理过期的键值；多实例时经 ClaimRun 认领，每轮只有一个实例执行。
+func (m *Module) sweepKV(ctx context.Context) {
+	ticker := time.NewTicker(kvSweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			claimed, err := database.ClaimRun(ctx, m.db, "plugin.kv.sweep", kvSweepInterval)
+			if err == nil && claimed {
+				_, err = m.data.SweepKV(ctx)
+			}
+			if err != nil && ctx.Err() == nil {
+				m.logger.Warn("清理过期的插件数据失败", slog.Any("error", err))
+			}
+		}
+	}
 }
 
 // Close 实现 app.Closer：停掉全部后端并关闭运行时。
@@ -208,10 +240,42 @@ func From(a *app.App) *Module {
 // Navigation 实现 app.NavigationProvider。
 //
 // 插件能改后台的页面与设置，门槛与主题同级，故整项按 plugins:manage 收起。
+//
+// 启用中的插件各自的资源页也在这里：每个插件一组，排在「系统」之前（WordPress 里插件的顶级菜单），
+// 每次取菜单时现算，启停插件后侧栏立即跟着变。
 func (m *Module) Navigation() app.Navigation {
-	return app.Navigation{Items: []app.NavItem{{
+	nav := app.Navigation{Items: []app.NavItem{{
 		Key: "plugins", Label: "插件", Path: PathPlugins, Icon: "puzzle",
 		Group: app.NavGroupSystem, Order: 30, Permission: perm.PluginsManage.String(),
 		Keywords: "plugins chajian kuozhan",
+		// 插件的资源页也在 /plugins/ 之下，前缀匹配会让「插件」跟着一起亮
+		End: true,
 	}}}
+	if m.registry == nil {
+		return nav
+	}
+	for _, loaded := range m.registry.Enabled() {
+		group := "plugin-" + loaded.ID()
+		added := false
+		for j := range loaded.Resources {
+			res := &loaded.Resources[j]
+			if !res.Menu {
+				continue
+			}
+			icon := res.Icon
+			if icon == "" {
+				icon = "puzzle"
+			}
+			nav.Items = append(nav.Items, app.NavItem{
+				Key: group + "-" + res.Path, Label: res.Label, Path: PathPlugins + "/" + loaded.ID() + "/" + res.Path,
+				Icon: icon, Group: group, Order: j, Permission: res.Permission.String(),
+				Keywords: loaded.ID() + " " + res.Path, Description: res.Description,
+			})
+			added = true
+		}
+		if added {
+			nav.Groups = append(nav.Groups, app.NavGroup{Name: group, Label: loaded.Manifest.Spec.DisplayName, Order: 55})
+		}
+	}
+	return nav
 }

@@ -164,6 +164,9 @@ func newField(key string, typ Type, widget Widget) *Field {
 // Key 返回字段名。
 func (f *Field) Key() string { return f.key }
 
+// Type 返回字段的 JSON Schema 类型。
+func (f *Field) Type() Type { return f.spec.typ }
+
 // ---- 字符串类 ----
 
 // Text 是单行文本。

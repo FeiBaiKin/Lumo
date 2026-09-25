@@ -4,7 +4,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	lumo "github.com/FeiBaiKin/lumo/sdk/go"
 )
@@ -27,6 +29,8 @@ func init() {
 			}
 		case "panic":
 			panic("故意崩溃")
+		case "data":
+			return exerciseData()
 		case "settings":
 			var s struct {
 				Answer int `json:"answer"`
@@ -54,3 +58,51 @@ func init() {
 }
 
 func main() {}
+
+// exerciseData 走一遍键值与资源记录的宿主能力，任何一步不对就报错。
+func exerciseData() error {
+	first, err := lumo.KV.Incr("hits", 1, 0)
+	if err != nil {
+		return err
+	}
+	if second, _ := lumo.KV.Incr("hits", 1, 0); second != first+1 {
+		return fmt.Errorf("自增不对：%d 之后是 %d", first, second)
+	}
+	if err := lumo.KV.Set("greeting", map[string]string{"text": "你好"}, time.Hour); err != nil {
+		return err
+	}
+	var greeting struct {
+		Text string `json:"text"`
+	}
+	if found, err := lumo.KV.Get("greeting", &greeting); err != nil || !found || greeting.Text != "你好" {
+		return fmt.Errorf("读回的键值不对：%v %v %+v", found, err, greeting)
+	}
+
+	notes := lumo.Resources("Note")
+	rec, err := notes.Create(map[string]any{"title": "插件写的", "score": 3})
+	if err != nil {
+		return err
+	}
+	page, err := notes.List(lumo.Query{Match: map[string]any{"title": "插件写的"}})
+	if err != nil || page.Total < 1 {
+		return fmt.Errorf("按字段查不到刚写的记录：%v", err)
+	}
+	if _, err := notes.Patch(rec.ID, map[string]any{"score": 5}); err != nil {
+		return err
+	}
+	got, err := notes.Get(rec.ID)
+	if err != nil {
+		return err
+	}
+	var note struct {
+		Title string `json:"title"`
+		Score int    `json:"score"`
+	}
+	if err := got.Decode(&note); err != nil || note.Title != "插件写的" || note.Score != 5 {
+		return fmt.Errorf("局部修改后的记录不对：%+v %v", note, err)
+	}
+	if _, err := notes.Create(map[string]any{"score": "不是数字"}); err == nil {
+		return errors.New("不合字段声明的记录应被拒绝")
+	}
+	return nil
+}

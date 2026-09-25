@@ -31,7 +31,7 @@ import { toast } from "sonner";
  * 站长就要学三遍，插件作者也要多学一遍。
  *
  * 与主题设置的另一个共同点：插件的设置是**插件作用域**的，不进全局设置服务。
- * 它的生命周期跟着插件走，停用时整组收起，卸载时随外键级联清掉。
+ * 它的生命周期跟着插件走，停用时整组收起，卸载时由站长决定删掉还是保留（见插件页的卸载确认）。
  */
 
 type GroupView = components["schemas"]["PluginSettingsView"];
@@ -134,7 +134,7 @@ export function PluginSettingsDialog({
         <DialogHeader>
           <DialogTitle>{plugin} 的设置</DialogTitle>
           <DialogDescription>
-            设置随插件走。停用插件后这一页会收起，卸载时设置一并删除。
+            设置随插件走。停用插件后这一页会收起；卸载时可以选择保留，重装后接回。
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-4">

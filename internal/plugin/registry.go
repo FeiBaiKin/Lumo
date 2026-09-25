@@ -33,6 +33,8 @@ type Loaded struct {
 	FS fs.FS
 	// Groups 是插件声明的设置分组。
 	Groups []SettingsGroup
+	// Resources 是插件声明的资源。
+	Resources []Resource
 	// Enabled 是当前的启用状态。
 	Enabled bool
 	// Granted 是站长授予过的能力；nil 表示从没授予过。
@@ -73,6 +75,7 @@ func (l *Loaded) NeedsConsent() bool {
 type Registry struct {
 	root   string
 	store  *Store
+	data   *DataStore
 	logger *slog.Logger
 	engine *wasm.Engine
 
@@ -84,8 +87,10 @@ type Registry struct {
 // RegistryOptions 是构造 Registry 的参数。
 type RegistryOptions struct {
 	// Root 是插件安装目录，通常是 data/plugins。
-	Root   string
-	Store  *Store
+	Root  string
+	Store *Store
+	// Data 是插件自己的数据（设置、键值、资源记录）；卸载时按站长的选择清除或保留。
+	Data   *DataStore
 	Logger *slog.Logger
 }
 
@@ -94,6 +99,7 @@ func NewRegistry(opts *RegistryOptions) *Registry {
 	return &Registry{
 		root:    opts.Root,
 		store:   opts.Store,
+		data:    opts.Data,
 		logger:  opts.Logger,
 		plugins: map[string]*Loaded{},
 		broken:  map[string]string{},
@@ -189,7 +195,11 @@ func (r *Registry) loadDir(name string) (*Loaded, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Loaded{Manifest: manifest, Dir: dir, FS: fsys, Groups: groups}, nil
+	resources, err := compileResources(manifest.Spec.Resources)
+	if err != nil {
+		return nil, err
+	}
+	return &Loaded{Manifest: manifest, Dir: dir, FS: fsys, Groups: groups, Resources: resources}, nil
 }
 
 // register 把插件登记进库里。
@@ -294,6 +304,12 @@ func (r *Registry) Install(ctx context.Context, reader io.ReaderAt, size int64) 
 
 	if err := r.register(ctx, loaded); err != nil {
 		return nil, err
+	}
+	// 之前卸载时保留了数据的，同名重装就原样接回去
+	if r.data != nil {
+		if err := r.data.Reclaim(ctx, name); err != nil {
+			r.warn("接回保留的插件数据失败", name, err)
+		}
 	}
 	if loaded.Enabled {
 		r.startOrSuspend(ctx, loaded)
@@ -425,14 +441,29 @@ func (r *Registry) persist(ctx context.Context, name string, st State) error {
 	return r.store.SetState(ctx, name, st)
 }
 
-// Uninstall 卸载一个插件：停后端、删状态、级联删设置值、删目录。
+// Uninstall 卸载一个插件：处置数据、停后端、删状态、删目录。
 //
-// 顺序是刻意的：**先删库再删文件**。反过来的话，删文件成功而删库失败时，
-// 库里会留下一条指向不存在目录的记录，而列表里会一直显示一个打不开的插件。
-// 先删库则最坏情况只是留下一个未登记目录，重启时会被当成手工放入的插件重新登记。
-func (r *Registry) Uninstall(ctx context.Context, name string) error {
-	if _, ok := r.Get(name); !ok {
+// keepData 为真时设置、键值与资源记录都留在库里，并登记为「保留的数据」，
+// 同名插件重装后原样接回；否则一并删掉。
+//
+// 顺序是刻意的：**先处置数据、再删状态、最后删文件**。数据删了而状态没删，最坏是一个没有数据的插件；
+// 反过来则会留下一堆没人认领、也没有登记的数据。删文件放最后，理由同前：
+// 库里留一条指向不存在目录的记录，会让列表里一直显示一个打不开的插件。
+func (r *Registry) Uninstall(ctx context.Context, name string, keepData bool) error {
+	loaded, ok := r.Get(name)
+	if !ok {
 		return fmt.Errorf("%w：%s", ErrNotFound, name)
+	}
+	if r.data != nil {
+		var err error
+		if keepData {
+			err = r.data.Retain(ctx, loaded.Manifest)
+		} else {
+			err = r.data.Purge(ctx, name)
+		}
+		if err != nil {
+			return err
+		}
 	}
 	if r.store != nil {
 		if err := r.store.Delete(ctx, name); err != nil {

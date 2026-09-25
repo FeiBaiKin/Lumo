@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/FeiBaiKin/lumo/internal/auth"
+	"github.com/FeiBaiKin/lumo/internal/plugin"
+	"github.com/FeiBaiKin/lumo/internal/plugin/wasm"
 	"github.com/FeiBaiKin/lumo/internal/plugin/wasm/wasmtest"
 )
 
@@ -49,6 +51,17 @@ spec:
   hooks:
     actions: [comment.created, post.updated]
     filters: [comment.judge, content.render]
+  resources:
+    - kind: Note
+      label: 笔记
+      icon: notebook-pen
+      columns: [title, score]
+      schema:
+        type: object
+        x-order: [title, score]
+        properties:
+          title: {type: string, title: 标题, maxLength: 100}
+          score: {type: integer, title: 分数, minimum: 0}
 `
 
 // upload 以 multipart 上传插件包。
@@ -157,6 +170,104 @@ func TestPluginHooks(t *testing.T) {
 				t.Fatal("插件没有收到 comment.created 与 post.updated")
 			}
 			time.Sleep(50 * time.Millisecond)
+		}
+	})
+}
+
+// installProbe 上传测试插件并确认能力后启用。
+func installProbe(t *testing.T, admin *client) {
+	t.Helper()
+	pkg := zipPlugin(t, map[string][]byte{"plugin.yaml": []byte(guestManifest), "plugin.wasm": wasmtest.Guest(t)})
+	status, out := admin.upload("/api/v1/console/plugins", pkg)
+	mustStatus(t, "上传插件", status, http.StatusCreated, out)
+	status, out = admin.do(http.MethodPut, "/api/v1/console/plugins/hook-probe/enabled",
+		map[string]any{"enabled": true, "acceptCapabilities": true})
+	mustStatus(t, "确认能力后启用", status, http.StatusOK, out)
+}
+
+// 插件的数据：插件经宿主读写键值与资源，后台按声明增删改查，卸载时可以保留、重装接回，也可以一并删掉。
+func TestPluginData(t *testing.T) {
+	s := newTestSite(t)
+	s.createUser(t, "admin", "super-admin")
+	s.createUser(t, "editor", "editor")
+	admin := s.client(t)
+	mustStatus(t, "管理员登录", admin.login("admin", "password-admin"), http.StatusOK, nil)
+	installProbe(t, admin)
+	mod := plugin.From(s.site.application)
+
+	t.Run("插件经宿主读写键值与资源记录", func(t *testing.T) {
+		req := wasm.Request{Type: "action", Name: "post.updated", Payload: map[string]string{"mode": "data"}}
+		if _, err := mod.Invoke(context.Background(), "hook-probe", req, 5*time.Second); err != nil {
+			t.Fatalf("插件走查数据能力失败：%v", err)
+		}
+	})
+
+	base := "/api/v1/console/plugins/hook-probe/resources"
+	t.Run("后台按声明增删改查", func(t *testing.T) {
+		status, out := admin.do(http.MethodGet, base, nil)
+		mustStatus(t, "资源声明", status, http.StatusOK, out)
+		items, _ := out["items"].([]any)
+		if len(items) != 1 || items[0].(map[string]any)["path"] != "notes" {
+			t.Fatalf("应只声明了 notes：%v", out)
+		}
+		status, out = admin.do(http.MethodPost, base+"/notes", map[string]any{"data": map[string]any{"title": "后台写的", "score": 1}})
+		mustStatus(t, "新建记录", status, http.StatusCreated, out)
+		id, _ := out["id"].(float64)
+		status, out = admin.do(http.MethodPost, base+"/notes", map[string]any{"data": map[string]any{"score": -1}})
+		mustStatus(t, "不合声明的记录", status, http.StatusUnprocessableEntity, out)
+		status, out = admin.do(http.MethodPut, base+"/notes/"+jsonID(id), map[string]any{"data": map[string]any{"title": "改过", "score": 9}})
+		mustStatus(t, "修改记录", status, http.StatusOK, out)
+		status, out = admin.do(http.MethodGet, base+"/notes?sort=-score", nil)
+		mustStatus(t, "按分数倒序列出", status, http.StatusOK, out)
+		records, _ := out["items"].([]any)
+		if len(records) != 2 || records[0].(map[string]any)["data"].(map[string]any)["title"] != "改过" {
+			t.Fatalf("按分数倒序时 9 分的应排第一：%v", out)
+		}
+		status, out = admin.do(http.MethodDelete, base+"/notes/"+jsonID(id), nil)
+		mustStatus(t, "删除记录", status, http.StatusNoContent, out)
+	})
+
+	t.Run("资源页按声明的权限把关，侧栏出现入口", func(t *testing.T) {
+		editor := s.client(t)
+		mustStatus(t, "编辑登录", editor.login("editor", "password-editor"), http.StatusOK, nil)
+		status, out := editor.do(http.MethodGet, base+"/notes", nil)
+		mustStatus(t, "编辑看插件资源", status, http.StatusForbidden, out)
+
+		status, out = admin.do(http.MethodGet, "/api/v1/console/navigation", nil)
+		mustStatus(t, "取侧栏", status, http.StatusOK, out)
+		raw, _ := json.Marshal(out)
+		if !strings.Contains(string(raw), "/plugins/hook-probe/notes") {
+			t.Fatalf("侧栏里没有插件的资源页入口：%s", raw)
+		}
+	})
+
+	t.Run("卸载时保留数据，重装接回；缺省卸载一并删除", func(t *testing.T) {
+		status, out := admin.do(http.MethodDelete, "/api/v1/console/plugins/hook-probe?keepData=true", nil)
+		mustStatus(t, "保留数据卸载", status, http.StatusNoContent, out)
+		status, out = admin.do(http.MethodGet, "/api/v1/console/plugins", nil)
+		mustStatus(t, "插件列表", status, http.StatusOK, out)
+		retained, _ := out["retained"].([]any)
+		if len(retained) != 1 {
+			t.Fatalf("应列出一份保留的数据：%v", out)
+		}
+		counts := retained[0].(map[string]any)["counts"].(map[string]any)
+		if counts["kv"].(float64) < 2 || counts["records"].(float64) < 1 {
+			t.Fatalf("保留的数据量不对：%v", counts)
+		}
+
+		installProbe(t, admin)
+		status, out = admin.do(http.MethodGet, base+"/notes", nil)
+		mustStatus(t, "重装后的记录", status, http.StatusOK, out)
+		if out["total"].(float64) < 1 {
+			t.Fatalf("重装后保留的记录应接回来：%v", out)
+		}
+
+		status, out = admin.do(http.MethodDelete, "/api/v1/console/plugins/hook-probe", nil)
+		mustStatus(t, "缺省卸载", status, http.StatusNoContent, out)
+		status, out = admin.do(http.MethodGet, "/api/v1/console/plugin-data/hook-probe", nil)
+		mustStatus(t, "卸载后的数据量", status, http.StatusOK, out)
+		if out["kv"].(float64) != 0 || out["records"].(float64) != 0 || out["settings"].(float64) != 0 {
+			t.Fatalf("缺省卸载应把数据一并删掉：%v", out)
 		}
 	})
 }

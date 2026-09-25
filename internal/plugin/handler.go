@@ -68,6 +68,8 @@ type pluginView struct {
 
 type pluginListBody struct {
 	Items []pluginView `json:"items"`
+	// Retained 是卸载时选择了保留数据的插件：数据还在库里，可以单独删掉，或重装同名插件接回。
+	Retained []Retained `json:"retained"`
 }
 
 type pluginListOutput struct{ Body pluginListBody }
@@ -76,6 +78,11 @@ type pluginOutput struct{ Body pluginView }
 
 type nameInput struct {
 	Name string `path:"name" minLength:"1" maxLength:"64"`
+}
+
+type uninstallInput struct {
+	Name     string `path:"name" minLength:"1" maxLength:"64"`
+	KeepData bool   `query:"keepData" doc:"为 true 时保留插件的设置与数据，同名插件重装后接回；缺省连数据一并删除"`
 }
 
 type enabledInput struct {
@@ -169,7 +176,8 @@ func (h *Handler) Register(console huma.API) {
 		Method:      http.MethodDelete,
 		Path:        "/plugins/{name}",
 		Summary:     "卸载插件",
-		Description: "删除插件目录及其状态与设置值。不可撤销。",
+		Description: "删除插件目录与状态。缺省连同它的设置、键值与资源记录一并删除，不可撤销；" +
+			"keepData=true 时数据留在库里，列在插件列表的 retained 里。",
 		Tags:        tagPlugins,
 		Middlewares: manage,
 		Errors:      []int{http.StatusNotFound},
@@ -195,6 +203,8 @@ func (h *Handler) Register(console huma.API) {
 		Middlewares: manage,
 		Errors:      []int{http.StatusNotFound, http.StatusUnprocessableEntity},
 	}, h.updateSettings)
+
+	h.registerData(console)
 }
 
 // viewOf 把注册表里的插件转成接口视图。
@@ -226,7 +236,7 @@ func (h *Handler) viewOf(loaded *Loaded) pluginView {
 	return view
 }
 
-func (h *Handler) list(_ context.Context, _ *struct{}) (*pluginListOutput, error) {
+func (h *Handler) list(ctx context.Context, _ *struct{}) (*pluginListOutput, error) {
 	loaded := h.module.registry.List()
 	broken := h.module.registry.Broken()
 	items := make([]pluginView, 0, len(loaded)+len(broken))
@@ -245,7 +255,15 @@ func (h *Handler) list(_ context.Context, _ *struct{}) (*pluginListOutput, error
 		}
 		items = append(items, pluginView{Name: name, DisplayName: name, Broken: reason})
 	}
-	return &pluginListOutput{Body: pluginListBody{Items: items}}, nil
+	retained := []Retained{}
+	if h.module.data != nil {
+		rows, err := h.module.data.RetainedList(ctx)
+		if err != nil {
+			return nil, err
+		}
+		retained = append(retained, rows...)
+	}
+	return &pluginListOutput{Body: pluginListBody{Items: items, Retained: retained}}, nil
 }
 
 func (h *Handler) install(ctx context.Context, in *installInput) (*pluginOutput, error) {
@@ -289,8 +307,8 @@ func (h *Handler) setEnabled(ctx context.Context, in *enabledInput) (*pluginOutp
 	return &pluginOutput{Body: h.viewOf(loaded)}, nil
 }
 
-func (h *Handler) uninstall(ctx context.Context, in *nameInput) (*struct{}, error) {
-	if err := h.module.registry.Uninstall(ctx, in.Name); err != nil {
+func (h *Handler) uninstall(ctx context.Context, in *uninstallInput) (*struct{}, error) {
+	if err := h.module.registry.Uninstall(ctx, in.Name, in.KeepData); err != nil {
 		return nil, mapError(err)
 	}
 	return nil, nil
@@ -378,6 +396,10 @@ func mapError(err error) error {
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, ErrConsentRequired):
 		return huma.Error409Conflict(err.Error())
+	case errors.Is(err, ErrRecordNotFound):
+		return huma.Error404NotFound(err.Error())
+	case errors.Is(err, ErrQuota):
+		return huma.Error422UnprocessableEntity(err.Error())
 	default:
 		return err
 	}

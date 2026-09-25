@@ -102,6 +102,8 @@ type Spec struct {
 	Capabilities Capabilities `yaml:"capabilities" json:"capabilities"`
 	// Hooks 是插件订阅的动作与过滤器。
 	Hooks Hooks `yaml:"hooks" json:"hooks"`
+	// Resources 是插件自己的数据类型：宿主替它存，后台替它出列表页与编辑页。
+	Resources []ResourceDecl `yaml:"resources" json:"resources"`
 }
 
 // Author 是作者信息。
