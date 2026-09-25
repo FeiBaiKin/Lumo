@@ -34,7 +34,7 @@ const (
 	pathThemeRestore   = "/themes/{name}/restore"
 	pathThemeSettings  = "/themes/{name}/settings"
 	pathThemeSettingsG = "/themes/{name}/settings/{group}"
-	pathThemeShot      = "/themes/{name}/screenshot"
+	pathThemeCover     = "/themes/{name}/cover"
 )
 
 // Handler 提供主题的 Console 管理接口。
@@ -74,15 +74,15 @@ func (h *Handler) Register(console, public huma.API) {
 	}, h.get)
 
 	huma.Register(console, huma.Operation{
-		OperationID: "themes-screenshot",
+		OperationID: "themes-cover",
 		Method:      http.MethodGet,
-		Path:        pathThemeShot,
-		Summary:     "获取主题截图",
-		Description: "返回主题包根目录的 screenshot.png，供后台主题页展示。主题没有截图时返回 404。",
+		Path:        pathThemeCover,
+		Summary:     "获取主题特色图",
+		Description: "返回主题包根目录的 cover.webp、cover.png 或 cover.jpg（取第一张存在的），供后台主题页展示。主题没有特色图时返回 404。",
 		Tags:        tagThemes,
 		Middlewares: manage,
 		Errors:      []int{http.StatusNotFound},
-	}, h.screenshot)
+	}, h.cover)
 
 	huma.Register(console, huma.Operation{
 		OperationID:   "themes-install",
@@ -197,8 +197,8 @@ type View struct {
 	Templates []TemplateStatus `json:"templates"`
 	// PageTemplates 是可供独立页面选择的模板名（page-* 形态）。
 	PageTemplates []string `json:"pageTemplates"`
-	// HasScreenshot 表示主题带了截图。
-	HasScreenshot bool `json:"hasScreenshot"`
+	// HasCover 表示主题带了特色图。
+	HasCover bool `json:"hasCover"`
 	// SettingGroups 是主题声明的设置分组名。
 	SettingGroups []string `json:"settingGroups"`
 }
@@ -209,9 +209,12 @@ func (h *Handler) viewOf(loaded *Loaded) View {
 	for _, g := range loaded.settings.groups {
 		groups = append(groups, g.Name)
 	}
-	hasScreenshot := false
-	if _, err := fsStat(loaded.FS, FileScreenshot); err == nil {
-		hasScreenshot = true
+	hasCover := false
+	for _, name := range CoverFiles {
+		if _, err := fsStat(loaded.FS, name); err == nil {
+			hasCover = true
+			break
+		}
 	}
 	return View{
 		Name:          loaded.Manifest.Name,
@@ -227,7 +230,7 @@ func (h *Handler) viewOf(loaded *Loaded) View {
 		Active:        loaded.Manifest.Name == h.module.registry.ActiveName(),
 		Templates:     TemplateStatuses(loaded.Templates),
 		PageTemplates: PageTemplates(loaded.Templates),
-		HasScreenshot: hasScreenshot,
+		HasCover:      hasCover,
 		SettingGroups: groups,
 	}
 }
@@ -275,18 +278,38 @@ func (h *Handler) get(_ context.Context, in *nameInput) (*viewOutput, error) {
 // pngSignature 是 PNG 文件的前 8 个字节。
 var pngSignature = []byte("\x89PNG\r\n\x1a\n")
 
-// screenshot 读出主题截图。
+// coverType 按文件头认出特色图格式，只认 PNG、JPEG 与 WebP，认不出返回空串。
+func coverType(data []byte) string {
+	switch {
+	case bytes.HasPrefix(data, pngSignature):
+		return "image/png"
+	case bytes.HasPrefix(data, []byte{0xFF, 0xD8, 0xFF}):
+		return "image/jpeg"
+	case len(data) >= 12 && string(data[:4]) == "RIFF" && string(data[8:12]) == "WEBP":
+		return "image/webp"
+	}
+	return ""
+}
+
+// cover 读出主题特色图。
 //
-// 截图来自第三方上传的主题包，只认文件头而不信扩展名：不是 PNG 的一律当作没有截图，
-// 响应头固定为 image/png 并带 nosniff，浏览器不会把它当成别的东西执行。
-func (h *Handler) screenshot(_ context.Context, in *nameInput) (*huma.StreamResponse, error) {
+// 图来自第三方上传的主题包，只认文件头而不信扩展名：认不出的一律当作没有，
+// Content-Type 按文件头定死并带 nosniff，浏览器不会把它当成别的东西执行。
+func (h *Handler) cover(_ context.Context, in *nameInput) (*huma.StreamResponse, error) {
 	loaded, ok := h.module.registry.Get(in.Name)
 	if !ok {
 		return nil, huma.Error404NotFound(ErrNotFound.Error())
 	}
-	data, err := fs.ReadFile(loaded.FS, FileScreenshot)
-	if err != nil || !bytes.HasPrefix(data, pngSignature) {
-		return nil, huma.Error404NotFound("这个主题没有截图")
+	var data []byte
+	contentType := ""
+	for _, name := range CoverFiles {
+		if b, err := fs.ReadFile(loaded.FS, name); err == nil {
+			data, contentType = b, coverType(b)
+			break
+		}
+	}
+	if contentType == "" {
+		return nil, huma.Error404NotFound("这个主题没有特色图")
 	}
 	sum := sha256.Sum256(data)
 	etag := `"` + hex.EncodeToString(sum[:8]) + `"`
@@ -299,7 +322,7 @@ func (h *Handler) screenshot(_ context.Context, in *nameInput) (*huma.StreamResp
 				ctx.SetStatus(http.StatusNotModified)
 				return
 			}
-			ctx.SetHeader("Content-Type", "image/png")
+			ctx.SetHeader("Content-Type", contentType)
 			ctx.SetHeader("X-Content-Type-Options", "nosniff")
 			ctx.SetHeader("Content-Length", strconv.Itoa(len(data)))
 			_, _ = ctx.BodyWriter().Write(data)

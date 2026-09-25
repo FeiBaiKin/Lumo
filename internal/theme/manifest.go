@@ -19,13 +19,14 @@ const (
 	FileManifest = "theme.yaml"
 	// FileSettings 是主题设置项声明，可缺省。
 	FileSettings = "settings.yaml"
-	// FileScreenshot 是后台展示用截图，可缺省。
-	FileScreenshot = "screenshot.png"
 	// DirTemplates 是模板目录。
 	DirTemplates = "templates"
 	// DirStatic 是静态资源目录，可缺省。
 	DirStatic = "static"
 )
+
+// CoverFiles 是后台主题页展示的特色图（4:3，建议 1200×900），可缺省；按顺序取第一张存在的。
+var CoverFiles = []string{"cover.webp", "cover.png", "cover.jpg"}
 
 // namePattern 限定主题标识形态（DNS-1123），它同时是目录名与 URL 片段。
 var namePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)

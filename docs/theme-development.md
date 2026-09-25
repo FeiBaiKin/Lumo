@@ -85,7 +85,7 @@ version: 1.0.0
 ```
 theme.yaml          必需  主题元信息
 settings.yaml       可选  主题自己的设置项声明
-screenshot.png      可选  后台主题详情里的预览图，须是真正的 PNG，建议 16:10（如 1152×720）
+cover.webp          可选  后台主题页卡片上的特色图，也可以是 cover.png 或 cover.jpg；4:3，建议 1200×900
 templates/          必需  模板目录
   layouts/          可选  外层骨架
   partials/         可选  可复用片段

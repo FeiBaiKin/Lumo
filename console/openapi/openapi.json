@@ -3921,7 +3921,7 @@
           "description": {
             "type": "string"
           },
-          "hasScreenshot": {
+          "hasCover": {
             "type": "boolean"
           },
           "homepage": {
@@ -3987,7 +3987,7 @@
           "active",
           "templates",
           "pageTemplates",
-          "hasScreenshot",
+          "hasCover",
           "settingGroups"
         ],
         "type": "object"
@@ -11030,6 +11030,73 @@
         ]
       }
     },
+    "/api/v1/console/themes/{name}/cover": {
+      "get": {
+        "description": "返回主题包根目录的 cover.webp、cover.png 或 cover.jpg（取第一张存在的），供后台主题页展示。主题没有特色图时返回 404。",
+        "operationId": "themes-cover",
+        "parameters": [
+          {
+            "description": "主题标识",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "description": "主题标识",
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取主题特色图",
+        "tags": [
+          "themes"
+        ]
+      }
+    },
     "/api/v1/console/themes/{name}/reload": {
       "post": {
         "description": "重新解析模板与设置声明，用于手工改动主题目录后立即生效。",
@@ -11183,73 +11250,6 @@
           }
         ],
         "summary": "把内置主题恢复出厂",
-        "tags": [
-          "themes"
-        ]
-      }
-    },
-    "/api/v1/console/themes/{name}/screenshot": {
-      "get": {
-        "description": "返回主题包根目录的 screenshot.png，供后台主题页展示。主题没有截图时返回 404。",
-        "operationId": "themes-screenshot",
-        "parameters": [
-          {
-            "description": "主题标识",
-            "in": "path",
-            "name": "name",
-            "required": true,
-            "schema": {
-              "description": "主题标识",
-              "maxLength": 64,
-              "minLength": 1,
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Unprocessable Entity"
-          },
-          "500": {
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            },
-            "description": "Internal Server Error"
-          }
-        },
-        "security": [
-          {
-            "session": []
-          },
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "获取主题截图",
         "tags": [
           "themes"
         ]

@@ -1,17 +1,9 @@
 import { api, problemMessage } from "@/api/client";
 import { runMutation } from "@/api/mutation";
 import type { components } from "@/api/schema";
-import {
-  Entity,
-  EntityEnd,
-  EntityField,
-  EntityList,
-  EntityStart,
-  ListEmpty,
-} from "@/components/data/entity";
+import { ListEmpty } from "@/components/data/entity";
 import { PageBody, PageHeader } from "@/components/layout/page-header";
 import { Alert } from "@/components/ui/alert";
-import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,40 +22,36 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { EntitySkeleton, ErrorState, Skeleton } from "@/components/ui/states";
-import { StatusDot } from "@/components/ui/status-dot";
-import { Tabbar } from "@/components/ui/tabs";
+import { ErrorState, Skeleton } from "@/components/ui/states";
 import { CheckboxRow } from "@/components/ui/toggle";
 import { fileSize } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/use-document-title";
-import {
-  ThemeSettingsPanel,
-  useThemeSettings,
-} from "@/pages/appearance/theme-settings";
+import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
-  ExternalLink,
-  ImageOff,
   Lock,
   Palette,
+  Plus,
   RefreshCw,
   RotateCcw,
+  SlidersHorizontal,
   Trash2,
   Upload,
 } from "lucide-react";
 import { useRef, useState } from "react";
+import { Link } from "react-router";
 import { toast } from "sonner";
 
 /**
- * 主题管理（形态对齐 Halo 的主题页：左列表、右详情）。
+ * 主题管理（形态对齐 WordPress 的「外观 → 主题」）。
  *
  * 主题能执行任意模板逻辑并决定整站外观，故**全部**操作（含列表）
  * 都要求 themes:manage（见 internal/theme/handler.go）。
  *
- * 一张卡片分两栏：左边是已安装主题的实体行，点一下就切到它；右边是该主题的
- * 详情与设置分组，用标签栏切换。详情里明确标出两类信息，它们决定了
- * 这个主题能不能真的用起来：必需四模板是否齐备、它声明了几组设置。
+ * 一页一张网格：每个主题一张卡片，特色图在上、名称栏在下；使用中的排第一，
+ * 名称栏反色并带「设置」入口；末尾一格是上传。点特色图弹出详情，启用、卸载、
+ * 恢复出厂都在那里。主题设置是单独一页（theme-settings.tsx），表单铺满工作区。
  *
  * 「内置」主题不可删除，当前启用的主题也不可删除 —— 后者会让站点当场换皮
  * 而站长未必意识到。这两条在按钮的位置上就要说清楚。
@@ -71,16 +59,15 @@ import { toast } from "sonner";
 
 type ThemeView = components["schemas"]["View"];
 
-const DETAIL_TAB = "detail";
+/**
+ * auto-fill 而不是 auto-fit：主题只有两三个时卡片保持原尺寸，
+ * 不会被拉宽成占满整行的大图。
+ */
+const GRID_CLASS = "grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4";
 
-export function ThemesPage() {
-  useDocumentTitle("主题");
-  const [selectedName, setSelectedName] = useState<string | null>(null);
-  const [tab, setTab] = useState(DETAIL_TAB);
-  const [installOpen, setInstallOpen] = useState(false);
-  const [deleting, setDeleting] = useState<ThemeView | null>(null);
-
-  const query = useQuery({
+/** 已安装主题列表。主题页与主题设置页共用这一份缓存。 */
+export function useThemes() {
+  return useQuery({
     queryKey: ["themes"],
     queryFn: async () => {
       const { data, response } = await api.GET("/api/v1/console/themes");
@@ -90,35 +77,29 @@ export function ThemesPage() {
       return data;
     },
   });
+}
 
-  const themes = query.data?.items ?? [];
-  const broken = Object.entries(query.data?.broken ?? {});
+/** 主题设置页的地址。 */
+export function themeSettingsPath(name: string) {
+  return `/themes/${encodeURIComponent(name)}`;
+}
 
-  // 默认选中正在使用的主题：站长进来多半是要调它
-  const current =
-    themes.find((theme) => theme.name === selectedName) ??
-    themes.find((theme) => theme.active) ??
-    themes[0];
+export function ThemesPage() {
+  useDocumentTitle("主题");
+  const [detailName, setDetailName] = useState<string | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
+  const [deleting, setDeleting] = useState<ThemeView | null>(null);
 
-  // 分组的显示名来自设置接口；没拿到之前先用分组名顶着
-  const settings = useThemeSettings(current?.name ?? "", current !== undefined);
-  const groupLabel = (name: string) =>
-    (settings.data ?? []).find((group) => group.name === name)?.label || name;
-
-  const tabs = [
-    { value: DETAIL_TAB, label: "详情" },
-    ...(current?.settingGroups ?? []).map((group) => ({
-      value: `group:${group}`,
-      label: groupLabel(group),
-    })),
+  const query = useThemes();
+  const items = query.data?.items ?? [];
+  // 使用中的排第一：站长进来多半是要调它
+  const themes = [
+    ...items.filter((theme) => theme.active),
+    ...items.filter((theme) => !theme.active),
   ];
-  // 切换主题后上一个主题的分组标签可能不存在，退回详情
-  const activeTab = tabs.some((item) => item.value === tab) ? tab : DETAIL_TAB;
-
-  function select(name: string) {
-    setSelectedName(name);
-    setTab(DETAIL_TAB);
-  }
+  const broken = Object.entries(query.data?.broken ?? {});
+  // 按名字取：启用、重载之后列表重取，弹窗里跟着显示新状态
+  const detail = themes.find((theme) => theme.name === detailName) ?? null;
 
   const remove = useMutation({
     mutationFn: (name: string) =>
@@ -129,10 +110,6 @@ export function ThemesPage() {
           }),
         { success: "主题已卸载", invalidate: ["themes"] },
       ),
-    onSuccess: () => {
-      setSelectedName(null);
-      void query.refetch();
-    },
   });
 
   return (
@@ -164,16 +141,20 @@ export function ThemesPage() {
         ) : null}
 
         {query.isLoading ? (
-          <Card className="flex flex-col xl:flex-row" aria-busy="true">
-            <div className="divide-y divide-line border-line border-b xl:w-72 xl:shrink-0 xl:border-r xl:border-b-0">
-              <EntitySkeleton />
-              <EntitySkeleton />
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-4 p-4">
-              <Skeleton className="h-8 w-48" />
-              <Skeleton className="h-40 w-full" />
-            </div>
-          </Card>
+          <ul className={GRID_CLASS} aria-busy="true">
+            {[0, 1, 2].map((i) => (
+              <li
+                key={i}
+                className="overflow-hidden rounded-card border border-line bg-surface"
+              >
+                <Skeleton className="aspect-[4/3] w-full rounded-none" />
+                <div className="flex flex-col gap-1.5 px-3 py-2.5">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : query.error ? (
           <Card>
             <ErrorState
@@ -181,7 +162,7 @@ export function ThemesPage() {
               onRetry={() => void query.refetch()}
             />
           </Card>
-        ) : themes.length === 0 || !current ? (
+        ) : themes.length === 0 ? (
           <Card>
             <ListEmpty
               icon={Palette}
@@ -190,91 +171,51 @@ export function ThemesPage() {
             />
           </Card>
         ) : (
-          /*
-            两栏只在窗口够宽时出现（`xl`，不是 `md`）：左列表固定占 288px，
-            侧栏还占 256px，窗口 1024 时右侧设置面板只剩 404px —— 七个分组标签
-            排不下、表单控件也全被压扁。实测面板要到 1280 才有 660px 可用，
-            故断点定在这里，更窄时列表折到上方、面板吃满整行。
-          */
-          <Card className="flex flex-col overflow-hidden xl:flex-row">
-            <div className="border-line border-b xl:w-72 xl:shrink-0 xl:border-r xl:border-b-0">
-              <EntityList>
-                {themes.map((theme) => {
-                  const selected = theme.name === current.name;
-                  return (
-                    <Entity
-                      key={theme.name}
-                      selected={selected}
-                      className="cursor-pointer"
-                      onClick={() => select(theme.name)}
-                    >
-                      <EntityStart>
-                        <Avatar
-                          square
-                          name={theme.label || theme.name}
-                          size="sm"
-                        />
-                        <EntityField
-                          title={
-                            <button
-                              type="button"
-                              onClick={() => select(theme.name)}
-                              aria-current={selected ? "true" : undefined}
-                              className="truncate text-left"
-                            >
-                              {theme.label || theme.name}
-                            </button>
-                          }
-                          description={<span>版本 {theme.version}</span>}
-                        />
-                      </EntityStart>
-                      <EntityEnd>
-                        {theme.active ? (
-                          <StatusDot state="ok">使用中</StatusDot>
-                        ) : theme.builtin ? (
-                          <StatusDot state="neutral">内置</StatusDot>
-                        ) : null}
-                      </EntityEnd>
-                    </Entity>
-                  );
-                })}
-              </EntityList>
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <Tabbar
-                ariaLabel="主题详情与设置"
-                items={tabs}
-                value={activeTab}
-                onChange={setTab}
-                className="px-2"
+          <ul className={GRID_CLASS}>
+            {themes.map((theme) => (
+              <ThemeCard
+                key={theme.name}
+                theme={theme}
+                onOpen={() => setDetailName(theme.name)}
               />
-              {activeTab === DETAIL_TAB ? (
-                <ThemeDetail
-                  theme={current}
-                  onDelete={() => setDeleting(current)}
-                  onChanged={() => void query.refetch()}
-                />
-              ) : (
-                <ThemeSettingsPanel
-                  key={`${current.name}:${activeTab}`}
-                  theme={current}
-                  group={activeTab.slice("group:".length)}
-                />
-              )}
-            </div>
-          </Card>
+            ))}
+            <li>
+              <button
+                type="button"
+                onClick={() => setInstallOpen(true)}
+                className="transition-ui flex size-full min-h-48 flex-col items-center justify-center gap-2 rounded-card border border-line-strong border-dashed px-4 py-8 text-center hover:border-seal"
+              >
+                <Plus aria-hidden="true" className="size-6 text-ink-subtle" />
+                <span className="text-sm font-medium text-ink">上传主题</span>
+                <span className="text-xs text-ink-muted">
+                  zip 包，上传即安装
+                </span>
+              </button>
+            </li>
+          </ul>
         )}
       </PageBody>
+
+      <Dialog
+        open={detail !== null}
+        onOpenChange={(open) => !open && setDetailName(null)}
+      >
+        {detail ? (
+          <ThemeDetail
+            key={detail.name}
+            theme={detail}
+            onDelete={() => {
+              setDetailName(null);
+              setDeleting(detail);
+            }}
+          />
+        ) : null}
+      </Dialog>
 
       <InstallDialog
         open={installOpen}
         onClose={() => setInstallOpen(false)}
-        onInstalled={(name) => {
-          setSelectedName(name);
-          setTab(DETAIL_TAB);
-          void query.refetch();
-        }}
+        onInstalled={(name) => setDetailName(name || null)}
       />
 
       <ConfirmDialog
@@ -301,46 +242,8 @@ export function ThemesPage() {
   );
 }
 
-/**
- * 主题截图：主题包根目录的 screenshot.png，经后台接口读出（与主题页一样要 themes:manage，
- * 故不走公开的 /theme-assets）。没有截图时占住同样的位置并说明怎么补上。
- */
-function ThemeScreenshot({ theme }: { theme: ThemeView }) {
-  const [failed, setFailed] = useState(false);
-  const label = theme.label || theme.name;
-
-  if (!theme.hasScreenshot || failed) {
-    return (
-      <div className="flex aspect-[16/10] w-full max-w-xl flex-col items-center justify-center gap-1.5 rounded-control border border-dashed border-line bg-surface-raised px-6 text-center">
-        <ImageOff aria-hidden="true" className="size-5 text-ink-subtle" />
-        <p className="text-sm text-ink">这个主题没有附带截图</p>
-        <p className="text-xs text-ink-muted">
-          在主题包根目录放一张 screenshot.png，就会显示在这里
-        </p>
-      </div>
-    );
-  }
-  return (
-    <img
-      src={`/api/v1/console/themes/${encodeURIComponent(theme.name)}/screenshot?v=${encodeURIComponent(theme.version)}`}
-      alt={`${label} 的首页截图`}
-      onError={() => setFailed(true)}
-      className="aspect-[16/10] w-full max-w-xl rounded-control border border-line object-cover object-top shadow-card"
-    />
-  );
-}
-
-/** 详情标签：标题区与动作、截图、元信息、模板齐备情况。 */
-function ThemeDetail({
-  theme,
-  onDelete,
-  onChanged,
-}: {
-  theme: ThemeView;
-  onDelete: () => void;
-  onChanged: () => void;
-}) {
-  const activate = useMutation({
+function useActivate(theme: ThemeView) {
+  return useMutation({
     mutationFn: () =>
       runMutation(
         () =>
@@ -349,8 +252,156 @@ function ThemeDetail({
           }),
         { success: "已切换主题，前台立即生效", invalidate: ["themes"] },
       ),
-    onSuccess: onChanged,
   });
+}
+
+function missingTemplates(theme: ThemeView) {
+  return (theme.templates ?? []).filter(
+    (item) => item.required && !item.provided,
+  );
+}
+
+/** 网格里的一张主题卡：点特色图看详情，名称栏只放最常用的一个动作。 */
+function ThemeCard({
+  theme,
+  onOpen,
+}: {
+  theme: ThemeView;
+  onOpen: () => void;
+}) {
+  const label = theme.label || theme.name;
+  const activate = useActivate(theme);
+  const blocked = missingTemplates(theme).length > 0;
+  const hasSettings = (theme.settingGroups ?? []).length > 0;
+
+  return (
+    <li className="group/entity flex flex-col overflow-hidden rounded-card border border-line bg-surface shadow-card">
+      <button
+        type="button"
+        onClick={onOpen}
+        aria-label={`查看「${label}」的详情`}
+        className="group/cover relative block focus-visible:outline-offset-[-2px]"
+      >
+        <ThemeCover theme={theme} className="aspect-[4/3] w-full" />
+        {/* 悬停或键盘聚焦时浮出，说明点这里看详情；触屏上点一下就是详情，不需要它 */}
+        <span
+          aria-hidden="true"
+          className="transition-ui absolute inset-0 flex items-center justify-center bg-scrim opacity-0 group-hover/cover:opacity-100 group-focus-visible/cover:opacity-100"
+        >
+          <span className="rounded-control bg-surface px-3 py-1.5 text-sm font-medium text-ink shadow-popover">
+            主题详情
+          </span>
+        </span>
+      </button>
+
+      {/* 使用中的那张名称栏反色：一眼找到当前主题（WordPress 的 Active 栏） */}
+      <div
+        className={cn(
+          "flex min-h-13 flex-1 items-center justify-between gap-2 border-t px-3 py-2",
+          theme.active
+            ? "border-transparent bg-action text-action-on"
+            : "border-line",
+        )}
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium" title={label}>
+            {theme.active ? `使用中：${label}` : label}
+          </p>
+          <p
+            className={cn(
+              "text-xs",
+              theme.active ? "text-action-on/70" : "text-ink-muted",
+            )}
+          >
+            版本 {theme.version}
+            {theme.builtin ? "，内置" : ""}
+          </p>
+        </div>
+        {theme.active ? (
+          hasSettings ? (
+            <Button variant="secondary" size="sm" asChild>
+              <Link to={themeSettingsPath(theme.name)}>
+                <SlidersHorizontal aria-hidden="true" />
+                设置
+              </Link>
+            </Button>
+          ) : null
+        ) : blocked ? (
+          <Badge tone="danger">缺必需模板</Badge>
+        ) : (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={activate.isPending}
+            onClick={() => activate.mutate()}
+            className="entity-reveal"
+          >
+            启用
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/**
+ * 主题特色图：主题包根目录的 cover.webp（或 .png、.jpg），经后台接口读出
+ * （与主题页一样要 themes:manage，故不走公开的 /theme-assets）。
+ * 没有图时用主题名垫底，格子尺寸不变；`hint` 为真时顺带说明怎么补上。
+ */
+function ThemeCover({
+  theme,
+  className,
+  alt = "",
+  hint = false,
+}: {
+  theme: ThemeView;
+  className?: string;
+  alt?: string;
+  hint?: boolean;
+}) {
+  const [failed, setFailed] = useState(false);
+
+  if (!theme.hasCover || failed) {
+    return (
+      <div
+        className={cn(
+          "flex flex-col items-center justify-center gap-2 bg-surface-raised px-6 text-center",
+          className,
+        )}
+      >
+        <span className="text-2xl font-semibold text-ink-subtle">
+          {theme.label || theme.name}
+        </span>
+        {hint ? (
+          <span className="text-xs text-ink-muted">
+            在主题包根目录放一张 cover.webp（png、jpg 也行），4:3，建议
+            1200×900，就会显示在这里
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <img
+      src={`/api/v1/console/themes/${encodeURIComponent(theme.name)}/cover?v=${encodeURIComponent(theme.version)}`}
+      alt={alt}
+      decoding="async"
+      onError={() => setFailed(true)}
+      className={cn("bg-surface-raised object-cover", className)}
+    />
+  );
+}
+
+/** 主题详情（WordPress 的 Theme Details 浮层）：特色图在左，信息在右，动作在底栏。 */
+function ThemeDetail({
+  theme,
+  onDelete,
+}: {
+  theme: ThemeView;
+  onDelete: () => void;
+}) {
+  const activate = useActivate(theme);
 
   const reload = useMutation({
     mutationFn: () =>
@@ -361,7 +412,6 @@ function ThemeDetail({
           }),
         { success: "模板已重新载入", invalidate: ["themes"] },
       ),
-    onSuccess: onChanged,
   });
 
   const restore = useMutation({
@@ -373,13 +423,13 @@ function ThemeDetail({
           }),
         { success: "已恢复出厂", invalidate: ["themes"] },
       ),
-    onSuccess: onChanged,
   });
 
   const templates = theme.templates ?? [];
   const required = templates.filter((item) => item.required);
   const optional = templates.filter((item) => !item.required && item.provided);
-  const missing = required.filter((item) => !item.provided);
+  const missing = missingTemplates(theme);
+  const groups = theme.settingGroups ?? [];
   const deletable = !theme.builtin && !theme.active;
   const label = theme.label || theme.name;
   // 内置主题在磁盘上有副本时才是「可改的」：改模板即时生效，改坏了恢复出厂。
@@ -387,67 +437,140 @@ function ThemeDetail({
   const [confirmRestore, setConfirmRestore] = useState(false);
 
   return (
-    <div className="flex flex-col gap-5 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar square name={label} size="md" />
-          <div className="flex min-w-0 flex-col gap-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-ink">{label}</h2>
-              {theme.active ? (
-                <Badge tone="ok">
-                  <Check aria-hidden="true" />
-                  使用中
-                </Badge>
-              ) : null}
-              {theme.builtin ? (
-                <Badge tone="outline">
-                  <Lock aria-hidden="true" />
-                  内置
-                </Badge>
-              ) : null}
-            </div>
-            <p className="text-xs text-ink-muted">
-              <code className="token">{theme.name}</code>
-              <span className="ml-2">版本 {theme.version}</span>
+    <DialogContent size="xl">
+      <DialogHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <DialogTitle>{label}</DialogTitle>
+          {theme.active ? (
+            <Badge tone="ok">
+              <Check aria-hidden="true" />
+              使用中
+            </Badge>
+          ) : null}
+          {theme.builtin ? (
+            <Badge tone="outline">
+              <Lock aria-hidden="true" />
+              内置
+            </Badge>
+          ) : null}
+        </div>
+        <DialogDescription>
+          <code className="token">{theme.name}</code>
+          <span className="ml-2">版本 {theme.version}</span>
+          <span className="ml-2">
+            {theme.author ? `作者 ${theme.author}` : "未署名"}
+          </span>
+        </DialogDescription>
+      </DialogHeader>
+
+      <DialogBody className="grid gap-5 md:grid-cols-[minmax(0,11fr)_minmax(0,10fr)] md:items-start">
+        <ThemeCover
+          theme={theme}
+          hint
+          alt={`${label} 的特色图`}
+          className="aspect-[4/3] w-full rounded-control border border-line"
+        />
+
+        <div className="flex min-w-0 flex-col gap-4">
+          {theme.description ? (
+            <p className="text-sm leading-relaxed text-ink">
+              {theme.description}
             </p>
+          ) : (
+            <p className="text-sm text-ink-subtle">主题没有写描述</p>
+          )}
+
+          {missing.length > 0 ? (
+            <Alert tone="warn" title="缺少必需模板，这个主题无法启用">
+              缺 {missing.map((item) => item.name).join("、")}。必需的四个模板是
+              index、post、page 与 404，主题包里必须齐备。
+            </Alert>
+          ) : null}
+
+          <DescriptionList className="grid-cols-[4.5rem_minmax(0,1fr)] text-sm">
+            <DescriptionTerm>许可证</DescriptionTerm>
+            <DescriptionDetail>{theme.license || "未声明"}</DescriptionDetail>
+            <DescriptionTerm>主页</DescriptionTerm>
+            <DescriptionDetail>
+              <ExternalValue href={theme.homepage} />
+            </DescriptionDetail>
+            <DescriptionTerm>仓库</DescriptionTerm>
+            <DescriptionDetail>
+              <ExternalValue href={theme.repo} />
+            </DescriptionDetail>
+            <DescriptionTerm>设置</DescriptionTerm>
+            <DescriptionDetail className="tabular">
+              {groups.length === 0
+                ? "这个主题没有声明设置项"
+                : `${groups.length} 组`}
+            </DescriptionDetail>
+            {theme.builtin ? (
+              <>
+                <DescriptionTerm>来源</DescriptionTerm>
+                <DescriptionDetail>
+                  {builtinOnDisk ? (
+                    <>
+                      磁盘上的{" "}
+                      <code className="token">data/themes/{theme.name}</code>
+                      ，改模板即时生效；改坏了可以恢复出厂
+                    </>
+                  ) : (
+                    <>
+                      二进制里那份（磁盘副本缺失或加载失败）。
+                      恢复出厂会重新解压一份到{" "}
+                      <code className="token">data/themes</code>
+                    </>
+                  )}
+                </DescriptionDetail>
+              </>
+            ) : null}
+          </DescriptionList>
+
+          <div className="flex flex-col gap-2 border-line border-t pt-4">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-16 shrink-0 text-xs text-ink-muted">
+                必需模板
+              </span>
+              {required.map((item) => (
+                <Badge key={item.name} tone={item.provided ? "ok" : "danger"}>
+                  {item.name}
+                </Badge>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="w-16 shrink-0 text-xs text-ink-muted">
+                可选模板
+              </span>
+              {optional.length > 0 ? (
+                optional.map((item) => (
+                  <Badge key={item.name} tone="outline">
+                    {item.name}
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-xs text-ink-subtle">
+                  未提供，缺的页面会整页回退到内置主题
+                </span>
+              )}
+            </div>
+            {(theme.pageTemplates ?? []).length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="w-16 shrink-0 text-xs text-ink-muted">
+                  页面模板
+                </span>
+                {(theme.pageTemplates ?? []).map((name) => (
+                  <Badge key={name} tone="neutral">
+                    {name}
+                  </Badge>
+                ))}
+              </div>
+            ) : null}
           </div>
         </div>
+      </DialogBody>
 
+      <DialogFooter className="justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          {theme.active ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={reload.isPending}
-              onClick={() => reload.mutate()}
-            >
-              <RefreshCw aria-hidden="true" />
-              重新载入模板
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              loading={activate.isPending}
-              disabled={missing.length > 0}
-              onClick={() => activate.mutate()}
-            >
-              启用
-            </Button>
-          )}
-          {theme.homepage ? (
-            <Button variant="secondary" size="sm" asChild>
-              <a
-                href={theme.homepage}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <ExternalLink aria-hidden="true" />
-                主页
-              </a>
-            </Button>
-          ) : null}
           {deletable ? (
             <Button variant="danger" size="sm" onClick={onDelete}>
               <Trash2 aria-hidden="true" />
@@ -469,133 +592,43 @@ function ThemeDetail({
               恢复出厂
             </Button>
           ) : (
-            <span className="self-center text-xs text-ink-muted">
+            <span className="text-xs text-ink-muted">
               使用中的主题不可卸载，先切到别的主题
             </span>
           )}
         </div>
-      </div>
-
-      <ThemeScreenshot key={theme.name} theme={theme} />
-
-      {missing.length > 0 ? (
-        <Alert tone="warn" title="缺少必需模板，这个主题无法启用">
-          缺 {missing.map((item) => item.name).join("、")}。 必需的四个模板是
-          index、post、page 与 404，主题包里必须齐备。
-        </Alert>
-      ) : null}
-
-      <DescriptionList>
-        <DescriptionTerm>标识</DescriptionTerm>
-        <DescriptionDetail>
-          <code className="token">{theme.name}</code>
-        </DescriptionDetail>
-        <DescriptionTerm>版本</DescriptionTerm>
-        <DescriptionDetail className="tabular">
-          {theme.version}
-        </DescriptionDetail>
-        <DescriptionTerm>作者</DescriptionTerm>
-        <DescriptionDetail>{theme.author || "未署名"}</DescriptionDetail>
-        <DescriptionTerm>许可证</DescriptionTerm>
-        <DescriptionDetail>{theme.license || "未声明"}</DescriptionDetail>
-        <DescriptionTerm>主页</DescriptionTerm>
-        <DescriptionDetail>
-          {theme.homepage ? (
-            <a
-              href={theme.homepage}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="token text-seal hover:underline"
+        <div className="flex flex-wrap items-center gap-2">
+          {groups.length > 0 ? (
+            <Button variant="secondary" size="sm" asChild>
+              <Link to={themeSettingsPath(theme.name)}>
+                <SlidersHorizontal aria-hidden="true" />
+                设置
+              </Link>
+            </Button>
+          ) : null}
+          {theme.active ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={reload.isPending}
+              onClick={() => reload.mutate()}
             >
-              {theme.homepage}
-            </a>
+              <RefreshCw aria-hidden="true" />
+              重新载入模板
+            </Button>
           ) : (
-            <span className="text-ink-subtle">未提供</span>
-          )}
-        </DescriptionDetail>
-        <DescriptionTerm>仓库</DescriptionTerm>
-        <DescriptionDetail>
-          {theme.repo ? (
-            <a
-              href={theme.repo}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="token text-seal hover:underline"
+            <Button
+              variant="primary"
+              size="sm"
+              loading={activate.isPending}
+              disabled={missing.length > 0}
+              onClick={() => activate.mutate()}
             >
-              {theme.repo}
-            </a>
-          ) : (
-            <span className="text-ink-subtle">未提供</span>
-          )}
-        </DescriptionDetail>
-        <DescriptionTerm>描述</DescriptionTerm>
-        <DescriptionDetail>
-          {theme.description || <span className="text-ink-subtle">未提供</span>}
-        </DescriptionDetail>
-        <DescriptionTerm>设置分组</DescriptionTerm>
-        <DescriptionDetail className="tabular">
-          {(theme.settingGroups ?? []).length === 0
-            ? "这个主题没有声明设置项"
-            : `${(theme.settingGroups ?? []).length} 组，在上方标签里修改`}
-        </DescriptionDetail>
-        {theme.builtin ? (
-          <>
-            <DescriptionTerm>来源</DescriptionTerm>
-            <DescriptionDetail>
-              {builtinOnDisk ? (
-                <>
-                  磁盘上的{" "}
-                  <code className="token">data/themes/{theme.name}</code>
-                  ，改模板即时生效；改坏了可以恢复出厂
-                </>
-              ) : (
-                <>
-                  二进制里那份（磁盘副本缺失或加载失败）。
-                  恢复出厂会重新解压一份到{" "}
-                  <code className="token">data/themes</code>
-                </>
-              )}
-            </DescriptionDetail>
-          </>
-        ) : null}
-      </DescriptionList>
-
-      <div className="flex flex-col gap-2 border-line border-t pt-4">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="w-20 shrink-0 text-xs text-ink-muted">必需模板</span>
-          {required.map((item) => (
-            <Badge key={item.name} tone={item.provided ? "ok" : "danger"}>
-              {item.name}
-            </Badge>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="w-20 shrink-0 text-xs text-ink-muted">可选模板</span>
-          {optional.length > 0 ? (
-            optional.map((item) => (
-              <Badge key={item.name} tone="outline">
-                {item.name}
-              </Badge>
-            ))
-          ) : (
-            <span className="text-xs text-ink-subtle">
-              未提供，缺的页面会整页回退到内置主题
-            </span>
+              启用
+            </Button>
           )}
         </div>
-        {(theme.pageTemplates ?? []).length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="w-20 shrink-0 text-xs text-ink-muted">
-              页面模板
-            </span>
-            {(theme.pageTemplates ?? []).map((name) => (
-              <Badge key={name} tone="neutral">
-                {name}
-              </Badge>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      </DialogFooter>
 
       <ConfirmDialog
         open={confirmRestore}
@@ -617,7 +650,25 @@ function ThemeDetail({
           setConfirmRestore(false);
         }}
       />
-    </div>
+    </DialogContent>
+  );
+}
+
+/** 详情里的外链值：有就显示成链接，没有就说未提供。 */
+function ExternalValue({ href }: { href: string }) {
+  if (!href) {
+    return <span className="text-ink-subtle">未提供</span>;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="token block truncate text-seal hover:underline"
+      title={href}
+    >
+      {href}
+    </a>
   );
 }
 

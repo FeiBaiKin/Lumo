@@ -61,7 +61,7 @@ const MenusPage = lazy(() =>
 );
 
 /**
- * 表单重的三页也按需加载：站点设置、主题（内含主题设置）、插件（内含插件设置）。
+ * 表单重的几页也按需加载：站点设置、主题设置、插件（内含插件设置）。
  *
  * 它们共用同一套表单引擎（17 种控件），而引擎里为了重复条目的拖动排序引入了
  * motion 的 Reorder（约 133 KB）。把这三页拆出去之后，拖动引擎只跟着表单走，
@@ -74,6 +74,11 @@ const SettingsPage = lazy(() =>
 );
 const ThemesPage = lazy(() =>
   import("@/pages/appearance/themes").then((m) => ({ default: m.ThemesPage })),
+);
+const ThemeSettingsPage = lazy(() =>
+  import("@/pages/appearance/theme-settings").then((m) => ({
+    default: m.ThemeSettingsPage,
+  })),
 );
 const LogsPage = lazy(() =>
   import("@/pages/system/logs").then((m) => ({ default: m.LogsPage })),
@@ -148,6 +153,14 @@ export const APP_ROUTES = [
 
   // ---- 外观 ----
   { path: "themes", element: () => <LazyPage element={<ThemesPage />} /> },
+  {
+    path: "themes/:name",
+    element: () => <LazyPage element={<ThemeSettingsPage />} />,
+  },
+  {
+    path: "themes/:name/:group",
+    element: () => <LazyPage element={<ThemeSettingsPage />} />,
+  },
   { path: "menus", element: () => <LazyPage element={<MenusPage />} /> },
 
   // ---- 用户 ----
