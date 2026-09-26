@@ -16,10 +16,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
@@ -102,6 +104,8 @@ func (m *Module) Register(a *app.App) error {
 
 	if db := a.DB(); db != nil {
 		m.store = NewStore(db.DB)
+		m.store.shared = newSharedCache()
+		db.AddQueryHook(writeHook{cache: m.store.shared})
 		m.settings = NewSettingsStore(db.DB)
 		m.state = NewStateStore(db.DB)
 		// 装配了 search 模块就用全文索引，否则搜索页退回标题模糊匹配。
@@ -222,9 +226,12 @@ func (m *Module) MountFrontend(r chi.Router, optional func(http.Handler) http.Ha
 	}
 	// 静态资源不套会话解析：每一个 CSS / 字体切片都要付一次会话查询是纯浪费，
 	// 而静态资源本身与登录态无关。
-	r.Mount(AssetsPath, m.registry.AssetsHandler())
+	r.Mount(AssetsPath, compressAssets(m.registry.AssetsHandler()))
 
+	// 页面自己压缩：不经反向代理直接跑二进制的站点，访客拿到的也是压过的 HTML。
+	compressHTML := middleware.Compress(compressLevel, "text/html")
 	r.Group(func(g chi.Router) {
+		g.Use(compressHTML)
 		if optional != nil {
 			g.Use(optional)
 		}
@@ -238,7 +245,27 @@ func (m *Module) MountFrontend(r chi.Router, optional func(http.Handler) http.Ha
 	if optional != nil {
 		notFound = optional(notFound)
 	}
-	r.NotFound(notFound.ServeHTTP)
+	r.NotFound(compressHTML(notFound).ServeHTTP)
+}
+
+// compressLevel 是前台 gzip 的压缩级别：再往上压缩率涨得很少，CPU 却翻倍。
+const compressLevel = 5
+
+// compressAssets 给主题的样式、脚本与 SVG 做 gzip。
+//
+// 压缩后的正文没法按字节区间切，这几类文件就不理会 Range、整份发回；图片与字体本身已经压过，原样走。
+func compressAssets(next http.Handler) http.Handler {
+	compressed := middleware.Compress(compressLevel,
+		"text/css", "text/javascript", "application/javascript", "image/svg+xml")(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch path.Ext(r.URL.Path) {
+		case ".css", ".js", ".mjs", ".svg":
+			r.Header.Del("Range")
+			compressed.ServeHTTP(w, r)
+		default:
+			next.ServeHTTP(w, r)
+		}
+	})
 }
 
 // Registry 返回主题注册表，供其他模块与测试取用。

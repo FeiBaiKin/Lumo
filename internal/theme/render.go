@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"io"
 	"log/slog"
@@ -301,15 +302,28 @@ func (r *Renderer) NewContext(ctx context.Context, req *http.Request, kind strin
 		Settings:      map[string]map[string]any{},
 	}
 	if r.themeCfg != nil {
-		stored, err := r.themeCfg.Load(ctx, loaded.Manifest.Name)
+		// 缓存合并后的结果：合并会原地改写嵌套的值，库里读出的原值不能在请求之间共用。
+		// 键里带上编译后设置的地址，开发模式下改了 settings.yaml 重新加载，缺省值跟着换。
+		var shared *sharedCache
+		if r.store != nil {
+			shared = r.store.shared
+		}
+		key := fmt.Sprintf("theme.settings:%s:%p", loaded.Manifest.Name, loaded.settings)
+		effective, err := remember(shared, key, func() (map[string]map[string]any, error) {
+			stored, err := r.themeCfg.Load(ctx, loaded.Manifest.Name)
+			if err != nil {
+				return nil, err
+			}
+			return loaded.settings.effectiveSettings(stored), nil
+		})
 		if err != nil {
 			// 读不到主题设置就用缺省值：一次设置读取失败不该让整站不可访问。
 			if r.logger != nil {
 				r.logger.Warn("读取主题设置失败，使用缺省值", slog.Any("error", err))
 			}
-			stored = map[string]map[string]any{}
+			effective = loaded.settings.effectiveSettings(map[string]map[string]any{})
 		}
-		themeCtx.Settings = loaded.settings.effectiveSettings(stored)
+		themeCtx.Settings = effective
 	} else {
 		themeCtx.Settings = loaded.settings.effectiveSettings(nil)
 	}

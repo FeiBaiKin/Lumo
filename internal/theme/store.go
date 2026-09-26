@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -48,7 +49,9 @@ const (
 // 草稿泄漏的可能——那是 CMS 最不能犯的错。私密内容对作者本人的可见性
 // 由路由层单独处理，不走这里。
 type Store struct {
-	db        *bun.DB
+	db *bun.DB
+	// shared 是跨请求的共享缓存，由模块装配时接上；nil 时每次都查库。
+	shared    *sharedCache
 	searcher  Searcher
 	favorites Favoriter
 	timezone  TimezoneFunc
@@ -307,8 +310,26 @@ func (s *Store) postsByIDs(ctx context.Context, ids []int64) ([]PostView, error)
 	return out, nil
 }
 
-// pageQuery 执行一次分页列表查询并补上作者、分类与标签。
+// pageQuery 执行一次分页列表查询并补上作者、分类与标签，结果进共享缓存。
 func (s *Store) pageQuery(ctx context.Context, where string, args []any, page, size int) (
+	[]PostView, int, error,
+) {
+	type result struct {
+		items []PostView
+		total int
+	}
+	key := fmt.Sprintf("page:%s|%v|%d|%d", where, args, page, size)
+	r, err := remember(s.shared, key, func() (result, error) {
+		items, total, err := s.loadPage(ctx, where, args, page, size)
+		return result{items: items, total: total}, err
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	return slices.Clone(r.items), r.total, nil
+}
+
+func (s *Store) loadPage(ctx context.Context, where string, args []any, page, size int) (
 	[]PostView, int, error,
 ) {
 	total, err := s.count(ctx, where, args)
@@ -356,7 +377,23 @@ func (s *Store) CountPosts(ctx context.Context) (int, error) {
 //
 // viewerID 非 0 时额外放行该用户自己的私密内容——作者预览自己的私密文章
 // 不该看到 404。草稿与回收站内容一律不可见，预览走 Console。
+//
+// 匿名访客看到的版本进共享缓存。交出去的是副本：渲染时插件与短代码会改写正文。
 func (s *Store) GetContent(ctx context.Context, kind, slug string, viewerID int64) (*PostView, error) {
+	if viewerID != 0 {
+		return s.getContent(ctx, kind, slug, viewerID)
+	}
+	view, err := remember(s.shared, "content:"+kind+":"+slug, func() (*PostView, error) {
+		return s.getContent(ctx, kind, slug, 0)
+	})
+	if err != nil {
+		return nil, err
+	}
+	copied := *view
+	return &copied, nil
+}
+
+func (s *Store) getContent(ctx context.Context, kind, slug string, viewerID int64) (*PostView, error) {
 	where := `p.type = ? AND p.slug = ? AND p.status = 'published'`
 	args := []any{kind, slug}
 	if viewerID == 0 {
@@ -383,6 +420,9 @@ func (s *Store) GetContent(ctx context.Context, kind, slug string, viewerID int6
 }
 
 // attach 批量补上作者、分类与标签，避免列表页的 N+1 查询。
+//
+// 三样合成一条查询：一页要补好几次（正文、上下篇、侧栏列表），每次三个来回的话，
+// 数据库不在本机时光等网络就够慢了。
 func (s *Store) attach(ctx context.Context, rows []postRow) ([]PostView, error) {
 	if len(rows) == 0 {
 		return []PostView{}, nil
@@ -395,17 +435,29 @@ func (s *Store) attach(ctx context.Context, rows []postRow) ([]PostView, error) 
 		authorIDs = append(authorIDs, rows[i].AuthorID)
 	}
 
-	authors, err := s.authorsByIDs(ctx, authorIDs)
-	if err != nil {
-		return nil, err
+	var related []attachRow
+	if err := s.db.NewRaw(attachSQL, bun.List(postIDs), bun.List(authorIDs)).Scan(ctx, &related); err != nil {
+		return nil, fmt.Errorf("查询作者、分类与标签: %w", err)
 	}
-	categories, err := s.termsByPost(ctx, postIDs, termCategory)
-	if err != nil {
-		return nil, err
-	}
-	tags, err := s.termsByPost(ctx, postIDs, termTag)
-	if err != nil {
-		return nil, err
+	authors := map[int64]*AuthorView{}
+	categories := map[int64][]TermView{}
+	tags := map[int64][]TermView{}
+	for i := range related {
+		r := &related[i]
+		switch r.Kind {
+		case "a":
+			authors[r.ID] = newAuthorView(r.ID, r.Slug, r.Name, r.CoverURL, r.Description)
+		case "c":
+			categories[r.PostID] = append(categories[r.PostID], TermView{
+				ID: r.ID, Name: r.Name, Slug: r.Slug, Description: r.Description,
+				CoverURL: r.CoverURL, URL: PathCategories + r.Slug,
+			})
+		case "t":
+			tags[r.PostID] = append(tags[r.PostID], TermView{
+				ID: r.ID, Name: r.Name, Slug: r.Slug, Description: r.Description,
+				Color: r.Color, URL: PathTags + r.Slug,
+			})
+		}
 	}
 
 	loc := s.location(ctx)
@@ -427,81 +479,43 @@ func (s *Store) attach(ctx context.Context, rows []postRow) ([]PostView, error) 
 	return out, nil
 }
 
-// termsByPost 批量取内容关联的分类或标签。
-func (s *Store) termsByPost(ctx context.Context, postIDs []int64, kind string) (map[int64][]TermView, error) {
-	var sqlText string
-	switch kind {
-	case termCategory:
-		sqlText = `SELECT pc.post_id, c.id, c.name, c.slug, c.description, c.cover_url, '' AS color
-			FROM post_categories pc JOIN categories c ON c.id = pc.category_id
-			WHERE pc.post_id IN (?) ORDER BY c.position, c.name, c.id`
-	case termTag:
-		sqlText = `SELECT pt.post_id, t.id, t.name, t.slug, t.description, '' AS cover_url, t.color
-			FROM post_tags pt JOIN tags t ON t.id = pt.tag_id
-			WHERE pt.post_id IN (?) ORDER BY t.name, t.id`
-	default:
-		return nil, fmt.Errorf("未知的分类维度 %q", kind)
-	}
+// attachSQL 一次取回作者（a）、分类（c）与标签（t）。三类共用一组列：
+// 作者的 name 是显示名、slug 是用户名、description 是简介、cover_url 是头像。
+// 分类按排序值、名称排，标签按名称排，与各自单独查询时一致。
+const attachSQL = `
+SELECT 'c' AS kind, pc.post_id, c.id, c.name, c.slug, c.description, c.cover_url, '' AS color, c.position AS pos
+FROM post_categories pc JOIN categories c ON c.id = pc.category_id WHERE pc.post_id IN (?0)
+UNION ALL
+SELECT 't', pt.post_id, t.id, t.name, t.slug, t.description, '', t.color, 0
+FROM post_tags pt JOIN tags t ON t.id = pt.tag_id WHERE pt.post_id IN (?0)
+UNION ALL
+SELECT 'a', 0, u.id, u.display_name, u.username, u.bio, u.avatar_url, '', 0
+FROM users u WHERE u.id IN (?1)
+ORDER BY kind, pos, name, id`
 
-	var rows []struct {
-		PostID      int64  `bun:"post_id"`
-		ID          int64  `bun:"id"`
-		Name        string `bun:"name"`
-		Slug        string `bun:"slug"`
-		Description string `bun:"description"`
-		CoverURL    string `bun:"cover_url"`
-		Color       string `bun:"color"`
-	}
-	if err := s.db.NewRaw(sqlText, bun.List(postIDs)).Scan(ctx, &rows); err != nil {
-		return nil, fmt.Errorf("查询内容关联: %w", err)
-	}
-
-	prefix := PathCategories
-	if kind == termTag {
-		prefix = PathTags
-	}
-	out := make(map[int64][]TermView, len(postIDs))
-	for _, r := range rows {
-		out[r.PostID] = append(out[r.PostID], TermView{
-			ID: r.ID, Name: r.Name, Slug: r.Slug, Description: r.Description,
-			CoverURL: r.CoverURL, Color: r.Color, URL: prefix + r.Slug,
-		})
-	}
-	return out, nil
+// attachRow 是 attachSQL 的一行。
+type attachRow struct {
+	Kind        string `bun:"kind"`
+	PostID      int64  `bun:"post_id"`
+	ID          int64  `bun:"id"`
+	Name        string `bun:"name"`
+	Slug        string `bun:"slug"`
+	Description string `bun:"description"`
+	CoverURL    string `bun:"cover_url"`
+	Color       string `bun:"color"`
+	Pos         int    `bun:"pos"`
 }
 
-// ---------- 作者 ----------
-
-// authorsByIDs 批量取作者的公开信息。
-func (s *Store) authorsByIDs(ctx context.Context, ids []int64) (map[int64]*AuthorView, error) {
-	out := map[int64]*AuthorView{}
-	if len(ids) == 0 {
-		return out, nil
+// newAuthorView 组装作者的公开信息；没设显示名时用用户名。
+func newAuthorView(id int64, username, displayName, avatarURL, bio string) *AuthorView {
+	name := displayName
+	if strings.TrimSpace(name) == "" {
+		name = username
 	}
-	var rows []struct {
-		ID          int64  `bun:"id"`
-		Username    string `bun:"username"`
-		DisplayName string `bun:"display_name"`
-		AvatarURL   string `bun:"avatar_url"`
-		Bio         string `bun:"bio"`
+	return &AuthorView{
+		ID: id, Username: username, DisplayName: name,
+		AvatarURL: avatarURL, Bio: bio, URL: PathAuthors + username,
 	}
-	if err := s.db.NewRaw(
-		`SELECT id, username, display_name, avatar_url, bio FROM users WHERE id IN (?)`,
-		bun.List(ids)).Scan(ctx, &rows); err != nil {
-		return nil, fmt.Errorf("查询作者: %w", err)
-	}
-	for i := range rows {
-		r := rows[i]
-		name := r.DisplayName
-		if strings.TrimSpace(name) == "" {
-			name = r.Username
-		}
-		out[r.ID] = &AuthorView{
-			ID: r.ID, Username: r.Username, DisplayName: name,
-			AvatarURL: r.AvatarURL, Bio: r.Bio, URL: PathAuthors + r.Username,
-		}
-	}
-	return out, nil
 }
 
 // GetAuthor 按用户名取作者的公开信息。
@@ -524,14 +538,7 @@ func (s *Store) GetAuthor(ctx context.Context, username string) (*AuthorView, er
 		return nil, ErrNotFound
 	}
 	r := rows[0]
-	name := r.DisplayName
-	if strings.TrimSpace(name) == "" {
-		name = r.Username
-	}
-	return &AuthorView{
-		ID: r.ID, Username: r.Username, DisplayName: name,
-		AvatarURL: r.AvatarURL, Bio: r.Bio, URL: PathAuthors + r.Username,
-	}, nil
+	return newAuthorView(r.ID, r.Username, r.DisplayName, r.AvatarURL, r.Bio), nil
 }
 
 // ---------- Finder 支撑查询 ----------

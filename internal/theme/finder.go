@@ -37,11 +37,20 @@ func newFinder(ctx context.Context, store *Store, siteURL string) *Finder {
 	return &Finder{ctx: ctx, store: store, siteURL: siteURL, cache: map[string]any{}}
 }
 
-// cached 在本次请求内缓存一次查询结果。
+// cached 缓存一次查询结果：本次请求内先查请求级缓存，再查跨请求的共享缓存（见 sharedCache）。
 //
-// 只缓存到请求结束：页头页脚可能取同一个菜单或同一批热门标签，
-// 而跨请求缓存会让「改了菜单要等一分钟才生效」，对编辑很不友好。
+// 页头页脚常取同一个菜单或同一批热门标签，请求级缓存省掉重复查询；共享缓存让下一个访客
+// 不必再查一遍，它在写入时立刻失效，改了菜单刷新就能看到。
 func cached[T any](f *Finder, key string, build func() (T, error)) T {
+	return cachedIn(f, key, true, build)
+}
+
+// cachedForViewer 只在本次请求内缓存：结果因当前用户而异，不能给下一个访客。
+func cachedForViewer[T any](f *Finder, key string, build func() (T, error)) T {
+	return cachedIn(f, key, false, build)
+}
+
+func cachedIn[T any](f *Finder, key string, shared bool, build func() (T, error)) T {
 	var zero T
 	// 没有数据库时（migrate 命令路径、不连库的模板测试）一律给零值。
 	// Finder 的每个方法都会被模板直接调用，这里漏一层判空就是一个 500 页面。
@@ -61,7 +70,13 @@ func cached[T any](f *Finder, key string, build func() (T, error)) T {
 
 	// 查询失败一律返回零值而不是把错误抛给模板：
 	// 侧栏取不到热门标签不该让整个页面 500，页面主体仍然有价值。
-	value, err := build()
+	var value T
+	var err error
+	if shared {
+		value, err = remember(f.store.shared, key, build)
+	} else {
+		value, err = build()
+	}
 	if err != nil {
 		value = zero
 	}
@@ -346,7 +361,7 @@ func (v FavoritesFinder) Has(postID int64) bool {
 	if userID <= 0 {
 		return false
 	}
-	return cached(v.f, "favorites.has:"+itoa(int(postID)), func() (bool, error) {
+	return cachedForViewer(v.f, "favorites.has:"+itoa(int(postID)), func() (bool, error) {
 		return v.f.store.Favorites().HasFavorite(v.f.ctx, userID, postID)
 	})
 }
