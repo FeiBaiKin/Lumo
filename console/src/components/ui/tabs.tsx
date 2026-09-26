@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 /**
- * 标签栏（Halo 的 VTabbar）。
+ * 标签栏。
  *
  * 两种形态：
  *   underline —— 页面级切换（设置分组、主题详情），当前项下方一条 2px 的印色线

@@ -7,9 +7,9 @@ import type { ComponentProps } from "react";
 /**
  * 按钮。
  *
- * 变体对应「这个动作有多重」，与 Halo 的 VButton 分工一致：
+ * 变体对应「这个动作有多重」：
  *   primary   —— 页面的主行动。墨底白字（暗色下反转），一个界面里最多一个
- *   secondary —— 次行动：白底描边（Halo 的 default）
+ *   secondary —— 次行动：白底描边
  *   ghost     —— 工具栏、行内操作，无边无底，只在悬停时浮出
  *   danger    —— 不可撤销的破坏性动作
  *   link      —— 看起来是链接的按钮（导航语义但触发动作）

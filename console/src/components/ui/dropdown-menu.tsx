@@ -5,7 +5,7 @@ import { Check, ChevronRight, MoreHorizontal } from "lucide-react";
 import type { ComponentProps } from "react";
 
 /**
- * 下拉菜单（Halo 的 VDropdown）。
+ * 下拉菜单。
  *
  * 实体行末尾的「更多」、账号菜单、筛选条的单选项都用它 ——
  * 一套浮层、一套键盘行为、一套样式。Radix 负责焦点管理与 typeahead。

@@ -530,7 +530,7 @@ func isGenerated(provided string) bool {
 }
 
 // withSlugRetry 执行 create；当 slug 为自动生成且与既有对象冲突时，
-// 依次追加 -2、-3…… 重试（WordPress 的做法）。用户显式指定的 slug 冲突直接报错，
+// 依次追加 -2、-3…… 重试。用户显式指定的 slug 冲突直接报错，
 // 不替用户改地址。
 func withSlugRetry(generated bool, base string, create func(candidate string) error) error {
 	err := create(base)

@@ -2,7 +2,7 @@
 外层骨架。所有页面模板都以 {{ template "layouts/base.html" . }} 开头，
 并各自定义 "main" 块作为正文区。
 
-这是 Hugo 风格的 layout 约定在 html/template 上的落法：Go 的模板系统没有
+这是 layout 约定在 html/template 上的落法：Go 的模板系统没有
 模板继承，只有「定义块 + 调用块」，所以由页面模板调用骨架、骨架回调 "main"。
 */ -}}
 <!doctype html>

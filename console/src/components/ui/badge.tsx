@@ -3,11 +3,11 @@ import { type VariantProps, cva } from "class-variance-authority";
 import type { ComponentProps } from "react";
 
 /**
- * 标签（Halo 的 VTag）。
+ * 标签。
  *
  * 用于分类、角色、模板名这类「贴在实体上的名词」。
  * 状态（已发布 / 待审）不用它 —— 状态用 StatusDot：圆点 + 文字，
- * 比一块色底更轻，也更符合 Halo 的列表语言。
+ * 比一块色底更轻，列表里也不抢眼。
  *
  * 关键约束：颜色不得单独表意，故本组件强制 children。
  */

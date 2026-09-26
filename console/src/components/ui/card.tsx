@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import type { ComponentProps, ReactNode } from "react";
 
 /**
- * 卡片（Halo 的 VCard）。
+ * 卡片。
  *
  * 内容区里的每一块都是一张卡片：白底、1px 描边、极轻的一层托底阴影、6px 圆角。
  * 卡片之间靠器底的浅灰分开，卡片内部靠分隔线分区。

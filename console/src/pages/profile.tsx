@@ -59,7 +59,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 /**
- * 个人中心（Halo 的「个人中心」）。
+ * 个人中心。
  *
  * 三件事：看自己是谁（资料与角色）、改口令、管理个人访问令牌。
  * 资料本身不在这里改 —— 服务端只有管理员改任意用户的接口，没有「改自己」的接口，

@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 
 /**
- * 浮层（Halo 的 VModal）。
+ * 浮层。
  *
  * 只此一套（对话框 + 确认框），全站不再各写各的 overlay。
  * 结构固定为「标题栏（标题 + 关闭）/ 主体（可滚动）/ 底栏（动作靠右）」。

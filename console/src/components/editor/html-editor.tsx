@@ -58,7 +58,7 @@ import { createPortal } from "react-dom";
  * 其余作者的正文在保存时按允许列表净化（internal/content/sanitize.go）。
  *
  * 工具条可以经 `toolbarContainer` 传送到页面的任意位置（编辑页把它放在
- * 页头之下、正文之上的那条全宽白带里，Halo 的 editor-header 同位）；
+ * 页头之下、正文之上的那条全宽白带里）；
  * 不传时工具条就地渲染在正文上方。
  */
 
@@ -364,7 +364,7 @@ type LinkTarget = {
   canRemove: boolean;
 };
 
-/** 工具条：48px 高、居中，按用途分段，段间用竖线分隔（Halo 的 editor-header 同形）。 */
+/** 工具条：48px 高、居中，按用途分段，段间用竖线分隔。 */
 function Toolbar({
   editor,
   onOpenLink,

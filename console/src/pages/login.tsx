@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router";
 
 /**
- * 登录页（形态对齐 Halo 的登录页）：白底、居中一列，字标在上、表单卡片在下。
+ * 登录页：白底、居中一列，字标在上、表单卡片在下。
  *
  * 没有注册入口 —— v1 不开访客注册，账号由管理员在后台或 CLI 创建。
  * 因此这里不写「还没有账号？」那类链接：指向一个不存在的功能比不写更糟。

@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import type { ComponentProps } from "react";
 
 /**
- * 状态点（Halo 的 VStatusDot）：一枚圆点 + 文字。
+ * 状态点：一枚圆点 + 文字。
  *
  * 列表里每一行都要报一次状态，一块色底会让整页发花；圆点只占 6px，
  * 而文字保证色盲用户也读得出「已发布」与「回收站」的区别。

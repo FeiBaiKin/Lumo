@@ -15,7 +15,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { Link } from "react-router";
 
 /**
- * 实体列表 —— Halo 列表页的基本单位（VEntityContainer / VEntity / VEntityField）。
+ * 实体列表 —— 后台列表页的基本单位：容器、行、字段三层。
  *
  * 后台的列表不是电子表格：站长看一行时要的是「这是什么、什么状态、谁、什么时候」，
  * 不是逐列对齐的数据。故一行分成三段：
@@ -42,8 +42,7 @@ export function EntityList({
 /**
  * 一行实体。
  *
- * `selected` 时底色变为选中色并在左缘画一条 2px 的印色线 —— 与 Halo 同形，
- * 只是颜色换成了 Lumo 的「印」。
+ * `selected` 时底色变为选中色并在左缘画一条 2px 的「印」色线。
  * `footer` 渲染在主行下方（评论的回复、展开的详情）。
  */
 export function Entity({
@@ -283,7 +282,7 @@ export function EntityActions({
  * 列表工具条：卡片标题栏下方的那条浅灰带。
  *
  * 左侧是全选 + 搜索框；勾选任意行后，搜索框原位被批量按钮组替换 ——
- * 不另起一条吸底的批量条（Halo 的做法，也省一行高度）。
+ * 不另起一条吸底的批量条，省一行高度。
  * 右侧是文字式筛选下拉、清除筛选与刷新。
  */
 export function ListToolbar({

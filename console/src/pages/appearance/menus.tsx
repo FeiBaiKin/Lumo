@@ -56,7 +56,7 @@ import { Reorder, useDragControls } from "motion/react";
 import { useMemo, useState } from "react";
 
 /**
- * 菜单管理（形态对齐 Halo 的菜单页：左列表、右条目树）。
+ * 菜单管理：左列表、右条目树。
  *
  * 条目树**整体替换**式保存：菜单是一次性编辑、一次性保存的表单，
  * 逐条 diff 要处理移动、重排、删除与重建的交叉情形，出错概率远大于收益。

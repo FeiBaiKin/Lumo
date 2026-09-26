@@ -512,9 +512,8 @@ func hit(_ *lumo.Context, req *lumo.Request) (*lumo.Response, error) {
 
 ## 前台
 
-插件往前台页面里放东西，**全靠主题在页面里留好的位置**。主题不调这些，插件就进不了前台——
-这与 WordPress 里的 `wp_head()`、`wp_footer()` 是同一回事。内置主题「墨」都接上了，
-你自己的主题照 [主题开发文档的「给插件留位置」](./theme-development.md#给插件留位置) 做一遍即可。
+插件往前台页面里放东西，**全靠主题在页面里留好的位置**。主题不调这些，插件就进不了前台。
+内置主题「墨」都接上了，你自己的主题照 [主题开发文档的「给插件留位置」](./theme-development.md#给插件留位置) 做一遍即可。
 
 ```yaml
   capabilities: {frontend: true}

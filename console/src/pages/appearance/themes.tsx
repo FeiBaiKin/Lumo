@@ -44,7 +44,7 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 
 /**
- * 主题管理（形态对齐 WordPress 的「外观 → 主题」）。
+ * 主题管理。
  *
  * 主题能执行任意模板逻辑并决定整站外观，故**全部**操作（含列表）
  * 都要求 themes:manage（见 internal/theme/handler.go）。
@@ -294,7 +294,7 @@ function ThemeCard({
         </span>
       </button>
 
-      {/* 使用中的那张名称栏反色：一眼找到当前主题（WordPress 的 Active 栏） */}
+      {/* 使用中的那张名称栏反色：一眼找到当前主题 */}
       <div
         className={cn(
           "flex min-h-13 flex-1 items-center justify-between gap-2 border-t px-3 py-2",
@@ -393,7 +393,7 @@ function ThemeCover({
   );
 }
 
-/** 主题详情（WordPress 的 Theme Details 浮层）：特色图在左，信息在右，动作在底栏。 */
+/** 主题详情浮层：特色图在左，信息在右，动作在底栏。 */
 function ThemeDetail({
   theme,
   onDelete,

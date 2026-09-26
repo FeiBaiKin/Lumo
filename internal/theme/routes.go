@@ -163,7 +163,7 @@ func (f *Frontend) post(w http.ResponseWriter, r *http.Request) {
 
 // page 渲染独立页面。
 //
-// 页面可选主题提供的 page-*.html 模板（WordPress 模式）；
+// 页面可选主题提供的 page-*.html 模板；
 // 模板不存在时回退到 page.html，而不是报错——主题换了之后旧页面还得能打开。
 func (f *Frontend) page(w http.ResponseWriter, r *http.Request) {
 	view, err := f.store.GetContent(r.Context(), string(content.TypePage), pathParam(r, "slug"), viewerID(r))

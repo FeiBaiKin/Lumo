@@ -64,7 +64,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 
 /**
- * 用户管理（形态对齐 Halo 的用户列表）。
+ * 用户管理。
  *
  * 三处**自锁防护**必须在界面上说清楚，不能只靠服务端返回 409：
  * 不能停用或删除自己、不能摘掉自己的管理角色、不能让站点失去最后一名管理员。

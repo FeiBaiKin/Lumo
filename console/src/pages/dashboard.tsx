@@ -47,7 +47,7 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 
 /**
- * 仪表盘（形态对齐 Halo 的 Dashboard）。
+ * 仪表盘。
  *
  * 四张统计部件在上，快捷访问与新评论在中，最近文章与站点概况在下。
  * 部件是比卡片大一档圆角（8px）的容器，标题栏 40px。

@@ -287,7 +287,7 @@ func From(a *app.App) *Module {
 //
 // 插件能改后台的页面与设置，门槛与主题同级，故整项按 plugins:manage 收起。
 //
-// 启用中的插件各自的资源页也在这里：每个插件一组，排在「系统」之前（WordPress 里插件的顶级菜单），
+// 启用中的插件各自的资源页也在这里：每个插件一组，排在「系统」之前，
 // 每次取菜单时现算，启停插件后侧栏立即跟着变。
 func (m *Module) Navigation() app.Navigation {
 	nav := app.Navigation{Items: []app.NavItem{{

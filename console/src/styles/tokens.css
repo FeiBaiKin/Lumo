@@ -1,7 +1,7 @@
 /*
  * Lumo Console 设计 token —— 三层架构（primitive → semantic → component）。
  *
- * Console 设计方向第二版（2026-09-12，参照 Halo 的结构语言重做）。
+ * Console 设计方向第二版（2026-09-12 重做）。
  *
  * 三条不可违反的规则：
  *   1. 只有 primitive 层允许出现字面量（oklch / px / ms）。semantic 层只引用 primitive，
@@ -9,9 +9,9 @@
  *   2. 明暗主题在 semantic 层切换（:root 与 .dark 各一套），component 层不区分主题。
  *   3. 正文（纸）与界面（器）是两套材质：--paper-* 只服务于编辑区与预览。
  *
- * 与第一版相比的三处变化，全部来自「参照 Halo」这一要求：
- *   - 侧栏与页头改为面板色（白），内容区才是器底色 —— Halo 的骨架就是「白侧栏 + 浅灰工作区 + 白卡片」
- *   - 「墨」升格为主行动色：主按钮是近黑的墨底白字（对应 Halo 的深藏青主按钮），
+ * 与第一版相比的三处变化：
+ *   - 侧栏与页头改为面板色（白），内容区才是器底色，骨架是「白侧栏 + 浅灰工作区 + 白卡片」
+ *   - 「墨」升格为主行动色：主按钮是近黑的墨底白字，
  *     「印」蓝退回到链接、当前项、焦点与选中态
  *   - 圆角分四档：控件与卡片 4px、浮层 6px、仪表盘部件 8px；卡片为 1px 描边 + 极轻的一层阴影
  */
@@ -98,14 +98,14 @@
 
   /*
    * 圆角四档。
-   * 控件与卡片 4px 是 Halo 的 rounded-base；浮层 6px 大一档以表达高度；
+   * 控件与卡片 4px；浮层 6px 大一档以表达高度；
    * 仪表盘部件 8px 再大一档。编辑区那张纸仍是 2px，
    * 与「墨 Ink」逐字一致 —— 它就该和发表后的页面是同一张纸。
    */
   --corner-control: 4px;
   --corner-card: 4px;
   --corner-overlay: 6px;
-  --corner-widget: 8px; /* 仪表盘部件与快捷入口，比卡片大一档（Halo 亦如此） */
+  --corner-widget: 8px; /* 仪表盘部件与快捷入口，比卡片大一档 */
   --corner-paper: 2px;
   --corner-full: 9999px;
 
@@ -168,7 +168,7 @@
   /*
    * 表面三兄弟：器底 → 面板 → 纸。
    * 与第一版相反：侧栏与页头是面板色（白），内容区是器底色（浅灰）。
-   * 这是 Halo 的骨架 —— 白色的导航与页头把工作区「框」出来，卡片浮在浅灰上。
+   * 白色的导航与页头把工作区「框」出来，卡片浮在浅灰上。
    */
   --chrome: var(--color-workspace-light); /* 内容区底色 */
   --surface: var(--color-neutral-0); /* 侧栏、页头、卡片 */
@@ -318,7 +318,7 @@
   --card-shadow: var(--elevation-card);
   --card-padding: var(--space-card);
 
-  /* 实体行：Halo 列表的基本单位 */
+  /* 实体行：列表的基本单位 */
   --entity-padding-x: 1rem;
   --entity-padding-y: 0.75rem;
   --entity-thumb-width: 5rem;
@@ -330,7 +330,7 @@
   --editor-radius: var(--corner-paper);
   --editor-measure: 44rem; /* 正文列宽，含内边距 */
 
-  --sidebar-width: 16rem; /* Halo 的 w-64 */
+  --sidebar-width: 16rem;
   --page-header-height: 3.5rem;
   --mobile-bar-height: 3.5rem; /* 窄屏底部导航条 */
 }

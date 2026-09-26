@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 /**
- * 页头（Halo 的 VPageHeader）：图标 + 标题在左，动作在右。
+ * 页头：图标 + 标题在左，动作在右。
  *
  * 56px 高、面板色、直接落在浅灰工作区上；每个页面顶部都用它，
  * 标题层级与间距才能全站一致。h1 每页唯一 —— 屏幕阅读器靠它确认「现在在哪一页」。
@@ -71,7 +71,7 @@ export function PageHeader({
 }
 
 /**
- * 页面主体：桌面四周 16px 外边距，移动端贴边（Halo 的 m-0 md:m-4）。
+ * 页面主体：桌面四周 16px 外边距，移动端贴边。
  */
 export function PageBody({
   className,

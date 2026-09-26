@@ -41,7 +41,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
  *      （JSON Schema 校验器 + Go 侧 Check），它的错误必须能定位到字段，
  *      否则用户只能看到一句「设置校验失败」然后自己猜。
  *
- * 版面按 Halo 的 FormKit 风格：字段之间一条细线，标签在上、控件在下。
+ * 版面：字段之间一条细线，标签在上、控件在下。
  */
 
 export type SchemaFormProps = {

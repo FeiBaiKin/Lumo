@@ -4,7 +4,7 @@
 
 CREATE TABLE posts (
     id            bigserial   PRIMARY KEY,
-    -- 文章与页面共用一张表（WordPress 模式）：发布、修订、定时、可见性逻辑只写一份
+    -- 文章与页面共用一张表：发布、修订、定时、可见性逻辑只写一份
     type          text        NOT NULL,
     title         text        NOT NULL,
     -- slug 在同一类型内唯一；文章与页面走不同的前台路径，可以同名

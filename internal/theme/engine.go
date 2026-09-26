@@ -45,7 +45,7 @@ func RequiredTemplates() []string { return append([]string(nil), requiredTemplat
 // OptionalTemplates 返回可选模板名。
 func OptionalTemplates() []string { return append([]string(nil), optionalTemplates...) }
 
-// 模板目录内的约定子目录（Hugo 风格）。
+// 模板目录内的约定子目录。
 const (
 	// dirLayouts 存放外层骨架，页面模板用 {{ template "layouts/base.html" . }} 之类引用。
 	dirLayouts = "layouts"
@@ -57,7 +57,7 @@ const (
 //
 // 用 html/template 而非 pongo2 / jet：主题是第三方代码，XSS 面就在主题里，
 // 只有 html/template 做上下文感知转义。代价是模板作者体验一般，
-// 用 Hugo 风格的 layout / partial 约定与函数库补齐。
+// 用 layout / partial 约定与函数库补齐。
 //
 // 并发安全：解析在构造期一次完成，Render 只读。
 type Engine struct {
@@ -68,7 +68,7 @@ type Engine struct {
 	// 为什么一个页面一套而不是全主题共用一套：Go 的模板没有继承，
 	// layout 约定只能靠「页面定义 main 块、骨架回调它」实现，而同一套集合里
 	// 模板名全局唯一——index.html 与 post.html 都定义 "main" 时后者会覆盖前者，
-	// 表现为「所有页面都渲染成最后解析的那个」。按页面分集合是 Hugo 的做法，
+	// 表现为「所有页面都渲染成最后解析的那个」。所以按页面分集合，
 	// 代价是共享模板被解析多次（只在启动或重载时发生，不在请求路径上）。
 	pages map[string]*template.Template
 	// fallback 是缺失模板时的回退引擎，通常是内置默认主题；可为 nil。
@@ -91,8 +91,7 @@ func isShared(name string) bool {
 // parseEngine 从模板目录解析出一套引擎。
 //
 // 解析范围：templates/ 下的全部 .html 文件，按相对路径命名（如 post.html、
-// layouts/base.html、partials/header.html）。这样模板之间用路径互相引用，
-// 与 Hugo 的心智模型一致。
+// layouts/base.html、partials/header.html），模板之间用路径互相引用。
 func parseEngine(name string, templatesFS fs.FS, funcs template.FuncMap) (*Engine, error) {
 	names, err := collectTemplateNames(templatesFS)
 	if err != nil {
@@ -262,7 +261,7 @@ func TemplateStatuses(names []string) []TemplateStatus {
 	return out
 }
 
-// PageTemplates 返回主题提供的 page-*.html 模板名（WordPress 模式）。
+// PageTemplates 返回主题提供的 page-*.html 模板名。
 //
 // 独立页面可以在后台选择其中之一；列表由主题决定，Console 据此渲染下拉框。
 func PageTemplates(names []string) []string {

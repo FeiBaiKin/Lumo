@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 /**
- * 分页条（Halo 的 VPagination）。
+ * 分页条。
  *
  * 左侧「共 N 条」，右侧「每页条数 + 上一页 / 页码 / 下一页」。
  * 页码序列的省略规则与主题前台的翻页保持同一套思路：

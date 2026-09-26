@@ -41,7 +41,7 @@ createRoot(container).render(
         <TooltipProvider delayDuration={400}>
           <AuthProvider>
             <RouterProvider router={router} />
-            {/* 操作结果统一走 toast 播报，顶部居中（Halo 同位）。
+            {/* 操作结果统一走 toast 播报，顶部居中。
                 成功与失败的区分由图标与文案承担，不靠背景色 */}
             <Toaster position="top-center" closeButton />
           </AuthProvider>

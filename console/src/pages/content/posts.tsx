@@ -56,7 +56,7 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 
 /**
- * 文章列表（形态对齐 Halo 的 PostList）。
+ * 文章列表。
  *
  * 一张卡片：标题栏是工具条（全选、搜索、文字式筛选），主体是实体行，底部是分页。
  * 勾选任意行后，搜索框原位换成批量按钮组。

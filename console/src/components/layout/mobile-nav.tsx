@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router";
 
 /**
- * 窄屏导航（Halo 的 MobileMenu）：顶部一条细栏 + 底部固定导航条。
+ * 窄屏导航：顶部一条细栏 + 底部固定导航条。
  *
  * 底部五格：概览、文章、评论、附件、更多。「更多」拉起一张从底部升起的抽屉，
  * 内含完整的七组导航与用户区。后台在手机上主要用来审评论与看数据，

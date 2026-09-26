@@ -55,7 +55,7 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 
 /**
- * 评论审核（形态对齐 Halo 的 CommentList）。
+ * 评论审核。
  *
  * 这是后台**使用频率最高**的页面 —— 站长每天都要来这里过一遍待审。
  * 因此它的设计重点不是功能全，而是「一眼看清 + 一次点击处理完」：

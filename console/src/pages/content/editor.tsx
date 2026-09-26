@@ -95,7 +95,7 @@ const MarkdownEditor = lazy(() =>
 );
 
 /**
- * 内容编辑器（文章与独立页面共用），形态对齐 Halo 的 PostEditor：
+ * 内容编辑器（文章与独立页面共用）：
  *
  *   - 页头承担全部动作：格式、预览、修订历史、保存、设置、发布
  *   - 页头之下是一条全宽的工具条带（TipTap 的格式工具条经 portal 挂在这里）
@@ -871,7 +871,7 @@ function EditorSession({ kind }: { kind: ContentType }) {
                   markDirty();
                 }}
                 onKeyDown={(e) => {
-                  // 回车不是标题的一部分：把焦点交给正文，与 Halo 的编辑器一致
+                  // 回车不是标题的一部分：把焦点交给正文
                   if (e.key === "Enter") {
                     e.preventDefault();
                     focusBody();
@@ -1526,7 +1526,7 @@ function EditorSession({ kind }: { kind: ContentType }) {
 }
 
 /**
- * 设置弹窗里的一组：左侧组名，右侧字段（Halo 的 PostSettingModal 同形）。
+ * 设置弹窗里的一组：左侧组名，右侧字段。
  * 组名在窄屏折到字段上方。
  */
 function SettingGroup({

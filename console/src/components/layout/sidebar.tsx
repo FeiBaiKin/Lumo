@@ -34,7 +34,7 @@ import {
 import { Link, useLocation } from "react-router";
 
 /**
- * 侧边栏（Halo 的 BasicLayout 侧栏）。
+ * 侧边栏。
  *
  * 自上而下：字标 → 搜索触发条（Ctrl/⌘ K）→ 七组导航 → 底部用户区。
  * 面板色、右侧一条细线，常驻 256px；窄屏不显示，改由底部导航条承担。
@@ -148,7 +148,7 @@ export function SidebarNav({
                     active
                       ? "bg-surface-active font-medium text-ink [&_svg]:text-seal"
                       : "text-ink hover:bg-surface-hover [&_svg]:text-ink-muted",
-                    // 当前项左缘的一条短竖线：3px 宽、26px 高，印色 —— Halo 的同款标记
+                    // 当前项左缘的一条短竖线：3px 宽、26px 高，印色
                     active &&
                       "before:absolute before:top-1/2 before:-left-2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-seal",
                   )}
@@ -165,7 +165,7 @@ export function SidebarNav({
   );
 }
 
-/** 底部用户区（Halo 的 UserProfileBanner）：头像、名字、角色，右侧一个菜单。 */
+/** 底部用户区：头像、名字、角色，右侧一个菜单。 */
 export function UserBanner({ className }: { className?: string }) {
   const { user } = useAuth();
   // 显示名由服务端随用户一起下发：站长可以改角色的显示名，

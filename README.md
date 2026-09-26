@@ -1,7 +1,7 @@
 # Lumo
 
 用 Go 编写的现代化开源 CMS，单一静态二进制：后台是 `go:embed` 进二进制的 React SPA，
-访客前台由服务端模板渲染主题。产品形态对标 [Halo](https://www.halo.run/)，目标是形成主题与插件生态。
+访客前台由服务端模板渲染主题，目标是形成主题与插件生态。
 
 > **早期版本**：已发布 0.2.x 系列（[Releases](https://github.com/FeiBaiKin/Lumo/releases)），
 > 官网 [lumo.xzji.top](https://lumo.xzji.top) 就是用 Lumo 自己搭的。还没经过大规模生产检验，
@@ -11,7 +11,7 @@
 
 - **内容**：文章与页面（状态机 / 置顶 / 可见性 / 修订历史）、树形分类、标签、评论（审核 / 反垃圾）、附件、菜单
 - **双内容格式**：Markdown 与规范 HTML 一等公民（`rawType` 区分），块编辑器 TipTap v3 与 Markdown 编辑器 Milkdown 7
-- **主题系统**：zip 上传即切换，`html/template` + Hugo 式 layout/partial 约定；必需模板只有四个，缺失整页回退内置主题
+- **主题系统**：zip 上传即切换，`html/template` + layout/partial 约定；必需模板只有四个，缺失整页回退内置主题
 - **内置主题「墨 Ink」**：为中文长文阅读设计；自托管思源宋体与 GSAP + Lenis 动效，无任何 CDN 依赖。首页由模块拼成，既有博客件（轮播 / 公告 / 分类 / 标签…）也有落地页件（主视觉 / 特性网格 / 图文展示 / 命令块），**同一个主题既能当博客也能当产品站**
 - **认证与权限**：会话 Cookie + CSRF、PAT（scope 只能收窄，空 scope 无权限）、argon2id、自定义角色与所有权（`_any`）规则、登录限流
 - **访客账户**：可选开放注册，邮箱验证 / 找回密码 / 账户页、收藏与「我的收藏」；表单全部原生提交，**关掉 JavaScript 也能用**
