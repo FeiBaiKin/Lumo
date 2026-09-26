@@ -19,13 +19,13 @@
 - **附件**：本地 / S3 兼容存储、WebP 多档缩略图、EXIF 方向纠正、扩展名白名单 + 内容嗅探双向印证
 - **全文搜索**：Go 侧二元组分词 + PostgreSQL `tsvector`，不依赖任何数据库扩展
 - **SEO**：`robots.txt` / `sitemap.xml` / `feed.xml` / `atom.xml` + canonical / OpenGraph / JSON-LD
-- **插件**：zip 包含清单与设置声明，后台安装 / 启停，目前是纯声明式、**不执行任何代码**（WASM 运行时在路线图上）
+- **插件系统**：zip 上传即装，能力逐项写进清单、**启用时列给站长确认**；后端是编译成 WebAssembly 的 Go 代码，跑在 [wazero](https://wazero.io) 沙箱里。订阅钩子、声明自己的数据、提供接口、往前台与后台加东西，插件之间可以声明依赖
 - **安装与运维**：没配数据库时启动即进入浏览器安装向导；后台可查看、筛选、下载运行日志
 - **在线升级**：后台「关于」页检查并安装新版本，校验 SHA-256、自检新二进制、备份旧版本后替换并自动重启
 - **REST API**：Console / Public / Extension 三平面，OpenAPI 3.1 由 Go 代码生成，Console 的 TS 类型自动生成
 - **模块化**：16 个功能模块以「编译期插件」形态组织，各自持有迁移与独立版本表
 
-**路线图**：让插件从声明式走向可执行（声明式页面 → 扩展点 → WASM 后端）。
+**路线图**：主题市场，以及把插件的接口稳定下来。见 [lumo.xzji.top/roadmap](https://lumo.xzji.top/roadmap)。
 
 ## 环境要求
 
@@ -280,6 +280,42 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 模板）时显示那个页面，列表页只在没有这个页面时接管，已有站点不会被新路由挤掉。
 模板改动在后台点「重新加载」即可生效；开发时设 `LUMO_THEME_DEV=true` 自动重载、静态资源不缓存。
 
+## 插件
+
+> 要写插件请直接看 **[插件开发文档](./docs/plugin-development.md)**：
+> 清单字段、SDK、钩子、自己的数据、宿主能力、接口与前台插槽的完整参考。
+> 三个可运行的示例在 [`examples/plugins`](./examples/plugins)。本节只是概览。
+
+插件是一个 zip 包，后台「插件」上传，启用后立即可用，不需要重启：
+
+```
+<plugin>/
+├── plugin.yaml         # 清单：元信息、能力、钩子、接口、前台、资源、定时任务
+├── plugin.wasm         # 后端代码（可选），用 Go SDK 编译成 wasip1 模块
+├── settings.yaml       # 设置项声明（可选），与主题设置同一套表单 Schema
+└── static/             # 静态资源，经 /plugin-assets/<插件名>/ 访问
+```
+
+插件分两种。**纯声明式**的只有清单、设置与静态文件；**带后端**的另有一段 Go 代码，
+用 [`sdk/go`](./sdk/go) 编译成 WebAssembly，跑在 wazero 沙箱里（每个实例 32 MiB 内存、
+一次调用 10 秒、连续出错 5 次自动停用）。声明的能力**启用时逐项列给站长确认**，
+升级后多要了能力会先停用、等再次确认。
+
+插件可以：
+
+- 在文章发布 / 更新 / 删除、评论创建 / 通过、用户注册时**收到通知**（异步，不拖慢那次请求）
+- **改写正文**、**判定评论**（同步过滤器，超时或出错就沿用原来的值）
+- 声明**自己的数据**：键值存储，以及 JSON Schema 描述的资源——后台自动出列表页与编辑页
+- 提供**自己的接口** `/api/v1/plugins/<插件>/<路径>`，公开的或限定权限串的
+- 往**前台的五个插槽**（页头、页脚、正文前后、评论区下）与侧栏小组件里放东西，正文里支持短代码
+- 在**后台加自己的页面**：隔离的 iframe，只能经宿主转发调用本插件自己的接口
+- 声明对**其他插件**的依赖与版本范围
+
+**主题要给插件留位置**：插槽要主题调 `{{ .Slot "footer" }}` 才会出现，
+内置主题「墨」已经接好，见[主题开发文档](./docs/theme-development.md#给插件留位置)。
+
+> 插件系统随 **0.2.0** 发布；本节对应主干代码。0.1.9 及更早的版本里插件是纯声明式的，不执行代码。
+
 ## REST API
 
 三个平面，前缀与鉴权策略固定：
@@ -288,7 +324,7 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 |---|---|---|
 | Console | `/api/v1/console/**` | 会话或 PAT，**默认强制认证** |
 | Public | `/api/v1/public/**` | 匿名可读已发布内容、发表评论；收藏需登录 |
-| Extension | `/apis/{group}/{version}/{资源段}` | 强制认证，为插件预留的自定义模型 CRUD |
+| Extension | `/apis/{group}/{version}/{资源段}` | 强制认证，插件声明的自定义数据的通用 CRUD |
 
 - 所有接口经 [huma](https://huma.rocks) 注册，OpenAPI 3.1 由代码生成：
   `/api/openapi.json`（另有 3.0 降级版）与交互式文档 `/api/docs`
@@ -398,12 +434,12 @@ internal/
   config/ database/ migrate/ logging/ httpx/ server/ workdir/ version/ slug/
   console/         SPA 的 go:embed 目标（dist/ 不进库）
   media/ taxonomy/ content/ settings/ comment/ favorite/ mail/ menu/ seo/   功能模块
-  plugin/          插件系统：声明式插件的包格式、生命周期与设置（无代码执行）
+  plugin/          插件系统：包格式与生命周期、wazero 运行时、钩子分发、接口与前台插槽、依赖
   pkgzip/          主题与插件共用的 zip 安全解压
   logs/            后台日志页的读取端：从 dataDir/logs 的 JSON 行里查询、下载
   update/          在线升级：查 GitHub Releases、校验下载、备份替换与自重启
   form/            声明式表单 DSL：设置分组的 Go 侧声明与 settings.yaml 反解
-  extension/       Extension 平面的通用 CRUD，给插件预留的自定义模型
+  extension/       Extension 平面的通用 CRUD：插件声明的自定义数据模型
   search/          全文搜索：Go 侧二元组分词 + tsvector 索引与后台对账
   theme/           主题系统：模板引擎、主题包、前台路由、主题设置
     builtin/ink/   内置默认主题「墨」，go:embed 进二进制，同时是所有主题的回退
@@ -415,9 +451,11 @@ console/           Vite + React + TypeScript 后台前端
   src/pages/       七组导航对应的页面
   src/styles/      三层设计 token（primitive → semantic → component）
 data/themes/       运行时装第三方主题的位置（不进库，由 workdir 创建）
+sdk/go/            插件 SDK（独立模块），插件作者用它编译 WebAssembly 后端
+examples/plugins/  三个示例插件的源码（独立模块），build.sh 编 wasip1 包并打 zip
 deploy/            Dockerfile（源码构建）、Dockerfile.goreleaser（发布装箱）
                    docker-compose.yml、.env.example
-docs/              贡献指南、许可相关条款、主题开发文档
+docs/              贡献指南、许可相关条款、主题开发与插件开发文档
 ```
 
 ## 参与贡献
