@@ -3,7 +3,7 @@
 用 Go 编写的现代化开源 CMS，单一静态二进制：后台是 `go:embed` 进二进制的 React SPA，
 访客前台由服务端模板渲染主题。产品形态对标 [Halo](https://www.halo.run/)，目标是形成主题与插件生态。
 
-> **早期版本**：已发布 0.1.x 系列（[Releases](https://github.com/FeiBaiKin/Lumo/releases)），
+> **早期版本**：已发布 0.2.x 系列（[Releases](https://github.com/FeiBaiKin/Lumo/releases)），
 > 官网 [lumo.xzji.top](https://lumo.xzji.top) 就是用 Lumo 自己搭的。还没经过大规模生产检验，
 > 欢迎试用与反馈，上生产请自行评估风险。
 
@@ -314,7 +314,7 @@ React SPA（`/console/`），侧栏七组导航：仪表盘 / 内容 / 媒体 / 
 **主题要给插件留位置**：插槽要主题调 `{{ .Slot "footer" }}` 才会出现，
 内置主题「墨」已经接好，见[主题开发文档](./docs/theme-development.md#给插件留位置)。
 
-> 插件系统随 **0.2.0** 发布；本节对应主干代码。0.1.9 及更早的版本里插件是纯声明式的，不执行代码。
+> 插件系统从 **0.2.0** 开始有；0.1.9 及更早的版本里插件是纯声明式的，不执行代码。
 
 ## REST API
 
