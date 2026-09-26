@@ -1,0 +1,34 @@
+apiVersion: plugin.lumo.run/v1alpha1
+kind: Plugin
+metadata:
+  name: visit-stats
+spec:
+  displayName: 访问统计
+  version: 1.0.0
+  description: 在页尾带一个自己的脚本，文章被打开时回打插件自己的公开接口记一次数；侧栏小组件按浏览次数列出热门文章。
+  author:
+    name: Lumo 示例
+  homepage: https://lumo.xzji.top
+  license: AGPL-3.0
+  requires: ">=0.2.0"
+  runtime: wasm
+  capabilities:
+    # 文章发布、更新、进回收站的动作里带标题与路径，属于站点内容
+    content: {read: true}
+    # 脚本与小组件都是往前台放东西
+    frontend: true
+  hooks:
+    actions: [post.published, post.updated, post.trashed]
+  frontend:
+    scripts: [static/visit-stats.js]
+    slots: [content.after]
+    widgets:
+      - name: popular
+        label: 热门文章
+        description: 按浏览次数排的前几篇，次数在文章被打开时累加
+  routes:
+    - name: hit
+      method: POST
+      path: /hit
+      public: true
+      description: '前台脚本回打的计数接口，请求体形如 {"post": 12}'

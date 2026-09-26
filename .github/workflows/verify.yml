@@ -131,6 +131,17 @@ jobs:
       - name: 冒烟检查
         run: ./lumo version
 
+      # 示例插件各自是独立的 Go 模块，根模块的 `go build ./...` 不会编到它们，
+      # 不在这里过一遍的话，SDK 一改它们就会悄悄编不过，而没人会发现。
+      - name: 编译示例插件
+        run: |
+          for dir in examples/plugins/*/; do
+            [ -f "${dir}plugin.yaml" ] || continue
+            echo "== $dir"
+            (cd "$dir" && GOOS=wasip1 GOARCH=wasm GOFLAGS= GOWORK=off CGO_ENABLED=0 \
+              go build -buildmode=c-shared -o "$RUNNER_TEMP/plugin.wasm" .)
+          done
+
   cross-build:
     name: 交叉编译检查
     runs-on: ubuntu-latest

@@ -1,0 +1,31 @@
+groups:
+  - name: notify
+    label: 通知
+    description: 有人留言时给谁发信、哪些留言才值得发。信经站点的 SMTP 发出，本插件每小时最多 30 封。
+    order: 10
+    icon: mail
+    schema:
+      type: object
+      x-order: [recipients, onlyPending, minLength]
+      properties:
+        recipients:
+          type: string
+          title: 收件人
+          description: 每行一个邮箱，最多 10 个。留空则什么都不发。
+          maxLength: 500
+          x-widget: textarea
+          x-rows: 3
+        onlyPending:
+          type: boolean
+          title: 只通知待审的
+          description: 打开后只通知进了审核队列的留言；判为垃圾的那些不打扰。
+        minLength:
+          type: integer
+          title: 正文长度下限
+          minimum: 0
+          maximum: 200
+          description: 正文短于这个字数的留言不通知，用来滤掉「沙发」「好」这类；填 0 表示全通知。
+    defaults:
+      recipients: ""
+      onlyPending: true
+      minLength: 2

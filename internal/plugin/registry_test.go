@@ -171,3 +171,40 @@ func TestPackageBackendMustMatchManifest(t *testing.T) {
 		}
 	}
 }
+
+// 重复启用一个已经启用、后端也在跑的插件是个空操作。
+//
+// 之前这里会再走一遍启用：新后端在旧后端还占着实例名的时候启动，wazero 直接报
+// 「已实例化」，接口回 422。界面上的开关不会这么点，但接口可以被重复调用（重试、
+// 手写脚本、并发两次点击），所以这道理要挡住。
+func TestEnableAlreadyEnabledIsNoop(t *testing.T) {
+	m := testModule(t)
+	ctx := context.Background()
+	caps := "  capabilities:\n    content: {read: true}\n    cron: true\n    frontend: true\n"
+	files := map[string][]byte{FileManifest: manifest(guestSpec + caps), FileWasm: wasmtest.Guest(t)}
+	if err := install(t, m.registry, files); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.registry.SetEnabled(ctx, "demo", true, true); err != nil {
+		t.Fatalf("首次启用：%v", err)
+	}
+	before, ok := m.registry.Backend("demo")
+	if !ok {
+		t.Fatal("启用后后端应在运行")
+	}
+	for i := 0; i < 3; i++ {
+		if err := m.registry.SetEnabled(ctx, "demo", true, true); err != nil {
+			t.Fatalf("第 %d 次重复启用该是无操作，却报错：%v", i+2, err)
+		}
+	}
+	after, ok := m.registry.Backend("demo")
+	if !ok {
+		t.Fatal("重复启用之后后端仍应在运行")
+	}
+	if before != after {
+		t.Fatal("重复启用不该换成另一个后端：那说明又起了一个")
+	}
+	if loaded, _ := m.registry.Get("demo"); !loaded.Enabled {
+		t.Fatal("重复启用之后该仍是启用状态")
+	}
+}

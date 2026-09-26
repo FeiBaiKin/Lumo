@@ -843,7 +843,7 @@ export interface paths {
         get?: never;
         /**
          * 启用或停用插件
-         * @description 启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。
+         * @description 启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。声明了依赖的插件，依赖没装、没启用或版本不够时也返回 409，详情见 dependencies 字段。停用会连带停用依赖它的插件。
          */
         put: operations["plugin-set-enabled"];
         post?: never;
@@ -3028,6 +3028,14 @@ export interface components {
             resource: string;
             resourceLabel: string;
         };
+        PluginDepView: {
+            enabled: boolean;
+            installed: boolean;
+            installedVersion?: string;
+            name: string;
+            satisfied: boolean;
+            version: string;
+        };
         PluginListBody: {
             items: components["schemas"]["PluginView"][] | null;
             retained: components["schemas"]["Retained"][] | null;
@@ -3057,6 +3065,8 @@ export interface components {
             author: string;
             broken?: string;
             capabilities: components["schemas"]["CapabilityLine"][] | null;
+            dependencies: components["schemas"]["PluginDepView"][] | null;
+            dependents: string[] | null;
             description: string;
             disabledReason: string;
             displayName: string;

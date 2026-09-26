@@ -117,6 +117,17 @@ type Engine struct {
 	runtime wazero.Runtime
 	host    HostFunc
 	logger  *slog.Logger
+	// instances 给每个实例发一个不重复的编号，见 nextInstance。
+	instances atomic.Int64
+}
+
+// nextInstance 返回下一个实例名。
+//
+// 名字必须在整个运行时里唯一：wazero 按名字登记模块，重名会直接报「已实例化」。
+// 同一个插件的后端被替换时，新旧两个 Plugin 会有一小段重叠（先起新的、再关旧的），
+// 只按插件名加序号就会撞上，所以计数放在引擎这一层。
+func (e *Engine) nextInstance(plugin string) string {
+	return fmt.Sprintf("%s#%d", plugin, e.instances.Add(1))
 }
 
 // NewEngine 构造运行时并装好 WASI 与宿主函数模块。
@@ -230,7 +241,6 @@ type Plugin struct {
 	// idle 是空闲实例；slots 限制实例总数，创建前先占一个位。
 	idle   chan api.Module
 	slots  chan struct{}
-	seq    atomic.Int64
 	closed atomic.Bool
 }
 
@@ -406,7 +416,7 @@ func (p *Plugin) discard(mod api.Module) {
 // instantiate 新建一个实例。
 func (p *Plugin) instantiate(ctx context.Context) (api.Module, error) {
 	cfg := wazero.NewModuleConfig().
-		WithName(fmt.Sprintf("%s#%d", p.name, p.seq.Add(1))).
+		WithName(p.engine.nextInstance(p.name)).
 		WithStartFunctions("_initialize").
 		WithStdout(newLogWriter(p.engine.logger, p.name, slog.LevelInfo)).
 		WithStderr(newLogWriter(p.engine.logger, p.name, slog.LevelWarn)).

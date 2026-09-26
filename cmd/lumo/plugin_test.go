@@ -372,3 +372,156 @@ func TestPluginCapabilities(t *testing.T) {
 		}
 	})
 }
+
+// 插件依赖：缺依赖启用不了且说明缺什么；依赖就绪后能启用；停用被依赖者会连带停用依赖方，
+// 依赖恢复后原因改写、但要站长点一下才回来。清单里的依赖与现状都经接口透给后台。
+func TestPluginDependencies(t *testing.T) {
+	s := newTestSite(t)
+	s.createUser(t, "admin", "super-admin")
+	admin := s.client(t)
+	mustStatus(t, "管理员登录", admin.login("admin", "password-admin"), http.StatusOK, nil)
+
+	// 依赖不需要后端代码，纯声明式插件即可
+	upload := func(name, version, dependencies string) map[string]any {
+		t.Helper()
+		manifest := "apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: " + name +
+			"\nspec:\n  version: " + version + "\n" + dependencies
+		pkg := zipPlugin(t, map[string][]byte{"plugin.yaml": []byte(manifest)})
+		status, out := admin.upload("/api/v1/console/plugins", pkg)
+		mustStatus(t, "上传插件 "+name, status, http.StatusCreated, out)
+		return out
+	}
+	view := func(name string) map[string]any {
+		t.Helper()
+		status, out := admin.do(http.MethodGet, "/api/v1/console/plugins", nil)
+		mustStatus(t, "列出插件", status, http.StatusOK, out)
+		items, _ := out["items"].([]any)
+		for _, item := range items {
+			if entry, ok := item.(map[string]any); ok && entry["name"] == name {
+				return entry
+			}
+		}
+		t.Fatalf("插件列表里没有 %s：%v", name, out)
+		return nil
+	}
+	enable := func(name string) (int, map[string]any) {
+		t.Helper()
+		return admin.do(http.MethodPut, "/api/v1/console/plugins/"+name+"/enabled", map[string]any{"enabled": true})
+	}
+
+	upload("base", "1.2.0", "")
+	upload("app", "1.0.0", "  dependencies:\n    - {name: base, version: \">=1.0.0\"}\n")
+
+	t.Run("依赖的现状经接口透出来", func(t *testing.T) {
+		deps, _ := view("app")["dependencies"].([]any)
+		if len(deps) != 1 {
+			t.Fatalf("app 该声明一条依赖，得到 %v", deps)
+		}
+		one, _ := deps[0].(map[string]any)
+		if one["name"] != "base" || one["version"] != ">=1.0.0" || one["installed"] != true || one["satisfied"] != false {
+			t.Fatalf("依赖该是「装了、没满足」，得到 %v", one)
+		}
+		if one["installedVersion"] != "1.2.0" {
+			t.Fatalf("该带上已安装的版本，得到 %v", one["installedVersion"])
+		}
+	})
+
+	t.Run("依赖没启用就启用，回 409 并说明", func(t *testing.T) {
+		status, out := enable("app")
+		mustStatus(t, "依赖没就绪就启用", status, http.StatusConflict, out)
+		if detail, _ := out["detail"].(string); !strings.Contains(detail, "base") {
+			t.Fatalf("该说清缺哪个插件，得到 %v", out)
+		}
+	})
+
+	if status, out := enable("base"); status != http.StatusOK {
+		t.Fatalf("启用被依赖的插件该成功，得到 %d（%v）", status, out)
+	}
+
+	t.Run("依赖就绪后能启用，被依赖者列出依赖方", func(t *testing.T) {
+		status, out := enable("app")
+		mustStatus(t, "依赖就绪后启用", status, http.StatusOK, out)
+		dependents, _ := view("base")["dependents"].([]any)
+		if len(dependents) != 1 || dependents[0] != "app" {
+			t.Fatalf("base 该列出依赖它的 app，得到 %v", dependents)
+		}
+		deps, _ := view("app")["dependencies"].([]any)
+		if len(deps) != 1 {
+			t.Fatalf("app 该有一条依赖，得到 %v", deps)
+		}
+		if one, _ := deps[0].(map[string]any); one["satisfied"] != true {
+			t.Fatalf("依赖该显示为已满足，得到 %v", one)
+		}
+	})
+
+	t.Run("停用被依赖者连带停用依赖方", func(t *testing.T) {
+		status, out := admin.do(http.MethodPut, "/api/v1/console/plugins/base/enabled", map[string]any{"enabled": false})
+		mustStatus(t, "停用 base", status, http.StatusOK, out)
+		app := view("app")
+		if app["enabled"] != false {
+			t.Fatal("app 该跟着停用")
+		}
+		if reason, _ := app["disabledReason"].(string); !strings.Contains(reason, "base") {
+			t.Fatalf("停用原因该说清是被谁带的，得到 %q", reason)
+		}
+		// 页面上的资源、菜单也要跟着收起
+		status, out = admin.do(http.MethodPut, "/api/v1/console/plugins/base/enabled", map[string]any{"enabled": true})
+		mustStatus(t, "重新启用 base", status, http.StatusOK, out)
+		app = view("app")
+		if app["enabled"] != false {
+			t.Fatal("依赖恢复不该把插件悄悄启用回来")
+		}
+		if reason, _ := app["disabledReason"].(string); !strings.Contains(reason, "重新启用") {
+			t.Fatalf("依赖恢复后原因该改写，得到 %q", reason)
+		}
+		if status, out := enable("app"); status != http.StatusOK {
+			t.Fatalf("站长点一下该能启用，得到 %d（%v）", status, out)
+		}
+	})
+}
+
+// 卸载被依赖的插件，依赖方跟着停用但不被带走。
+func TestPluginUninstallCascades(t *testing.T) {
+	s := newTestSite(t)
+	s.createUser(t, "admin", "super-admin")
+	admin := s.client(t)
+	mustStatus(t, "管理员登录", admin.login("admin", "password-admin"), http.StatusOK, nil)
+
+	manifest := func(name, extra string) []byte {
+		return []byte("apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: " + name +
+			"\nspec:\n  version: 1.0.0\n" + extra)
+	}
+	for _, files := range []map[string][]byte{
+		{"plugin.yaml": manifest("base", "")},
+		{"plugin.yaml": manifest("app", "  dependencies:\n    - {name: base}\n")},
+	} {
+		pkg := zipPlugin(t, files)
+		status, out := admin.upload("/api/v1/console/plugins", pkg)
+		mustStatus(t, "上传插件", status, http.StatusCreated, out)
+	}
+	// {"name: base"} 没写 version，表示不限版本，也要能解析
+	for _, name := range []string{"base", "app"} {
+		status, out := admin.do(http.MethodPut, "/api/v1/console/plugins/"+name+"/enabled", map[string]any{"enabled": true})
+		mustStatus(t, "启用 "+name, status, http.StatusOK, out)
+	}
+
+	status, out := admin.do(http.MethodDelete, "/api/v1/console/plugins/base?keepData=true", nil)
+	mustStatus(t, "卸载 base", status, http.StatusNoContent, out)
+	status, out = admin.do(http.MethodGet, "/api/v1/console/plugins", nil)
+	mustStatus(t, "列出插件", status, http.StatusOK, out)
+	items, _ := out["items"].([]any)
+	for _, item := range items {
+		entry, _ := item.(map[string]any)
+		if entry["name"] != "app" {
+			continue
+		}
+		if entry["enabled"] != false {
+			t.Fatal("base 卸载后 app 该跟着停用")
+		}
+		if reason, _ := entry["disabledReason"].(string); !strings.Contains(reason, "卸载") {
+			t.Fatalf("原因该说清是被卸载带的，得到 %q", reason)
+		}
+		return
+	}
+	t.Fatal("app 该还在列表里，只是停用")
+}

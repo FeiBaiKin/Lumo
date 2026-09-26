@@ -2434,6 +2434,37 @@
         ],
         "type": "object"
       },
+      "PluginDepView": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "installedVersion": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "satisfied": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "version",
+          "installed",
+          "enabled",
+          "satisfied"
+        ],
+        "type": "object"
+      },
       "PluginListBody": {
         "additionalProperties": false,
         "properties": {
@@ -2540,6 +2571,24 @@
               "null"
             ]
           },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/PluginDepView"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "dependents": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "description": {
             "type": "string"
           },
@@ -2604,6 +2653,8 @@
           "license",
           "requires",
           "enabled",
+          "dependencies",
+          "dependents",
           "settingGroups",
           "runtime",
           "capabilities",
@@ -8783,7 +8834,7 @@
     },
     "/api/v1/console/plugins/{name}/enabled": {
       "put": {
-        "description": "启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。",
+        "description": "启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。声明了依赖的插件，依赖没装、没启用或版本不够时也返回 409，详情见 dependencies 字段。停用会连带停用依赖它的插件。",
         "operationId": "plugin-set-enabled",
         "parameters": [
           {

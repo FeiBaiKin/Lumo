@@ -28,6 +28,10 @@ secret.key
 # 依赖
 node_modules/
 
+# 示例插件的构建产物：plugin.wasm 与打包好的 zip 由 build.sh 现场生成
+/examples/plugins/*/plugin.wasm
+/examples/plugins/*.zip
+
 # go test -c 的二进制与剖析输出
 *.test
 *.out

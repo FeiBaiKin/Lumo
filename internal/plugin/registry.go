@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/FeiBaiKin/lumo/internal/plugin/wasm"
@@ -177,7 +178,7 @@ func (r *Registry) Load(ctx context.Context) error {
 			r.warn("登记手工放入的插件失败", loaded.ID(), err)
 		}
 	}
-	for _, loaded := range r.Enabled() {
+	for _, loaded := range r.startOrder() {
 		r.startOrSuspend(ctx, loaded)
 	}
 	return nil
@@ -322,6 +323,9 @@ func (r *Registry) Install(ctx context.Context, reader io.ReaderAt, size int64) 
 // 启用一个声明了能力的插件时，accept 表示站长已经看过并同意了这些能力；
 // 没同意而又需要同意时返回 ErrConsentRequired。带后端的插件在启用时编译加载，
 // 加载失败则保持停用并返回 ErrBackend。
+//
+// 声明了依赖的插件，依赖没就绪时返回 ErrMissingDeps——装得上但启用不了，
+// 依赖可以在这之后安装，故这道理到用时才查。停用一个插件会连带停用依赖它的插件。
 func (r *Registry) SetEnabled(ctx context.Context, name string, enabled, accept bool) error {
 	loaded, ok := r.Get(name)
 	if !ok {
@@ -337,7 +341,18 @@ func (r *Registry) SetEnabled(ctx context.Context, name string, enabled, accept 
 		loaded.backend = nil
 		r.mu.Unlock()
 		closeBackend(old)
+		r.disableDependents(ctx, name, "停用")
 		return nil
+	}
+
+	// 已经启用着了就什么也不做。重来一遍会再起一个后端，而旧后端此刻还占着它的实例，
+	// 那不是「启用」的语义；等待重新确认的除外，那种情况要走下面的授权流程。
+	if loaded.Enabled && !loaded.NeedsConsent() {
+		return nil
+	}
+
+	if unmet := r.unmetDeps(loaded.Manifest.Spec.Dependencies); len(unmet) > 0 {
+		return fmt.Errorf("%w：%s", ErrMissingDeps, strings.Join(unmet, "；"))
 	}
 
 	granted := loaded.Granted
@@ -367,6 +382,7 @@ func (r *Registry) SetEnabled(ctx context.Context, name string, enabled, accept 
 	loaded.backend = backend
 	r.mu.Unlock()
 	closeBackend(old)
+	r.restoreDependentReasons(ctx, name)
 	return nil
 }
 
@@ -470,6 +486,7 @@ func (r *Registry) Uninstall(ctx context.Context, name string, keepData bool) er
 			return err
 		}
 	}
+	r.disableDependents(ctx, name, "卸载")
 	r.mu.Lock()
 	var old *wasm.Plugin
 	if loaded, ok := r.plugins[name]; ok {

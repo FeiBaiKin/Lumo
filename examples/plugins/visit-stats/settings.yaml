@@ -1,0 +1,23 @@
+groups:
+  - name: stats
+    label: 统计
+    description: 计数在文章被打开时累加，去重在前台脚本里做：同一个会话里同一篇只算一次。
+    order: 10
+    icon: chart-column
+    schema:
+      type: object
+      x-order: [track, topCount]
+      properties:
+        track:
+          type: boolean
+          title: 记录访问
+          description: 关掉之后前台脚本照旧发出请求，但后端不再计数、排行榜停在原地。
+        topCount:
+          type: integer
+          title: 排行榜条数
+          minimum: 1
+          maximum: 20
+          description: 侧栏「热门文章」列出几篇。
+    defaults:
+      track: true
+      topCount: 5

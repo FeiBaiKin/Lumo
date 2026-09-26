@@ -30,6 +30,7 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { CheckboxRow, Switch } from "@/components/ui/toggle";
 import { relativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { cn } from "@/lib/utils";
 import { PluginSettingsDialog } from "@/pages/system/plugin-settings";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -63,8 +64,23 @@ import { toast } from "sonner";
  */
 
 type PluginView = components["schemas"]["PluginView"];
+type PluginDep = components["schemas"]["PluginDepView"];
 type Retained = components["schemas"]["Retained"];
 type DataCounts = components["schemas"]["DataCounts"];
+
+/** 一条依赖没就绪的原因；就绪时返回空串。 */
+function depNote(dep: PluginDep): string {
+  if (dep.satisfied) {
+    return "";
+  }
+  if (!dep.installed) {
+    return "没安装";
+  }
+  if (!dep.enabled) {
+    return "没启用";
+  }
+  return `只有 ${dep.installedVersion}`;
+}
 
 export function PluginsPage() {
   useDocumentTitle("插件");
@@ -72,6 +88,8 @@ export function PluginsPage() {
   const [removing, setRemoving] = useState<PluginView | null>(null);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
   const [consentFor, setConsentFor] = useState<PluginView | null>(null);
+  // 被别的插件依赖着，停用前要说清会连带停掉谁
+  const [stopping, setStopping] = useState<PluginView | null>(null);
 
   const query = useQuery({
     queryKey: ["plugins"],
@@ -199,6 +217,11 @@ export function PluginsPage() {
                         setConsentFor(plugin);
                         return;
                       }
+                      // 有插件依赖它的，先让站长看清会连带停掉谁
+                      if (!enabled && (plugin.dependents?.length ?? 0) > 0) {
+                        setStopping(plugin);
+                        return;
+                      }
                       setEnabled.mutate({ name: plugin.name, enabled });
                     }}
                     onSettings={() => setSettingsFor(plugin.name)}
@@ -296,6 +319,34 @@ export function PluginsPage() {
       />
 
       <ConfirmDialog
+        open={stopping !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setStopping(null);
+          }
+        }}
+        title={`停用「${stopping?.displayName ?? ""}」？`}
+        consequence={
+          <p>
+            {(stopping?.dependents ?? []).join("、")}{" "}
+            依赖它，会跟着一并停用。之后重新启用它，
+            依赖它的插件也不会自己回来，要在这里各自打开。
+          </p>
+        }
+        confirmLabel="停用"
+        destructive={false}
+        pending={setEnabled.isPending}
+        onConfirm={() => {
+          if (stopping) {
+            setEnabled.mutate(
+              { name: stopping.name, enabled: false },
+              { onSuccess: () => setStopping(null) },
+            );
+          }
+        }}
+      />
+
+      <ConfirmDialog
         open={purging !== null}
         onOpenChange={(open) => {
           if (!open) {
@@ -342,7 +393,8 @@ function PluginRow({
   return (
     <Entity>
       <EntityStart>
-        <EntityField>
+        {/* 名字这一块不参与收缩：描述一长，flex 会把名字挤成一字一行 */}
+        <EntityField className="shrink-0">
           <span className="flex items-center gap-2">
             <span className="font-medium text-ink">{plugin.displayName}</span>
             <Badge tone="neutral">v{plugin.version}</Badge>
@@ -352,7 +404,41 @@ function PluginRow({
           </span>
         </EntityField>
         {plugin.description ? (
-          <EntityMeta>{plugin.description}</EntityMeta>
+          // 描述是这一行里唯一肯让位的：宽度不够就省略，其余照原样显示
+          <span className="min-w-0 truncate text-xs text-ink-muted">
+            {plugin.description}
+          </span>
+        ) : null}
+        {(plugin.dependencies?.length ?? 0) > 0 ? (
+          // 依赖没就绪是「启不了」的原因，与下面的停用原因同类，故紧挨着放
+          <EntityMeta>
+            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {(plugin.dependencies ?? []).map((dep) => {
+                const note = depNote(dep);
+                return (
+                  <span
+                    key={dep.name}
+                    className={cn(
+                      "inline-flex items-center gap-1",
+                      note ? "text-warn" : "text-ink-muted",
+                    )}
+                  >
+                    {note ? (
+                      <AlertTriangle
+                        aria-hidden="true"
+                        className="size-3.5 shrink-0"
+                      />
+                    ) : null}
+                    依赖 {dep.name}
+                    {dep.version ? (
+                      <span className="font-mono text-xs">{dep.version}</span>
+                    ) : null}
+                    {note ? <span>（{note}）</span> : null}
+                  </span>
+                );
+              })}
+            </span>
+          </EntityMeta>
         ) : null}
         {!plugin.enabled && plugin.disabledReason ? (
           <EntityMeta>
@@ -485,6 +571,15 @@ function UninstallDialog({
       consequence={
         <div className="flex flex-col gap-3">
           <p>插件的程序与启用状态会被删掉。它名下现在有：{summary}。</p>
+          {plugin && (plugin.dependents?.length ?? 0) > 0 ? (
+            <p>
+              <strong className="font-medium text-ink">
+                {(plugin.dependents ?? []).join("、")}{" "}
+                依赖它，卸载后会跟着停用。
+              </strong>
+              这些插件本身不会被卸掉，但要重新装上它才能再启用。
+            </p>
+          ) : null}
           {hasData ? (
             <CheckboxRow
               id="uninstall-keep-data"

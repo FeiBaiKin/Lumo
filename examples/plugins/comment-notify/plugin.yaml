@@ -1,0 +1,21 @@
+apiVersion: plugin.lumo.run/v1alpha1
+kind: Plugin
+metadata:
+  name: comment-notify
+spec:
+  displayName: 新评论邮件通知
+  version: 1.0.0
+  description: 有访客留言时，用站点自己的 SMTP 给站长发一封通知信，省得一直盯着后台；正文太短的、不需要通知的可以过滤掉。
+  author:
+    name: Lumo 示例
+  homepage: https://lumo.xzji.top
+  license: AGPL-3.0
+  requires: ">=0.2.0"
+  runtime: wasm
+  capabilities:
+    # 评论动作里带评论者邮箱、IP 与文章标题，属于站点内容
+    content: {read: true}
+    # 发信，每插件每小时最多 30 封
+    mail: true
+  hooks:
+    actions: [comment.created]

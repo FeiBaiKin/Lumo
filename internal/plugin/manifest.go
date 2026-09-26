@@ -93,9 +93,13 @@ type Spec struct {
 	License string `yaml:"license" json:"license"`
 	// Requires 声明所需的 Lumo 版本范围；留空表示不限制。
 	//
-	// v1 只做语法校验，不做范围求解与拒绝安装——「不满足就装不上」需要一套
-	// 完整的版本比较，而那要等插件间依赖一起做（§14.2 期 3）。届时这里会被真正用上。
+	// 只做语法校验，不做范围求解：从源码构建的 Lumo 版本号是 0.0.0-dev，真按范围判定的话，
+	// 本地开发与测试时一切声明了 requires 的插件都启用不了。比较版本的那套家伙在 version.go
+	// 已备好（插件依赖正用它），要启用这条只需接上「版本号认得出来才判」。
 	Requires string `yaml:"requires" json:"requires"`
+	// Dependencies 声明本插件要用到的别的插件与版本范围，如 name: comment-guard、version: ">=1.0.0"。
+	// 依赖没就绪（没装、没启用、版本不够）时插件启用不了；被依赖的插件停用或卸载会连带停用本插件。
+	Dependencies []Dependency `yaml:"dependencies" json:"dependencies"`
 	// Runtime 是后端的运行方式：留空表示纯声明式插件，wasm 表示包里带 plugin.wasm。
 	Runtime string `yaml:"runtime" json:"runtime"`
 	// Capabilities 是插件要用的宿主能力，启用时由站长逐项确认。
@@ -203,6 +207,9 @@ func (m *Manifest) validate(dirName string) error {
 		return fmt.Errorf("%w：spec.runtime 只能留空或写 %s，实际 %q", ErrInvalidPackage, RuntimeWasm, m.Spec.Runtime)
 	}
 	if err := m.Spec.Capabilities.normalize(); err != nil {
+		return err
+	}
+	if err := normalizeDependencies(m.Spec.Dependencies, name); err != nil {
 		return err
 	}
 	if err := m.Spec.Hooks.normalize(&m.Spec.Capabilities, m.Spec.Runtime == RuntimeWasm); err != nil {

@@ -1,0 +1,49 @@
+apiVersion: plugin.lumo.run/v1alpha1
+kind: Plugin
+metadata:
+  name: comment-guard
+spec:
+  displayName: 评论反垃圾
+  version: 1.0.0
+  description: 评论入库前先按关键词、链接数、邮箱名单过一遍，判为垃圾的拦下；拦下的与收到的逐日记数，侧栏小组件与公开接口都能看。
+  author:
+    name: Lumo 示例
+  homepage: https://lumo.xzji.top
+  license: AGPL-3.0
+  # 想要的 Lumo 版本。还没做范围求解，写在这里是给人和给将来用的
+  requires: ">=0.2.0"
+  runtime: wasm
+  capabilities:
+    # 评论里含评论者的邮箱与 IP，订阅评论相关的钩子要读内容的权限
+    content: {read: true}
+    # 侧栏小组件属于往前台放东西
+    frontend: true
+  hooks:
+    actions: [comment.created]
+    filters: [comment.judge]
+  frontend:
+    widgets:
+      - name: guard-report
+        label: 反垃圾统计
+        description: 今天的评论总数与判为垃圾的条数
+  routes:
+    - name: stats
+      path: /stats
+      public: true
+      description: 今天的计数，前台脚本与其它系统都可以读
+  resources:
+    - kind: SpamLog
+      label: 拦截记录
+      description: 被判为垃圾的评论留档，只由插件写，后台只能看
+      icon: shield-alert
+      editable: false
+      columns: [author, content, postId]
+      title: author
+      schema:
+        type: object
+        x-order: [author, content, postId, ip]
+        properties:
+          author: {type: string, title: 评论者, maxLength: 100}
+          content: {type: string, title: 正文, maxLength: 200, x-widget: textarea}
+          postId: {type: integer, title: 文章 ID, minimum: 0}
+          ip: {type: string, title: 来源 IP, maxLength: 64}

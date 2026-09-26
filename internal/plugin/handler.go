@@ -46,6 +46,10 @@ type pluginView struct {
 	License     string `json:"license"`
 	Requires    string `json:"requires" doc:"所需的 Lumo 版本范围；空串表示不限制"`
 	Enabled     bool   `json:"enabled"`
+	// Dependencies 是插件声明的依赖与它们的现状；依赖没就绪时启用不了。
+	Dependencies []pluginDepView `json:"dependencies"`
+	// Dependents 是依赖本插件、且当前启用中的插件；停用或卸载本插件会把它们一并停用。
+	Dependents []string `json:"dependents"`
 	// Broken 非空表示这个插件不可用及原因（目录被手工删除、清单读不出来等）。
 	//
 	// 报出来而不是从列表里隐掉：用户需要知道自己装过的东西出了什么问题。
@@ -64,6 +68,21 @@ type pluginView struct {
 	Running bool `json:"running"`
 	// SDK 是后端编译时用的 SDK 版本；没在运行时为空串。
 	SDK string `json:"sdk"`
+}
+
+// pluginDepView 是一条插件依赖在接口里的样子。
+type pluginDepView struct {
+	Name string `json:"name"`
+	// Version 是声明的版本范围，如 >=1.0.0；空串表示不限。
+	Version string `json:"version"`
+	// Installed 为真表示被依赖的插件已安装。
+	Installed bool `json:"installed"`
+	// InstalledVersion 是已安装那个插件的版本；没装时为空串。
+	InstalledVersion string `json:"installedVersion,omitempty"`
+	// Enabled 为真表示已安装且已启用。
+	Enabled bool `json:"enabled"`
+	// Satisfied 为真表示这条依赖已就绪：装了、启用了、版本也够。
+	Satisfied bool `json:"satisfied"`
 }
 
 type pluginListBody struct {
@@ -165,7 +184,9 @@ func (h *Handler) Register(console huma.API) {
 		Path:        "/plugins/{name}/enabled",
 		Summary:     "启用或停用插件",
 		Description: "启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，" +
-			"启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。",
+			"启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。" +
+			"声明了依赖的插件，依赖没装、没启用或版本不够时也返回 409，详情见 dependencies 字段。" +
+			"停用会连带停用依赖它的插件。",
 		Tags:        tagPlugins,
 		Middlewares: manage,
 		Errors:      []int{http.StatusNotFound, http.StatusConflict, http.StatusUnprocessableEntity},
@@ -230,11 +251,26 @@ func (h *Handler) viewOf(loaded *Loaded) pluginView {
 		Capabilities:   h.module.describeCapabilities(&loaded.Manifest.Spec.Capabilities),
 		NeedsConsent:   loaded.NeedsConsent(),
 		DisabledReason: loaded.DisabledReason,
+		// 两个字段都显式给空切片：JSON 里是 [] 而不是 null，界面不必再判空。
+		Dependencies: depViews(h.module.registry.DepStatuses(loaded.Manifest.Spec.Dependencies)),
+		Dependents:   h.module.registry.EnabledDependents(loaded.ID()),
 	}
 	if backend, ok := h.module.registry.Backend(loaded.ID()); ok {
 		view.Running, view.SDK = true, backend.Description().SDK
 	}
 	return view
+}
+
+// depViews 把依赖现状转成接口视图。
+func depViews(statuses []DepStatus) []pluginDepView {
+	out := make([]pluginDepView, 0, len(statuses))
+	for _, st := range statuses {
+		out = append(out, pluginDepView{
+			Name: st.Dep.Name, Version: st.Dep.Version, Installed: st.Installed,
+			InstalledVersion: st.InstalledVersion, Enabled: st.Enabled, Satisfied: st.Satisfied,
+		})
+	}
+	return out
 }
 
 func (h *Handler) list(ctx context.Context, _ *struct{}) (*pluginListOutput, error) {
@@ -254,7 +290,10 @@ func (h *Handler) list(ctx context.Context, _ *struct{}) (*pluginListOutput, err
 		if _, ok := h.module.registry.Get(name); ok {
 			continue
 		}
-		items = append(items, pluginView{Name: name, DisplayName: name, Broken: reason})
+		items = append(items, pluginView{
+			Name: name, DisplayName: name, Broken: reason,
+			Dependencies: []pluginDepView{}, Dependents: []string{},
+		})
 	}
 	retained := []Retained{}
 	if h.module.data != nil {
@@ -396,6 +435,9 @@ func mapError(err error) error {
 	case errors.Is(err, ErrInvalidPackage), errors.Is(err, ErrBackend):
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, ErrConsentRequired):
+		return huma.Error409Conflict(err.Error())
+	case errors.Is(err, ErrMissingDeps):
+		// 冲突而不是「参数不对」：清单没问题，是站点的现状对不上，装上依赖就好。
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, ErrRecordNotFound):
 		return huma.Error404NotFound(err.Error())

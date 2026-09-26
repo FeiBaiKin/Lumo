@@ -1,0 +1,34 @@
+groups:
+  - name: guard
+    label: 反垃圾规则
+    description: 新评论在入库前按这里的规则过一遍，命中任意一条就判为垃圾、不进审核队列。
+    order: 10
+    icon: shield-check
+    schema:
+      type: object
+      x-order: [keywords, maxLinks, blockedEmails]
+      properties:
+        keywords:
+          type: string
+          title: 关键词
+          description: 每行一个，正文里出现任意一个就拦下。英文与大小写无关。
+          maxLength: 2000
+          x-widget: textarea
+          x-rows: 6
+        maxLinks:
+          type: integer
+          title: 链接数上限
+          minimum: 0
+          maximum: 50
+          description: 正文里的 http/https 链接超过这个数就拦下；填 0 表示不管链接。
+        blockedEmails:
+          type: string
+          title: 拒收的邮箱
+          description: 每行一个，与评论者填的邮箱完全一致时拦下，适合堵住反复来的账号。
+          maxLength: 2000
+          x-widget: textarea
+          x-rows: 4
+    defaults:
+      keywords: ""
+      maxLinks: 3
+      blockedEmails: ""
