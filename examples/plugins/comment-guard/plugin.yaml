@@ -4,7 +4,7 @@ metadata:
   name: comment-guard
 spec:
   displayName: 评论反垃圾
-  version: 1.0.0
+  version: 1.0.1
   description: 评论入库前先按关键词、链接数、邮箱名单过一遍，判为垃圾的拦下；拦下的与收到的逐日记数，侧栏小组件与公开接口都能看。
   author:
     name: Lumo 示例
@@ -35,7 +35,7 @@ spec:
     - kind: SpamLog
       label: 拦截记录
       description: 被判为垃圾的评论留档，只由插件写，后台只能看
-      icon: shield-alert
+      icon: scroll-text
       editable: false
       columns: [author, content, postId]
       title: author

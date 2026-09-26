@@ -3,7 +3,7 @@ groups:
     label: 统计
     description: 计数在文章被打开时累加，去重在前台脚本里做：同一个会话里同一篇只算一次。
     order: 10
-    icon: chart-column
+    icon: bar-chart
     schema:
       type: object
       x-order: [track, topCount]

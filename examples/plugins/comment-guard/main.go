@@ -146,7 +146,7 @@ func counter(key string) (int64, error) {
 	return n, nil
 }
 
-// today 按站点时区的日期分键，跟着宿主的时间走。
+// today 按 UTC 日期分键：插件拿不到站点时区，按天的计数以 UTC 零点换日。
 func today() string { return time.Now().UTC().Format("2006-01-02") }
 
 // lines 把多行文本切成去掉空行的列表。

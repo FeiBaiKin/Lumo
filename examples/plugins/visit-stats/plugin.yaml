@@ -4,7 +4,7 @@ metadata:
   name: visit-stats
 spec:
   displayName: 访问统计
-  version: 1.0.0
+  version: 1.1.0
   description: 在页尾带一个自己的脚本，文章被打开时回打插件自己的公开接口记一次数；侧栏小组件按浏览次数列出热门文章。
   author:
     name: Lumo 示例
