@@ -3,9 +3,10 @@
 用 Go 编写的现代化开源 CMS，单一静态二进制：后台是 `go:embed` 进二进制的 React SPA，
 访客前台由服务端模板渲染主题，目标是形成主题与插件生态。
 
-> **早期版本**：已发布 0.2.x 系列（[Releases](https://github.com/FeiBaiKin/Lumo/releases)），
-> 官网 [lumo.xzji.top](https://lumo.xzji.top) 就是用 Lumo 自己搭的。还没经过大规模生产检验，
-> 欢迎试用与反馈，上生产请自行评估风险。
+> **1.0 正式版已发布**（[Releases](https://github.com/FeiBaiKin/Lumo/releases)），
+> 官网 [lumo.xzji.top](https://lumo.xzji.top) 就是用 Lumo 自己搭的，每个新版本都跟着升级。
+> 插件接口仍是实验性的（清单 `v1alpha1`），1.x 期间可能调整，变动会先写进更新记录。
+> 项目还年轻、目前一人维护，上生产前请先在自己的环境里走一遍。
 
 ## 特性
 
