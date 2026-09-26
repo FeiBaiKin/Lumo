@@ -15307,12 +15307,12 @@
         "operationId": "extension-list",
         "parameters": [
           {
-            "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+            "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
             "in": "path",
             "name": "group",
             "required": true,
             "schema": {
-              "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+              "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
               "maxLength": 253,
               "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$",
               "type": "string"
@@ -15442,12 +15442,12 @@
         "operationId": "extension-create",
         "parameters": [
           {
-            "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+            "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
             "in": "path",
             "name": "group",
             "required": true,
             "schema": {
-              "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+              "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
               "maxLength": 253,
               "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$",
               "type": "string"
@@ -15549,12 +15549,12 @@
         "operationId": "extension-delete",
         "parameters": [
           {
-            "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+            "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
             "in": "path",
             "name": "group",
             "required": true,
             "schema": {
-              "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+              "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
               "maxLength": 253,
               "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$",
               "type": "string"
@@ -15649,12 +15649,12 @@
         "operationId": "extension-get",
         "parameters": [
           {
-            "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+            "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
             "in": "path",
             "name": "group",
             "required": true,
             "schema": {
-              "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+              "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
               "maxLength": 253,
               "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$",
               "type": "string"
@@ -15757,12 +15757,12 @@
         "operationId": "extension-update",
         "parameters": [
           {
-            "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+            "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
             "in": "path",
             "name": "group",
             "required": true,
             "schema": {
-              "description": "反向域名形式的 API 分组，如 io.github.feibaiikin.lumo",
+              "description": "反向域名形式的 API 分组，如 io.github.feibaikin.lumo",
               "maxLength": 253,
               "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$",
               "type": "string"

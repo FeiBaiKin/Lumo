@@ -30,9 +30,12 @@ const RuntimeWasm = "wasm"
 // 与 Extension 平面同一套形态：插件清单本身就是一份 GVK 资源，
 // 将来要把它放进 extensions 表或经 API 暴露，都不必改格式。
 const (
-	APIVersion = "plugin.lumo.run/v1alpha1"
+	APIVersion = "io.github.feibaikin.lumo/v1alpha1"
 	Kind       = "Plugin"
 )
+
+// legacyAPIVersion 是 0.2.0 时的写法。已装的插件与现有的包还在用，解析时认下并改写成 APIVersion。
+const legacyAPIVersion = "plugin.lumo.run/v1alpha1"
 
 // ErrInvalidPackage 表示插件包不合法。
 var ErrInvalidPackage = errors.New("插件包不合法")
@@ -140,6 +143,9 @@ func parseManifest(data []byte, dirName string) (*Manifest, error) {
 
 // validate 校验清单的形态。
 func (m *Manifest) validate(dirName string) error {
+	if m.APIVersion == legacyAPIVersion {
+		m.APIVersion = APIVersion
+	}
 	if m.APIVersion != APIVersion {
 		return fmt.Errorf("%w：apiVersion 须为 %s，实际 %q", ErrInvalidPackage, APIVersion, m.APIVersion)
 	}

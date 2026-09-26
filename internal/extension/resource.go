@@ -9,7 +9,7 @@ import (
 // 核心自用的分组与版本。插件另起分组，版本沿用同一套形态。
 const (
 	// GroupLumo 是核心与默认主题使用的 API 分组。
-	GroupLumo = "io.github.feibaiikin.lumo"
+	GroupLumo = "io.github.feibaikin.lumo"
 	// VersionAlpha 是 v1 统一使用的版本；语义稳定后再升 v1beta1 / v1。
 	VersionAlpha = "v1alpha1"
 )

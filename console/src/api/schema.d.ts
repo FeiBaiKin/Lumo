@@ -11077,7 +11077,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description 反向域名形式的 API 分组，如 io.github.feibaiikin.lumo */
+                /** @description 反向域名形式的 API 分组，如 io.github.feibaikin.lumo */
                 group: string;
                 /** @description API 版本，如 v1alpha1 */
                 version: string;
@@ -11113,7 +11113,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 反向域名形式的 API 分组，如 io.github.feibaiikin.lumo */
+                /** @description 反向域名形式的 API 分组，如 io.github.feibaikin.lumo */
                 group: string;
                 /** @description API 版本，如 v1alpha1 */
                 version: string;
@@ -11171,7 +11171,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 反向域名形式的 API 分组，如 io.github.feibaiikin.lumo */
+                /** @description 反向域名形式的 API 分组，如 io.github.feibaikin.lumo */
                 group: string;
                 /** @description API 版本，如 v1alpha1 */
                 version: string;
@@ -11227,7 +11227,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 反向域名形式的 API 分组，如 io.github.feibaiikin.lumo */
+                /** @description 反向域名形式的 API 分组，如 io.github.feibaikin.lumo */
                 group: string;
                 /** @description API 版本，如 v1alpha1 */
                 version: string;
@@ -11287,7 +11287,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 反向域名形式的 API 分组，如 io.github.feibaiikin.lumo */
+                /** @description 反向域名形式的 API 分组，如 io.github.feibaikin.lumo */
                 group: string;
                 /** @description API 版本，如 v1alpha1 */
                 version: string;

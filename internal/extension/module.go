@@ -2,7 +2,7 @@
 //
 // Extension 是给插件预留的自定义模型：核心不解释 spec 里有什么，只负责寻址、
 // 校验命名与持久化。一条记录由 (apiGroup, version, kind, name) 唯一确定，
-// 地址形如 /apis/io.github.feibaiikin.lumo/v1alpha1/posts/hello。
+// 地址形如 /apis/io.github.feibaikin.lumo/v1alpha1/posts/hello。
 //
 // 表 extensions 在核心迁移里就建好了，本模块只补一列 resource 与按它寻址的唯一索引：
 // 地址里是复数段而表里存单数 kind，映射规则在 Go 侧且不可逆，故把结果存下来。

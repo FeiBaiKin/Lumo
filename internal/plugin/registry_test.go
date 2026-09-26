@@ -43,7 +43,7 @@ const guestSpec = "  runtime: wasm\n  hooks:\n    actions: [comment.created, pos
 	"    shortcodes:\n      - {name: hello}\n"
 
 func manifest(extra string) []byte {
-	return []byte("apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: demo\nspec:\n  version: 1.0.0\n" + extra)
+	return []byte("apiVersion: io.github.feibaikin.lumo/v1alpha1\nkind: Plugin\nmetadata:\n  name: demo\nspec:\n  version: 1.0.0\n" + extra)
 }
 
 // testModule 装好一个不连库的插件模块：注册表 + 运行时。

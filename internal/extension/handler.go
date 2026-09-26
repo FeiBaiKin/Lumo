@@ -101,7 +101,7 @@ func (h *Handler) Register(extension huma.API) {
 //
 // 模式同时写进 OpenAPI 的参数声明，形态不合法的地址由 huma 在进入处理器之前拦下。
 type ResourceParams struct {
-	Group    string `path:"group" maxLength:"253" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$" doc:"反向域名形式的 API 分组，如 io.github.feibaiikin.lumo"`
+	Group    string `path:"group" maxLength:"253" pattern:"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)+$" doc:"反向域名形式的 API 分组，如 io.github.feibaikin.lumo"`
 	Version  string `path:"version" maxLength:"32" pattern:"^v[1-9]\\d*((alpha|beta)[1-9]\\d*)?$" doc:"API 版本，如 v1alpha1"`
 	Resource string `path:"resource" maxLength:"64" pattern:"^[a-z][a-z0-9]*$" doc:"kind 的小写复数形式，如 posts"`
 }

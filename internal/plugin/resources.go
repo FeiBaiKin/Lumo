@@ -77,7 +77,7 @@ const (
 var resourceKindPattern = regexp.MustCompile(extension.KindPattern)
 
 // ResourceGroup 返回插件资源在 Extension 平面上的分组：每个插件一组，插件之间看不见彼此的数据。
-func ResourceGroup(plugin string) string { return plugin + ".plugin.lumo.run" }
+func ResourceGroup(plugin string) string { return extension.GroupLumo + ".plugin." + plugin }
 
 // ResourceVersion 是插件资源统一使用的版本。
 const ResourceVersion = "v1"

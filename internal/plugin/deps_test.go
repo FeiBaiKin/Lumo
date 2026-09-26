@@ -9,7 +9,7 @@ import (
 
 // manifestNamed 造一份指定标识与版本的清单，extra 接在 spec 下面。
 func manifestNamed(name, version, extra string) []byte {
-	return []byte("apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: " + name +
+	return []byte("apiVersion: io.github.feibaikin.lumo/v1alpha1\nkind: Plugin\nmetadata:\n  name: " + name +
 		"\nspec:\n  version: " + version + "\n" + extra)
 }
 

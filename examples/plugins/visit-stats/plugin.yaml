@@ -1,4 +1,4 @@
-apiVersion: plugin.lumo.run/v1alpha1
+apiVersion: io.github.feibaikin.lumo/v1alpha1
 kind: Plugin
 metadata:
   name: visit-stats

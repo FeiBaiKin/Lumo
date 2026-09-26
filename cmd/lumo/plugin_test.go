@@ -38,7 +38,7 @@ func (b *syncBuffer) Contains(s string) bool {
 }
 
 // guestManifest 是测试插件的清单：订阅它登记的全部钩子，并声明所需能力。
-const guestManifest = `apiVersion: plugin.lumo.run/v1alpha1
+const guestManifest = `apiVersion: io.github.feibaikin.lumo/v1alpha1
 kind: Plugin
 metadata:
   name: hook-probe
@@ -384,7 +384,7 @@ func TestPluginDependencies(t *testing.T) {
 	// 依赖不需要后端代码，纯声明式插件即可
 	upload := func(name, version, dependencies string) map[string]any {
 		t.Helper()
-		manifest := "apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: " + name +
+		manifest := "apiVersion: io.github.feibaikin.lumo/v1alpha1\nkind: Plugin\nmetadata:\n  name: " + name +
 			"\nspec:\n  version: " + version + "\n" + dependencies
 		pkg := zipPlugin(t, map[string][]byte{"plugin.yaml": []byte(manifest)})
 		status, out := admin.upload("/api/v1/console/plugins", pkg)
@@ -488,7 +488,7 @@ func TestPluginUninstallCascades(t *testing.T) {
 	mustStatus(t, "管理员登录", admin.login("admin", "password-admin"), http.StatusOK, nil)
 
 	manifest := func(name, extra string) []byte {
-		return []byte("apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: " + name +
+		return []byte("apiVersion: io.github.feibaikin.lumo/v1alpha1\nkind: Plugin\nmetadata:\n  name: " + name +
 			"\nspec:\n  version: 1.0.0\n" + extra)
 	}
 	for _, files := range []map[string][]byte{

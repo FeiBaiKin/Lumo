@@ -5,6 +5,9 @@
 一个插件可以是纯声明的：只放一份清单、几个设置项和静态文件。也可以带后端代码——
 一段编译成 WebAssembly 的 Go 程序，在宿主提供的沙箱里运行，用得到的每一项能力都要站长点头。
 
+> **插件接口还在实验阶段**（清单里的 `v1alpha1` 就是这个意思）：清单写法、钩子、宿主能力与 SDK 在 1.x 期间仍可能调整，
+> 不兼容的改动会提前写进更新记录。定下来之后清单升到 `v1`，从那时起按正式版的兼容承诺走。
+
 本文是插件作者的完整参考。三个可运行的示例在 [examples/plugins](../examples/plugins)，
 照着改是最快的入手方式。
 
@@ -93,7 +96,7 @@ comment-guard/
 `plugin.yaml` 是一份 GVK 资源，格式与后台导出的 Extension 资源同一套：
 
 ```yaml
-apiVersion: plugin.lumo.run/v1alpha1
+apiVersion: io.github.feibaikin.lumo/v1alpha1
 kind: Plugin
 metadata:
   name: comment-guard          # 标识，DNS-1123，同时是安装目录名

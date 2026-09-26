@@ -74,7 +74,7 @@ func TestCapabilitiesCovers(t *testing.T) {
 
 // 读内容、发请求这类能力只有后端代码用得上：纯声明式插件声明了也只是让站长白白点头。
 func TestManifestRequiresBackendForBackendCapabilities(t *testing.T) {
-	base := "apiVersion: plugin.lumo.run/v1alpha1\nkind: Plugin\nmetadata:\n  name: demo\nspec:\n  version: 1.0.0\n"
+	base := "apiVersion: io.github.feibaikin.lumo/v1alpha1\nkind: Plugin\nmetadata:\n  name: demo\nspec:\n  version: 1.0.0\n"
 	if _, err := parseManifest([]byte(base+"  capabilities:\n    mail: true\n"), ""); err == nil {
 		t.Fatal("没有 runtime 却声明 mail 应被拒绝")
 	}
