@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/uptrace/bun"
@@ -57,7 +58,8 @@ func NewService(users *Store, sessions *SessionStore, tokens *TokenStore, counte
 //
 // 目的是消除时间差：若直接返回，攻击者可通过响应时间区分
 // 「账号不存在」与「密码错误」，从而枚举有效账号。
-var dummyHash = func() string {
+// 第一次用到时才算：argon2id 要 64 MiB 内存，放在包初始化里，每次启动、每条命令行子命令都白占一份。
+var dummyHash = sync.OnceValue(func() string {
 	h, err := password.HashWithParams("dummy-password-for-timing", password.Params{
 		Memory: 64 * 1024, Iterations: 3, Parallelism: 1, SaltLength: 16, KeyLength: 32,
 	})
@@ -65,7 +67,7 @@ var dummyHash = func() string {
 		return ""
 	}
 	return h
-}()
+})
 
 // LoginParams 是登录入参。
 type LoginParams struct {
@@ -90,8 +92,8 @@ func (s *Service) Login(ctx context.Context, params LoginParams) (*IssuedSession
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			// 走一次等价开销的哈希校验，抹平时间差。
-			if dummyHash != "" {
-				_ = password.Verify(params.Password, dummyHash)
+			if h := dummyHash(); h != "" {
+				_ = password.Verify(params.Password, h)
 			}
 			s.limiter.RecordFailure(ctx, params.Login, params.IP)
 			return nil, nil, ErrInvalidCredentials
