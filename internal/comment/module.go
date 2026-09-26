@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"strings"
 
 	"github.com/FeiBaiKin/lumo/internal/app"
 	"github.com/FeiBaiKin/lumo/internal/auth/perm"
@@ -46,8 +47,11 @@ func (m *Module) Register(a *app.App) error {
 	if db := a.DB(); db != nil {
 		m.store = NewStore(db.DB)
 	}
-	m.handler = NewHandler(m.store, configFunc(a, m.logger), NewSpamChecker(),
-		&notifier{mail: mail.From(a), logger: m.logger}, a.Events(), m.logger)
+	notify := &notifier{mail: mail.From(a), logger: m.logger, siteURL: siteURLFunc(a)}
+	if m.store != nil {
+		notify.authorEmail = m.store.AuthorEmail
+	}
+	m.handler = NewHandler(m.store, configFunc(a, m.logger), NewSpamChecker(), notify, a.Events(), m.logger)
 	a.Provide(Name, m)
 	return nil
 }
@@ -145,6 +149,21 @@ func configFunc(a *app.App, logger *slog.Logger) ConfigFunc {
 	}
 }
 
+// siteURLFunc 取站点对外地址（去掉末尾斜杠）；没配或读不到时为空串。
+func siteURLFunc(a *app.App) func(ctx context.Context) string {
+	return func(ctx context.Context) string {
+		svc := settings.From(a)
+		if svc == nil {
+			return ""
+		}
+		var site settings.Site
+		if err := svc.Get(ctx, settings.GroupSite, &site); err != nil {
+			return ""
+		}
+		return strings.TrimSuffix(strings.TrimSpace(site.URL), "/")
+	}
+}
+
 // ---------- 通知 ----------
 
 // notifier 把评论事件转成邮件塞进 mail 模块的队列。
@@ -153,6 +172,10 @@ func configFunc(a *app.App, logger *slog.Logger) ConfigFunc {
 type notifier struct {
 	mail   *mail.Service
 	logger *slog.Logger
+	// authorEmail 取内容作者的邮箱；为 nil 时（没有库）收件地址留空就不发。
+	authorEmail func(ctx context.Context, userID int64) (string, error)
+	// siteURL 取站点对外地址，拼邮件里的后台链接。
+	siteURL func(ctx context.Context) string
 }
 
 // CommentCreated 实现 Notifier。
@@ -163,18 +186,50 @@ func (n *notifier) CommentCreated(ctx context.Context, event *NotifyEvent) {
 	cfg := event.Settings
 
 	// 标为垃圾的不通知：垃圾评论量最大，通知它们等于给自己发垃圾。
-	if event.Comment.Status != StatusSpam && cfg.NotifyNew && cfg.NotifyTo != "" {
-		n.mail.Enqueue(ctx, &mail.Message{
-			To:      []string{cfg.NotifyTo},
-			Subject: "有新评论：" + event.Post.Title,
-			Text: "《" + event.Post.Title + "》收到一条来自 " + event.Comment.AuthorName + " 的评论。\n\n" +
-				event.Comment.Content + "\n\n在后台查看：/console/comments",
-		})
+	if event.Comment.Status != StatusSpam && cfg.NotifyNew {
+		if to := n.recipient(ctx, cfg, event); to != "" {
+			n.mail.Enqueue(ctx, &mail.Message{
+				To:      []string{to},
+				Subject: "有新评论：" + event.Post.Title,
+				Text: "《" + event.Post.Title + "》收到一条来自 " + event.Comment.AuthorName + " 的评论。\n\n" +
+					event.Comment.Content + "\n\n" + n.consoleHint(ctx),
+			})
+		}
 	}
 
 	if cfg.NotifyReply && event.Parent != nil {
 		n.notifyParent(ctx, event)
 	}
+}
+
+// recipient 决定新评论通知发给谁：填了收件地址就发给它，留空则发给这篇内容的作者。
+// 作者在自己的内容下留言不通知他自己。
+func (n *notifier) recipient(ctx context.Context, cfg Settings, event *NotifyEvent) string {
+	if to := strings.TrimSpace(cfg.NotifyTo); to != "" {
+		return to
+	}
+	if n.authorEmail == nil || event.Post.AuthorID == 0 {
+		return ""
+	}
+	if uid := event.Comment.UserID; uid != nil && *uid == event.Post.AuthorID {
+		return ""
+	}
+	email, err := n.authorEmail(ctx, event.Post.AuthorID)
+	if err != nil {
+		n.logger.Warn("取内容作者的邮箱失败，这条新评论不通知", slog.Any("error", err))
+		return ""
+	}
+	return email
+}
+
+// consoleHint 是邮件末尾指向后台评论页的一句话。站点没配对外地址时不给链接：相对地址在邮件里点不开。
+func (n *notifier) consoleHint(ctx context.Context) string {
+	if n.siteURL != nil {
+		if base := n.siteURL(ctx); base != "" {
+			return "在后台查看：" + base + "/console/comments"
+		}
+	}
+	return "到后台的「评论」里查看。"
 }
 
 // notifyParent 通知被回复者。

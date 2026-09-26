@@ -167,6 +167,19 @@ func (s *Store) PostRef(ctx context.Context, id int64) (*PostRef, error) {
 	return ref, nil
 }
 
+// AuthorEmail 取内容作者的邮箱，新评论通知没填收件地址时发给他；账号停用或不存在时返回空串。
+func (s *Store) AuthorEmail(ctx context.Context, userID int64) (string, error) {
+	var email string
+	err := s.db.NewRaw("SELECT email FROM users WHERE id = ? AND NOT disabled", userID).Scan(ctx, &email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("查询内容作者的邮箱: %w", err)
+	}
+	return email, nil
+}
+
 // Create 写入评论；成功后回填 ID 与时间戳。
 func (s *Store) Create(ctx context.Context, c *Comment) error {
 	now := time.Now()
