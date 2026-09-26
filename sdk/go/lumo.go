@@ -30,8 +30,9 @@ import (
 // ABIVersion 是本 SDK 实现的宿主调用约定版本，必须与宿主一致。
 const ABIVersion = 1
 
-// Version 是 SDK 版本。
-const Version = "0.2.0-dev"
+// Version 是 SDK 版本，跟着 Lumo 的版本走，发版时改这里（宿主把它显示在插件列表里）。
+// 它只用来交代插件是拿哪一版 SDK 编的，不参与兼容性判定——那是 ABIVersion 的事。
+const Version = "0.2.0"
 
 // Context 是一次调用的上下文。
 type Context struct {
