@@ -29,6 +29,7 @@
 - [构建与安装](#构建与安装)
 - [安全约定](#安全约定)
 - [常见问题](#常见问题)
+- [附：调用约定（ABI）](#附调用约定abi)
 
 ---
 
@@ -49,8 +50,8 @@
 
 两条边界先讲清楚，省得白写：
 
-- **插件之间不能互相调用。** 没有「调用另一个插件的接口」这回事，只有[依赖声明](#依赖别的插件)，
-  它管的是装、启用与版本匹配。
+- **插件之间不能互相调用，也读不到彼此的数据。** 后端没有「调用另一个插件」这回事，键值与资源按插件隔开；
+  [依赖声明](#依赖别的插件)管的只是装、启用与版本匹配。
 - **插件碰不到 SQL。** 读业务数据走[宿主能力](#宿主能力)，自己的数据走[键值与资源](#自己的数据)。
 
 ---
@@ -106,17 +107,27 @@ spec:
   homepage: https://example.com/comment-guard
   repo: https://github.com/you/comment-guard
   license: AGPL-3.0
-  requires: ">=0.2.0"          # 所要的 Lumo 版本范围
+  requires: ">=0.2.0"          # 所要的 Lumo 版本范围，不满足时装不上
   runtime: wasm                # 留空为纯声明式
 ```
 
 **未知字段一律报错**，不是忽略。`displayname` 这种拼写错误会在安装时就被指出来——
 不然你会对着一个没有显示名的插件找半天。
 
-`spec.version` 与 `metadata.name` 这两处约束值得单独说：
+`spec.version`、`metadata.name` 与 `spec.requires` 这几处约束值得单独说：
 
 - 版本号用于[依赖](#依赖别的插件)与升级判断，也带在静态文件的 `?v=` 上，所以**同一份内容不要复用同一个版本号**。
 - 标识必须与安装目录名一致，否则卸载会删错目录。
+- `requires` 的写法同[依赖](#依赖别的插件)的版本范围。本站的 Lumo 版本不满足时**装不上**，升级被拒时旧版本原样留着；
+  站点回滚到更旧的 Lumo 之后，插件会被自动停用并写明原因。比的只是主次修订号（`0.3.0-rc.1` 按 `0.3.0` 算）；
+  从源码直接构建的开发版（`0.0.0-dev`）不比这一条，免得本地调试时什么都启用不了。
+
+清单、资源、后台页面与设置分组里的 `icon` 取后台登记过的图标名（与 [Lucide](https://lucide.dev/icons/) 同名）。
+写了不认识的名字不报错，只是显示成一个方块。目前可用的是：
+
+<!-- icons:start -->
+`activity` `app-window` `archive` `bar-chart` `bell` `blocks` `book` `book-open` `bookmark` `box` `brush` `calendar` `camera` `chart-pie` `check` `clipboard-list` `clock` `cloud` `code` `compass` `credit-card` `database` `download` `eye` `file-code` `file-text` `film` `flag` `folder` `folder-tree` `gauge` `globe` `hard-drive` `heart` `help-circle` `home` `image` `images` `info` `key-round` `layers` `layout-dashboard` `link` `list-tree` `lock` `mail` `map-pin` `megaphone` `message-square` `messages-square` `music` `newspaper` `package` `palette` `paperclip` `pen-line` `phone` `puzzle` `rss` `scroll-text` `search` `send` `settings` `share-2` `shield-check` `shopping-cart` `sliders-horizontal` `sparkles` `star` `tag` `tags` `terminal` `trash-2` `upload` `user-round` `users` `wand` `zap`
+<!-- icons:end -->
 
 后面几节逐项讲 `spec` 的其余字段：`capabilities`、`hooks`、`resources`、`cron`、`routes`、
 `frontend`、`pages`、`dependencies`。
@@ -143,11 +154,16 @@ func main() {}
 `main` 是空的，因为这个模块是「反应器」——被宿主按需叫起来，自己不跑循环。
 但**它必须存在**，否则 Go 链接会报 `function main is undeclared`。
 
-SDK 是独立模块 `github.com/FeiBaiKin/lumo/sdk/go`，没有第三方依赖。本地开发时在 `go.mod` 里指过去：
+SDK 是独立模块 `github.com/FeiBaiKin/lumo/sdk/go`，没有第三方依赖，版本号跟着 Lumo 走：
+
+```bash
+go get github.com/FeiBaiKin/lumo/sdk/go@v0.2.0
+```
+
+SDK 的版本与 `requires` 对上最稳妥（`requires: ">=0.2.0"` 就用 v0.2.0 的 SDK）：新版 SDK 里多出来的宿主调用，
+旧版 Lumo 不认。要跟着 Lumo 主干改 SDK 时，在 `go.mod` 里用 `replace` 指向本地的仓库：
 
 ```
-require github.com/FeiBaiKin/lumo/sdk/go v0.0.0
-
 replace github.com/FeiBaiKin/lumo/sdk/go => ../path/to/lumo/sdk/go
 ```
 
@@ -269,7 +285,7 @@ lumo.KV.Incr("daily:"+time.Now().UTC().Format("2006-01-02"), 1, 35*24*time.Hour)
   resources:
     - kind: SpamLog              # 单数 PascalCase，地址里的复数段由它推导
       label: 拦截记录
-      icon: shield-alert
+      icon: scroll-text
       editable: false            # 只由插件写，后台只能看
       columns: [author, content] # 列表显示哪几列，留空取前三个
       title: author              # 用作记录标题的字段
@@ -608,7 +624,7 @@ func hello(_ *lumo.Context, sc *lumo.Shortcode) (string, error) {
     - path: settings-report      # 地址里的一段
       label: 拦截报告
       description: 最近拦下了什么
-      icon: shield-alert
+      icon: flag
       file: static/report.html   # static/ 下的 .html
       menu: true                 # 是否在侧栏出入口，缺省 true
       permission: plugins:manage # 打开它要的权限串，缺省即此
@@ -751,15 +767,20 @@ func load() config {
 
 - **依赖没就绪就启用不了**：没装、装了没启用、版本不够，三种都拦，并在后台说清是哪一种。
   装得上但启用不了，因为依赖可以在这之后才安装。
-- **被依赖的插件停用或卸载时，依赖它的插件跟着停用**，列表里写明「依赖的插件 X 已停用」。
+- **被依赖的插件停下来时，依赖它的插件跟着停用**，列表里写明「依赖的插件 X 已停用」。
+  站长停用、卸载，或系统自动停用（连续崩溃、新版本要重新确认能力）都算，并一路传下去：A 停了，依赖 A 的 B 停，依赖 B 的 C 也停。
   后台在停用 / 卸载的确认框里会先列出会被连带停用的插件。
-- 依赖的插件重新启用后，上面的原因会改成「可以再次启用」，但**不会自动启用**——那一步仍由站长点。
+- **升级也要对得上。** 被依赖的插件升到了范围之外，依赖它的插件跟着停用；升级后新版本声明的依赖没就绪，
+  它自己停用并写明缺什么。站点重启时会再核对一遍。
+- 依赖补齐之后，上面的原因会改成「依赖都已就绪，可以重新启用」，但**不会自动启用**——那一步仍由站长点。
 - 启动顺序按依赖排：被依赖的先起。
 - **互相依赖（环）的两个插件谁也启用不了**，报的就是「依赖的插件 X 没有启用」。宿主不专门拦这种事。
 - 同一份域名/名字不能重复声明，最多 20 条，也不能依赖自己。
 
-再强调一次：依赖**只是**安装与版本的约束。插件之间不能互相调用，
-所以它不是「用另一个插件的功能」的办法——真要共享，就约定好键值或资源的格式，各自读写。
+再强调一次：依赖**只是**安装与版本的约束。插件之间不能互相调用，**也读不到彼此的键值与资源**——
+它们按插件隔开存放，所以依赖不是「用另一个插件的功能」或「共享数据」的办法。两个插件都碰得到的只有两样：
+站点内容（经[读内容](#读内容contentread)的能力），以及对方的[公开接口](#谁能调公开接口与后台接口)——
+你的前台脚本可以在访客的浏览器里调它。依赖声明保证的是：用到这些的时候，对方在、启用着、版本对得上。
 
 ---
 
@@ -778,8 +799,8 @@ func load() config {
   只是这一次没做成，日志里能看到。
 - **实例全忙不算崩溃。** 并发把 4 个实例占满、排队排到超时，接口回 503，插件照常运行——
   公开接口被刷的时候不该因此把插件停掉。
-- 被自动停用后，后台的插件列表里会写明原因（连续出错、新版本多要了能力、后端加载失败）。
-  修好后由站长手动启用。
+- 被自动停用后，后台的插件列表里会写明原因（连续出错、新版本多要了能力、后端加载失败、
+  依赖没就绪、Lumo 版本不对）。修好后由站长手动启用。
 
 ---
 
@@ -802,7 +823,8 @@ sh examples/plugins/build.sh visit-stats
 装好之后：
 
 - 新装的插件是**停用**状态。启用时，声明了能力的会把能力逐条列出来，站长确认后才加载。
-- **升级同一个插件**保持原来的启用状态，除非新版本多要了能力——那就先停用、等再次确认。
+- **升级同一个插件**保持原来的启用状态，除非新版本多要了能力（先停用、等再次确认）或依赖没就绪（先停用并写明缺什么）。
+- 本站的 Lumo 版本不满足 `requires` 的包**装不上**；升级被拒时旧版本原样留着。
 - **卸载**时确认框会列出这个插件名下有多少设置、记录与键值，缺省连数据一起删，
   可以勾「保留数据」；保留的数据列在插件页里，可以单独删，重装同名插件时原样接回。
 
@@ -840,6 +862,9 @@ sh examples/plugins/build.sh visit-stats
 **插件启用不了，说「依赖的插件没有就绪」。**
 去插件页看它声明的依赖现状：没装就装，没启用就启用，版本不够就升/降。
 
+**装不上，说「插件不支持本站的 Lumo 版本」。**
+`spec.requires` 要的版本比本站新（或旧）。升级 Lumo，或者换一个与本站版本相符的插件版本。
+
 **`http.fetch` 被拒。**
 域名要在 `capabilities.http` 里声明（精确域名或 `*.example.com`），写 IP 不行；
 重定向的每一跳都要在白名单里；解析到内网也会被拒。
@@ -853,3 +878,84 @@ sh examples/plugins/build.sh visit-stats
 
 **插件改完重装，设置和数据显示「接回了」。**
 那是卸载时勾了「保留数据」的效果。不想保留就在卸载时不勾，或者到插件页把保留的数据删掉。
+
+---
+
+## 附：调用约定（ABI）
+
+用 Go 以外的语言写插件也行，只要编出来的是 wasip1 反应器模块、并守下面这套约定。
+Go SDK（[`sdk/go`](../sdk/go) 的 `abi_wasip1.go` 与 `lumo.go`）是它的参考实现。当前版本是 **1**。
+
+### 模块
+
+- wasip1 反应器（reactor）：导出 `_initialize`，不跑 `_start`。宿主实例化时先调 `_initialize`（时限 5 秒），
+  处理函数要在这时登记好。
+- 每个实例的线性内存上限 32 MiB（512 页）。WASI 给的是空的文件系统、环境变量与命令行参数；时钟与随机数照常；
+  标准输出与标准错误进站点日志（后者记为警告）。
+- 实例是单线程的，一次只处理一个请求；宿主按需开到 4 个实例并发，实例之间不共享内存。
+  实例随时可能被销毁或另开，**全局变量里别放要留下来的状态**，那是键值存储的事。
+
+### 函数
+
+插件导出：
+
+| 函数 | 签名 | 作用 |
+|---|---|---|
+| `lumo_alloc` | `(size i32) -> i32` | 宿主往插件内存里写请求之前，先让插件分配 `size` 字节，返回地址 |
+| `lumo_call` | `(ptr i32, len i32) -> i64` | 处理 `ptr` 处长 `len` 的请求，返回 `结果地址 << 32 \| 结果长度`；结果缓冲区要一直有效，直到下一次 `lumo_call` |
+
+宿主提供（导入模块名 `lumo`）：
+
+| 函数 | 签名 | 作用 |
+|---|---|---|
+| `host_call` | `(ptr i32, len i32) -> i32` | 发起一次宿主调用。宿主处理完把结果暂存，只返回结果的长度；返回 0 表示不在宿主发起的调用里（比如在 `_initialize` 里调），没有结果可取 |
+| `host_result` | `(ptr i32)` | 插件按上一步的长度分配好缓冲区后调它，宿主把暂存的结果写进去 |
+
+宿主调用拆成两步，是为了不在宿主函数里反过来调插件的导出函数：全程只有一个方向的调用，插件不必支持重入。
+
+### 消息
+
+两个方向都是 UTF-8 的 JSON，单条最多 8 MiB。
+
+宿主发给插件的请求与插件的答复：
+
+```json
+{"type": "action", "name": "comment.created", "payload": {}}
+{"ok": true, "result": {}}
+{"ok": false, "error": "给人看的原因"}
+```
+
+`ok: false` 是处理函数自己没做成，不算崩溃；陷入（panic、越界）、超时、答复不是合法 JSON 才算。
+
+| type | name | payload | result |
+|---|---|---|---|
+| `describe` | — | — | `{"abi": 1, "sdk": "0.2.0", "handlers": {"action": ["comment.created"], ...}}`，`abi` 对不上就不加载 |
+| `action` | 动作名 | 动作数据 | 忽略 |
+| `filter` | 过滤器名 | 当前值 | 改过的值；给 `null` 或不给表示不改 |
+| `route` | 接口名 | 请求：`method` `path` `params` `query` `headers` `body` / `bodyBase64` `ip` `user` | 响应：`status` `headers` `body` / `bodyBase64` |
+| `slot` / `widget` | 插槽名 / 小组件名 | `{"page": {...}}` | HTML 字符串 |
+| `shortcode` | 短代码名 | `{"name": "...", "attrs": {...}, "page": {...}}` | HTML 字符串 |
+| `cron` | 任务名 | — | 忽略 |
+
+`describe` 的时限 2 秒，其余的时限见[失败与限额](#失败与限额)。各类数据的字段以 SDK 里同名类型的 `json` 标签为准
+（`Post`、`Comment`、`CommentJudgement`、`Request`、`Response`、`PageInfo`、`Shortcode`……）。
+
+插件发起的宿主调用与宿主的答复：
+
+```json
+{"op": "kv.get", "args": {"key": "views:12"}}
+{"ok": true, "result": {"found": true, "value": 3}}
+```
+
+| op | 要的能力 |
+|---|---|
+| `log` `settings.get` `plugin.info` | 无 |
+| `kv.get` `kv.set` `kv.incr` `kv.delete` `kv.list` | 无，只碰本插件自己的 |
+| `resources.list` `resources.get` `resources.create` `resources.update` `resources.delete` | 无，只碰本插件声明的资源 |
+| `content.posts.list` `content.posts.get` `content.comments.list` `content.comments.get` `content.users.get` `content.terms.list` | `content.read` |
+| `content.posts.create` `content.posts.update` `content.posts.trash` `content.comments.moderate` `content.comments.delete` | `content.write` |
+| `http.fetch` | `http` |
+| `mail.send` | `mail` |
+
+没被授予的能力，宿主答 `ok: false` 并说明该在清单里声明什么。各个 op 的参数与结果同样以 SDK 为准
+（`host.go`、`data.go`、`capabilities.go`）。
