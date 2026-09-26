@@ -110,7 +110,7 @@ func TestFetchVerifiesChecksum(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	path, err := d.Fetch(context.Background(), release(), dir, nil)
+	path, err := d.Fetch(context.Background(), release(), dir, nil, FetchHooks{})
 	if err != nil {
 		t.Fatalf("校验和对得上却失败了：%v", err)
 	}
@@ -120,13 +120,13 @@ func TestFetchVerifiesChecksum(t *testing.T) {
 
 	noSums := release()
 	noSums.Checksums = Asset{}
-	if _, err := d.Fetch(context.Background(), noSums, t.TempDir(), nil); err == nil {
+	if _, err := d.Fetch(context.Background(), noSums, t.TempDir(), nil, FetchHooks{}); err == nil {
 		t.Fatal("没有 checksums.txt 的发布应被拒绝")
 	}
 
 	checksums = "0000000000000000000000000000000000000000000000000000000000000000  lumo.tar.gz\n"
 	badDir := t.TempDir()
-	if _, err := d.Fetch(context.Background(), release(), badDir, nil); !errors.Is(err, ErrChecksumMismatch) {
+	if _, err := d.Fetch(context.Background(), release(), badDir, nil, FetchHooks{}); !errors.Is(err, ErrChecksumMismatch) {
 		t.Fatalf("校验和不符应返回 ErrChecksumMismatch，得到 %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(badDir, "lumo.tar.gz")); err == nil {
@@ -134,7 +134,7 @@ func TestFetchVerifiesChecksum(t *testing.T) {
 	}
 
 	checksums = good + "  other-file.tar.gz\n"
-	if _, err := d.Fetch(context.Background(), release(), t.TempDir(), nil); err == nil {
+	if _, err := d.Fetch(context.Background(), release(), t.TempDir(), nil, FetchHooks{}); err == nil {
 		t.Fatal("清单里没有这个包时应被拒绝")
 	}
 }

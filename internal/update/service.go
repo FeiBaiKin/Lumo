@@ -68,7 +68,9 @@ type UpdateProgress struct {
 	Phase Phase `json:"phase" doc:"idle / connecting / downloading / installing / restarting / ready / failed"`
 	// Version 是这次要装的版本。
 	Version string `json:"version,omitempty"`
-	// Downloaded 与 Total 只在下载阶段有意义，Total 为 0 表示源没给出长度。
+	// Source 是正在用的下载来源（域名），测速之前为空。
+	Source string `json:"source,omitempty" doc:"正在用的下载来源"`
+	// Downloaded 与 Total 只在下载阶段有意义，Total 为 0 表示源没给出长度。换来源时 Downloaded 从 0 重新算。
 	Downloaded int64 `json:"downloaded" doc:"已下载字节数"`
 	Total      int64 `json:"total" doc:"发布包总字节数，0 表示未知"`
 	// Backup 是这次升级留下的备份文件名。
@@ -131,6 +133,11 @@ type UpdateStatus struct {
 	BackupDir     string         `json:"backupDir"`
 	// KeepBackups 是升级后自动保留的备份份数，0 表示不自动清理。
 	KeepBackups int `json:"keepBackups"`
+	// Mirrors 是下载加速地址，升级时与 GitHub 直连一起测速，挑快的下。
+	Mirrors []string `json:"mirrors" doc:"下载加速地址（前缀），空表示只直连 GitHub"`
+	// MirrorsCustom 为假表示用的是内置地址，站长没改过。
+	MirrorsCustom  bool     `json:"mirrorsCustom" doc:"加速地址是否被站长改过"`
+	DefaultMirrors []string `json:"defaultMirrors" doc:"内置的加速地址"`
 }
 
 // Service 是在线升级的全部业务逻辑。
@@ -314,7 +321,9 @@ func (s *Service) Status() UpdateStatus {
 		Progress:          progress,
 		BackupDir:         s.backupDir,
 		KeepBackups:       s.cfg.KeepBackups,
+		DefaultMirrors:    DefaultMirrors,
 	}
+	status.Mirrors, status.MirrorsCustom = loadMirrors(s.dataDir)
 	if !checkedAt.IsZero() {
 		at := checkedAt
 		status.CheckedAt = &at
@@ -476,17 +485,38 @@ func (s *Service) download(ctx context.Context, target *Release) (string, error)
 	if err := os.MkdirAll(s.cacheDir, 0o750); err != nil {
 		return "", fmt.Errorf("创建下载目录: %w", err)
 	}
-	return s.downloader.Fetch(ctx, target, s.cacheDir, func(done, total int64) {
-		s.mu.Lock()
-		s.progress.Phase = PhaseDownloading
-		s.progress.Downloaded = done
-		if total > 0 {
-			s.progress.Total = total
-		}
-		s.touchLocked()
-		s.mu.Unlock()
+	mirrors, _ := loadMirrors(s.dataDir)
+	return s.downloader.Fetch(ctx, target, s.cacheDir, mirrors, FetchHooks{
+		Source: func(name string) {
+			s.mu.Lock()
+			s.progress.Source = name
+			s.touchLocked()
+			s.mu.Unlock()
+		},
+		Progress: func(done, total int64) {
+			s.mu.Lock()
+			s.progress.Phase = PhaseDownloading
+			s.progress.Downloaded = done
+			if total > 0 {
+				s.progress.Total = total
+			}
+			s.touchLocked()
+			s.mu.Unlock()
+		},
 	})
 }
+
+// SetMirrors 保存站长填的下载加速地址；空列表表示只直连 GitHub。
+func (s *Service) SetMirrors(mirrors []string) error {
+	normalized, err := NormalizeMirrors(mirrors)
+	if err != nil {
+		return err
+	}
+	return saveMirrors(s.dataDir, normalized)
+}
+
+// ResetMirrors 回到内置的加速地址。
+func (s *Service) ResetMirrors() error { return resetMirrors(s.dataDir) }
 
 // setPhase 切换阶段。
 func (s *Service) setPhase(phase Phase) {

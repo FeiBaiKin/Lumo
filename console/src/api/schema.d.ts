@@ -1578,6 +1578,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/console/update/mirrors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 设置下载加速地址
+         * @description 升级时这些地址与 GitHub 直连一起先下一小段测速，按快慢依次试。地址是前缀，下载时拼成「前缀 + GitHub 原地址」；只收 https。发布包按 GitHub 接口给的 SHA-256 校验，加速地址改不了内容。传空列表表示只直连 GitHub。存在数据目录里，跟着这台机器走。
+         */
+        put: operations["update-set-mirrors"];
+        post?: never;
+        /** 恢复内置的下载加速地址 */
+        delete: operations["update-reset-mirrors"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/console/users": {
         parameters: {
             query?: never;
@@ -2796,6 +2817,10 @@ export interface components {
             type: string;
             updatedAt?: string;
         };
+        MirrorsInputBody: {
+            /** @description 加速地址前缀，如 https://ghfast.top/ */
+            mirrors: string[] | null;
+        };
         NavGroupView: {
             /** @description 分组显示名 */
             label: string;
@@ -3525,6 +3550,8 @@ export interface components {
             error?: string;
             /** @description idle / connecting / downloading / installing / restarting / ready / failed */
             phase: string;
+            /** @description 正在用的下载来源 */
+            source?: string;
             /** Format: date-time */
             startedAt?: string;
             /**
@@ -3549,6 +3576,8 @@ export interface components {
             /** @description 是否运行在容器中 */
             container: boolean;
             current: components["schemas"]["BuildInfo"];
+            /** @description 内置的加速地址 */
+            defaultMirrors: string[] | null;
             /** @description 功能是否启用，关闭时其余字段仅供展示 */
             enabled: boolean;
             executable?: string;
@@ -3558,6 +3587,10 @@ export interface components {
             /** Format: int64 */
             keepBackups: number;
             latest?: components["schemas"]["Release"];
+            /** @description 下载加速地址（前缀），空表示只直连 GitHub */
+            mirrors: string[] | null;
+            /** @description 加速地址是否被站长改过 */
+            mirrorsCustom: boolean;
             mountPoint?: string;
             /** @description 程序文件是否活得比容器长 */
             persistent: boolean;
@@ -9454,6 +9487,95 @@ export interface operations {
             };
             /** @description Bad Gateway */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "update-set-mirrors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MirrorsInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    "update-reset-mirrors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStatus"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

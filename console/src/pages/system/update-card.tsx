@@ -2,9 +2,17 @@ import { api } from "@/api/client";
 import { runMutation } from "@/api/mutation";
 import { queryClient } from "@/api/query-client";
 import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/dialog";
+import {
+  Field,
+  FieldError,
+  FieldHint,
+  FieldLabel,
+} from "@/components/ui/field";
+import { Textarea } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/states";
 import { StatusDot } from "@/components/ui/status-dot";
 import { absoluteDate, fileSize, relativeTime } from "@/lib/format";
@@ -18,6 +26,8 @@ import {
   Copy,
   Download,
   ExternalLink,
+  Gauge,
+  Pencil,
   RefreshCw,
   RotateCw,
   Trash2,
@@ -313,6 +323,8 @@ export function UpdateCard() {
             />
           ) : null}
 
+          <Mirrors status={data} disabled={busy || !data?.enabled} />
+
           <Backups
             backups={data?.backups ?? []}
             dir={data?.backupDir ?? ""}
@@ -544,7 +556,7 @@ function VersionLine({ status }: { status: Status | undefined }) {
 
 /** 阶段对应的说明文字。动词与按钮一致。 */
 const PHASE_TEXT: Record<string, string> = {
-  connecting: "正在连接 GitHub，准备下载",
+  connecting: "正在测速，挑最快的下载地址",
   downloading: "正在下载发布包",
   installing: "正在核对校验和并替换程序文件",
   restarting: "服务正在以新版本重启",
@@ -619,6 +631,7 @@ function ProgressPanel({
         </StatusDot>
         {downloading && total > 0 ? (
           <span className="tabular text-xs text-ink-muted">
+            {progress?.source ? `从 ${progress.source} 下载，` : ""}
             {fileSize(done)} / {fileSize(total)}（{percent}%）
           </span>
         ) : null}
@@ -647,7 +660,7 @@ function ProgressPanel({
 
       {phase === "connecting" ? (
         <p className="text-xs text-ink-muted">
-          服务器访问 GitHub 不畅时这一步会慢一些，连不上会自动换一条连接重试。
+          加速地址和 GitHub 直连各下一小段比快慢，最多十秒。
         </p>
       ) : null}
 
@@ -773,6 +786,167 @@ function ReleaseNotes({
         </>
       ) : (
         <p className="text-sm text-ink-muted">这一版没有附带发布说明。</p>
+      )}
+    </div>
+  );
+}
+
+/** 加速地址的域名，列表里只显示这一段；完整地址放在 title 里。 */
+function mirrorHost(prefix: string): string {
+  try {
+    return new URL(prefix).host;
+  } catch {
+    return prefix;
+  }
+}
+
+/**
+ * 下载加速地址。
+ *
+ * 平时只列出域名，要改时才展开成多行输入框：这一栏多数站长只看一眼。
+ * 说明要讲清两件事：这些是别人的公共服务，可能失效；但它们改不了安装包。
+ * 不说后一句，站长看到第三方地址会不放心。
+ */
+function Mirrors({
+  status,
+  disabled,
+}: {
+  status: Status | undefined;
+  disabled: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const mirrors = status?.mirrors ?? [];
+  const custom = status?.mirrorsCustom ?? false;
+
+  const save = useMutation({
+    mutationFn: (list: string[]) =>
+      runMutation(
+        () =>
+          api.PUT("/api/v1/console/update/mirrors", {
+            body: { mirrors: list },
+          }),
+        { success: "加速地址已保存", invalidate: ["update-status"] },
+      ),
+    onSuccess: () => setEditing(false),
+  });
+
+  const reset = useMutation({
+    mutationFn: () =>
+      runMutation(() => api.DELETE("/api/v1/console/update/mirrors"), {
+        success: "已恢复内置的加速地址",
+        invalidate: ["update-status"],
+      }),
+    onSuccess: () => setEditing(false),
+  });
+
+  function startEdit() {
+    setDraft(mirrors.join("\n"));
+    save.reset();
+    setEditing(true);
+  }
+
+  return (
+    <div className="flex flex-col gap-2 border-line border-t pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="flex items-center gap-1.5 text-sm font-medium text-ink">
+          <Gauge aria-hidden="true" className="size-4 text-ink-muted" />
+          下载加速
+        </h3>
+        {editing ? null : (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={startEdit}
+          >
+            <Pencil aria-hidden="true" />
+            修改
+          </Button>
+        )}
+      </div>
+
+      <p className="text-xs text-ink-muted">
+        {
+          "升级时这些地址和 GitHub 直连各先下一小段比快慢，从最快的那个分几条连接下载。它们是别人提供的公共服务，可能失效，但改不了安装包：下完要和 GitHub 给的校验值对上才会安装。"
+        }
+      </p>
+
+      {editing ? (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            save.mutate(
+              draft
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean),
+            );
+          }}
+        >
+          <Field>
+            <FieldLabel htmlFor="update-mirrors">加速地址</FieldLabel>
+            <Textarea
+              id="update-mirrors"
+              rows={5}
+              value={draft}
+              spellCheck={false}
+              aria-invalid={save.isError}
+              aria-describedby="update-mirrors-hint"
+              className="font-mono text-sm"
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <FieldHint id="update-mirrors-hint">
+              每行一个，以 https:// 开头，最多 8 个。全部删掉就只直连 GitHub。
+            </FieldHint>
+            <FieldError>{save.error?.message}</FieldError>
+          </Field>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              size="sm"
+              variant="primary"
+              loading={save.isPending}
+            >
+              保存
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setEditing(false)}
+            >
+              取消
+            </Button>
+            {custom ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                loading={reset.isPending}
+                onClick={() => reset.mutate()}
+              >
+                恢复内置地址
+              </Button>
+            ) : null}
+          </div>
+        </form>
+      ) : mirrors.length === 0 ? (
+        <p className="text-sm text-ink-muted">没有加速地址，只直连 GitHub。</p>
+      ) : (
+        <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {mirrors.map((prefix) => (
+            <li key={prefix} className="token text-sm text-ink" title={prefix}>
+              {mirrorHost(prefix)}
+            </li>
+          ))}
+          {custom ? null : (
+            <li>
+              <Badge>内置</Badge>
+            </li>
+          )}
+        </ul>
       )}
     </div>
   );

@@ -69,6 +69,29 @@ func (h *Handler) Register(console huma.API) {
 	}, h.apply)
 
 	huma.Register(console, huma.Operation{
+		OperationID: "update-set-mirrors",
+		Method:      http.MethodPut,
+		Path:        "/update/mirrors",
+		Summary:     "设置下载加速地址",
+		Description: "升级时这些地址与 GitHub 直连一起先下一小段测速，按快慢依次试。地址是前缀，" +
+			"下载时拼成「前缀 + GitHub 原地址」；只收 https。发布包按 GitHub 接口给的 SHA-256 校验，" +
+			"加速地址改不了内容。传空列表表示只直连 GitHub。存在数据目录里，跟着这台机器走。",
+		Tags:        tagUpdate,
+		Middlewares: guard,
+		Errors:      []int{http.StatusForbidden, http.StatusUnprocessableEntity},
+	}, h.setMirrors)
+
+	huma.Register(console, huma.Operation{
+		OperationID: "update-reset-mirrors",
+		Method:      http.MethodDelete,
+		Path:        "/update/mirrors",
+		Summary:     "恢复内置的下载加速地址",
+		Tags:        tagUpdate,
+		Middlewares: guard,
+		Errors:      []int{http.StatusForbidden},
+	}, h.resetMirrors)
+
+	huma.Register(console, huma.Operation{
 		OperationID: "update-delete-backup",
 		Method:      http.MethodDelete,
 		Path:        "/update/backups/{name}",
@@ -90,6 +113,12 @@ type applyOutput struct {
 	Body UpdateProgress
 }
 
+type mirrorsInput struct {
+	Body struct {
+		Mirrors []string `json:"mirrors" maxItems:"8" doc:"加速地址前缀，如 https://ghfast.top/"`
+	}
+}
+
 type backupNameInput struct {
 	Name string `path:"name" maxLength:"128" doc:"备份文件名，取自状态里的 backups[].name"`
 }
@@ -97,6 +126,20 @@ type backupNameInput struct {
 // ---------- 处理器 ----------
 
 func (h *Handler) status(_ context.Context, _ *struct{}) (*statusOutput, error) {
+	return &statusOutput{Body: h.service.Status()}, nil
+}
+
+func (h *Handler) setMirrors(_ context.Context, in *mirrorsInput) (*statusOutput, error) {
+	if err := h.service.SetMirrors(in.Body.Mirrors); err != nil {
+		return nil, mapError(err)
+	}
+	return &statusOutput{Body: h.service.Status()}, nil
+}
+
+func (h *Handler) resetMirrors(_ context.Context, _ *struct{}) (*statusOutput, error) {
+	if err := h.service.ResetMirrors(); err != nil {
+		return nil, mapError(err)
+	}
 	return &statusOutput{Body: h.service.Status()}, nil
 }
 
@@ -145,7 +188,7 @@ func mapError(err error) error {
 		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, ErrNoRelease), errors.Is(err, ErrRateLimited), errors.Is(err, ErrNoAsset):
 		return huma.Error502BadGateway(err.Error())
-	case errors.Is(err, ErrBadBackupName):
+	case errors.Is(err, ErrBadBackupName), errors.Is(err, ErrInvalidMirror):
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, fs.ErrNotExist):
 		return huma.Error404NotFound("备份不存在")

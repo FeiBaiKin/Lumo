@@ -1877,6 +1877,26 @@
         ],
         "type": "object"
       },
+      "MirrorsInputBody": {
+        "additionalProperties": false,
+        "properties": {
+          "mirrors": {
+            "description": "加速地址前缀，如 https://ghfast.top/",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "mirrors"
+        ],
+        "type": "object"
+      },
       "NavGroupView": {
         "additionalProperties": false,
         "properties": {
@@ -3968,6 +3988,10 @@
             "description": "idle / connecting / downloading / installing / restarting / ready / failed",
             "type": "string"
           },
+          "source": {
+            "description": "正在用的下载来源",
+            "type": "string"
+          },
           "startedAt": {
             "format": "date-time",
             "type": "string"
@@ -4031,6 +4055,16 @@
           "current": {
             "$ref": "#/components/schemas/BuildInfo"
           },
+          "defaultMirrors": {
+            "description": "内置的加速地址",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "enabled": {
             "description": "功能是否启用，关闭时其余字段仅供展示",
             "type": "boolean"
@@ -4051,6 +4085,20 @@
           },
           "latest": {
             "$ref": "#/components/schemas/Release"
+          },
+          "mirrors": {
+            "description": "下载加速地址（前缀），空表示只直连 GitHub",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "mirrorsCustom": {
+            "description": "加速地址是否被站长改过",
+            "type": "boolean"
           },
           "mountPoint": {
             "type": "string"
@@ -4096,7 +4144,10 @@
           "progress",
           "backups",
           "backupDir",
-          "keepBackups"
+          "keepBackups",
+          "mirrors",
+          "mirrorsCustom",
+          "defaultMirrors"
         ],
         "type": "object"
       },
@@ -12991,6 +13042,123 @@
           }
         ],
         "summary": "立即检查新版本",
+        "tags": [
+          "update"
+        ]
+      }
+    },
+    "/api/v1/console/update/mirrors": {
+      "delete": {
+        "operationId": "update-reset-mirrors",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "恢复内置的下载加速地址",
+        "tags": [
+          "update"
+        ]
+      },
+      "put": {
+        "description": "升级时这些地址与 GitHub 直连一起先下一小段测速，按快慢依次试。地址是前缀，下载时拼成「前缀 + GitHub 原地址」；只收 https。发布包按 GitHub 接口给的 SHA-256 校验，加速地址改不了内容。传空列表表示只直连 GitHub。存在数据目录里，跟着这台机器走。",
+        "operationId": "update-set-mirrors",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MirrorsInputBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "设置下载加速地址",
         "tags": [
           "update"
         ]

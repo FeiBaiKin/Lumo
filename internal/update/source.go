@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,6 +42,8 @@ type Asset struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`
 	Size int64  `json:"size"`
+	// SHA256 是 GitHub 接口给出的内容摘要（十六进制小写）；老的发布没有，为空。
+	SHA256 string `json:"-"`
 }
 
 // Release 是一次发布，已挑好当前平台要用的资产。
@@ -98,6 +101,7 @@ type ghRelease struct {
 		Name               string `json:"name"`
 		BrowserDownloadURL string `json:"browser_download_url"`
 		Size               int64  `json:"size"`
+		Digest             string `json:"digest"`
 	} `json:"assets"`
 }
 
@@ -166,7 +170,7 @@ func (s *Source) toRelease(raw *ghRelease) (*Release, error) {
 	}
 
 	for _, a := range raw.Assets {
-		asset := Asset{Name: a.Name, URL: a.BrowserDownloadURL, Size: a.Size}
+		asset := Asset{Name: a.Name, URL: a.BrowserDownloadURL, Size: a.Size, SHA256: sha256Digest(a.Digest)}
 		switch {
 		case isChecksumAsset(a.Name):
 			rel.Checksums = asset
@@ -281,4 +285,16 @@ func truncateRunes(s string, limit int) string {
 		return s
 	}
 	return string(runes[:limit]) + "\n\n（发布说明过长，已截断）"
+}
+
+// sha256Digest 从 GitHub 的 digest 字段（形如 sha256:<64 位十六进制>）取出摘要；别的算法或格式不对时返回空串。
+func sha256Digest(digest string) string {
+	hexSum, ok := strings.CutPrefix(digest, "sha256:")
+	if !ok || len(hexSum) != 64 {
+		return ""
+	}
+	if _, err := hex.DecodeString(hexSum); err != nil {
+		return ""
+	}
+	return strings.ToLower(hexSum)
 }
