@@ -28,6 +28,7 @@ import (
 	"github.com/FeiBaiKin/lumo/internal/mail"
 	"github.com/FeiBaiKin/lumo/internal/plugin/wasm"
 	"github.com/FeiBaiKin/lumo/internal/settings"
+	"github.com/FeiBaiKin/lumo/internal/version"
 	"github.com/FeiBaiKin/lumo/internal/workdir"
 )
 
@@ -106,10 +107,11 @@ func (m *Module) Register(a *app.App) error {
 		m.data = NewDataStore(db.DB)
 	}
 	m.registry = NewRegistry(&RegistryOptions{
-		Root:   m.root,
-		Store:  m.store,
-		Data:   m.data,
-		Logger: m.logger,
+		Root:        m.root,
+		Store:       m.store,
+		Data:        m.data,
+		Logger:      m.logger,
+		LumoVersion: version.Version,
 	})
 	a.Provide(Name, m)
 	return nil

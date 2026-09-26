@@ -79,6 +79,8 @@ type Registry struct {
 	data   *DataStore
 	logger *slog.Logger
 	engine *wasm.Engine
+	// lumoVersion 是本站 Lumo 的版本号，用来核对 spec.requires。
+	lumoVersion string
 
 	mu      sync.RWMutex
 	plugins map[string]*Loaded
@@ -93,17 +95,20 @@ type RegistryOptions struct {
 	// Data 是插件自己的数据（设置、键值、资源记录）；卸载时按站长的选择清除或保留。
 	Data   *DataStore
 	Logger *slog.Logger
+	// LumoVersion 是本站 Lumo 的版本号，用来核对 spec.requires；空串表示不核对。
+	LumoVersion string
 }
 
 // NewRegistry 构造 Registry。此时不读盘也不读库——那是 Load 的事。
 func NewRegistry(opts *RegistryOptions) *Registry {
 	return &Registry{
-		root:    opts.Root,
-		store:   opts.Store,
-		data:    opts.Data,
-		logger:  opts.Logger,
-		plugins: map[string]*Loaded{},
-		broken:  map[string]string{},
+		root:        opts.Root,
+		store:       opts.Store,
+		data:        opts.Data,
+		logger:      opts.Logger,
+		plugins:     map[string]*Loaded{},
+		lumoVersion: opts.LumoVersion,
+		broken:      map[string]string{},
 	}
 }
 
@@ -278,7 +283,7 @@ func (r *Registry) Broken() map[string]string {
 // 升级**保持原来的启用状态**——升级一个正在用的插件不该把它停掉；
 // 除非新版本多要了能力，那就先停用、等站长确认。
 func (r *Registry) Install(ctx context.Context, reader io.ReaderAt, size int64) (*Manifest, error) {
-	manifest, err := Install(r.root, reader, size, true)
+	manifest, err := Install(r.root, reader, size, true, r.checkRequires)
 	if err != nil {
 		return nil, err
 	}
@@ -315,6 +320,8 @@ func (r *Registry) Install(ctx context.Context, reader io.ReaderAt, size int64) 
 	if loaded.Enabled {
 		r.startOrSuspend(ctx, loaded)
 	}
+	// 升级可能让依赖它的插件版本对不上，新装也可能让它们的依赖补齐
+	r.recheckDependents(ctx, name)
 	return manifest, nil
 }
 
@@ -326,6 +333,7 @@ func (r *Registry) Install(ctx context.Context, reader io.ReaderAt, size int64) 
 //
 // 声明了依赖的插件，依赖没就绪时返回 ErrMissingDeps——装得上但启用不了，
 // 依赖可以在这之后安装，故这道理到用时才查。停用一个插件会连带停用依赖它的插件。
+// Lumo 版本不满足 spec.requires 时返回 ErrIncompatible（装的时候已经挡过，站点回滚后才会遇到）。
 func (r *Registry) SetEnabled(ctx context.Context, name string, enabled, accept bool) error {
 	loaded, ok := r.Get(name)
 	if !ok {
@@ -351,6 +359,9 @@ func (r *Registry) SetEnabled(ctx context.Context, name string, enabled, accept 
 		return nil
 	}
 
+	if err := r.checkRequires(loaded.Manifest); err != nil {
+		return err
+	}
 	if unmet := r.unmetDeps(loaded.Manifest.Spec.Dependencies); len(unmet) > 0 {
 		return fmt.Errorf("%w：%s", ErrMissingDeps, strings.Join(unmet, "；"))
 	}
@@ -382,11 +393,12 @@ func (r *Registry) SetEnabled(ctx context.Context, name string, enabled, accept 
 	loaded.backend = backend
 	r.mu.Unlock()
 	closeBackend(old)
-	r.restoreDependentReasons(ctx, name)
+	r.recheckDependents(ctx, name)
 	return nil
 }
 
 // Suspend 由系统停用一个插件并记下原因，如连续崩溃。原因会显示在后台。
+// 依赖它的插件跟着停用，与站长手动停用时一样。
 func (r *Registry) Suspend(ctx context.Context, name, reason string) {
 	r.mu.Lock()
 	loaded, ok := r.plugins[name]
@@ -406,10 +418,27 @@ func (r *Registry) Suspend(ctx context.Context, name, reason string) {
 	if r.logger != nil {
 		r.logger.Warn("插件已被自动停用", slog.String("plugin", name), slog.String("reason", reason))
 	}
+	r.disableDependents(ctx, name, "停用")
 }
 
-// startOrSuspend 启动一个启用中插件的后端；需要重新确认或启动失败的，停用并记下原因。
+// startOrSuspend 启动一个启用中插件的后端；需要重新确认、Lumo 版本不对、依赖没就绪
+// 或启动失败的，停用并记下原因。
 func (r *Registry) startOrSuspend(ctx context.Context, loaded *Loaded) {
+	// 启动顺序里排在前面的依赖起不来时，已经把它连带停掉了
+	r.mu.RLock()
+	enabled := loaded.Enabled
+	r.mu.RUnlock()
+	if !enabled {
+		return
+	}
+	if err := r.checkRequires(loaded.Manifest); err != nil {
+		r.Suspend(ctx, loaded.ID(), err.Error())
+		return
+	}
+	if unmet := r.unmetDeps(loaded.Manifest.Spec.Dependencies); len(unmet) > 0 {
+		r.Suspend(ctx, loaded.ID(), unmetReason(unmet))
+		return
+	}
 	if loaded.NeedsConsent() {
 		r.Suspend(ctx, loaded.ID(), reasonNeedsConsent)
 		return

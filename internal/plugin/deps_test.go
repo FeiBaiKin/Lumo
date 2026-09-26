@@ -229,3 +229,121 @@ func TestStartOrderPutsDependenciesFirst(t *testing.T) {
 		}
 	}
 }
+
+// installEnabled 装上一组插件并依次启用。
+func installEnabled(t *testing.T, m *Module, manifests ...[]byte) {
+	t.Helper()
+	for _, raw := range manifests {
+		if err := install(t, m.registry, map[string][]byte{FileManifest: raw}); err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := parseManifest(raw, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := m.registry.SetEnabled(context.Background(), parsed.Metadata.Name, true, false); err != nil {
+			t.Fatalf("启用 %s：%v", parsed.Metadata.Name, err)
+		}
+	}
+}
+
+// 被依赖的插件升到范围之外，依赖方跟着停用；再升回范围之内，原因改写成可以重新启用。
+func TestUpgradeOutOfRangeSuspendsDependents(t *testing.T) {
+	m := testModule(t)
+	installEnabled(t, m,
+		manifestNamed("base", "1.0.0", ""),
+		manifestNamed("app", "1.0.0", "  dependencies:\n"+dep("base", "^1.0")))
+
+	if err := install(t, m.registry, map[string][]byte{FileManifest: manifestNamed("base", "2.0.0", "")}); err != nil {
+		t.Fatal(err)
+	}
+	app, _ := m.registry.Get("app")
+	if app.Enabled {
+		t.Fatal("base 升到 2.0.0 后，要 ^1.0 的 app 该跟着停用")
+	}
+	for _, want := range []string{"base", "2.0.0"} {
+		if !strings.Contains(app.DisabledReason, want) {
+			t.Errorf("停用原因里该有 %q，得到 %q", want, app.DisabledReason)
+		}
+	}
+	if base, _ := m.registry.Get("base"); !base.Enabled {
+		t.Fatal("升级本身不该停掉 base")
+	}
+
+	if err := install(t, m.registry, map[string][]byte{FileManifest: manifestNamed("base", "1.5.0", "")}); err != nil {
+		t.Fatal(err)
+	}
+	app, _ = m.registry.Get("app")
+	if app.Enabled || app.DisabledReason != reasonDepsReady {
+		t.Fatalf("base 回到范围内后，app 该停着并提示可以重新启用，得到 enabled=%v %q", app.Enabled, app.DisabledReason)
+	}
+}
+
+// 升级后新声明的依赖没就绪，插件自己停用，不带着缺口继续跑。
+func TestUpgradeAddingUnmetDependencySuspends(t *testing.T) {
+	m := testModule(t)
+	installEnabled(t, m, manifestNamed("app", "1.0.0", ""))
+	err := install(t, m.registry, map[string][]byte{
+		FileManifest: manifestNamed("app", "1.1.0", "  dependencies:\n"+dep("base", "")),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, _ := m.registry.Get("app")
+	if app.Enabled || !strings.Contains(app.DisabledReason, "缺少插件 base") {
+		t.Fatalf("新依赖没装时该停用并说缺什么，得到 enabled=%v %q", app.Enabled, app.DisabledReason)
+	}
+}
+
+// 系统自动停用（崩溃、要重新确认）同样连带依赖方，一路传下去。
+func TestSuspendCascadesToDependents(t *testing.T) {
+	m := testModule(t)
+	ctx := context.Background()
+	installEnabled(t, m,
+		manifestNamed("base", "1.0.0", ""),
+		manifestNamed("middle", "1.0.0", "  dependencies:\n"+dep("base", "")),
+		manifestNamed("top", "1.0.0", "  dependencies:\n"+dep("middle", "")))
+
+	m.registry.Suspend(ctx, "base", "连续 5 次运行出错，已自动停用")
+	for _, name := range []string{"middle", "top"} {
+		loaded, _ := m.registry.Get(name)
+		if loaded.Enabled {
+			t.Fatalf("%s 该被连带停用", name)
+		}
+		if !strings.HasPrefix(loaded.DisabledReason, dependencyReasonMark) {
+			t.Fatalf("%s 的停用原因该说是依赖带的，得到 %q", name, loaded.DisabledReason)
+		}
+	}
+
+	if err := m.registry.SetEnabled(ctx, "base", true, false); err != nil {
+		t.Fatal(err)
+	}
+	middle, _ := m.registry.Get("middle")
+	if middle.DisabledReason != reasonDepsReady {
+		t.Fatalf("base 回来后 middle 该提示可以重新启用，得到 %q", middle.DisabledReason)
+	}
+	top, _ := m.registry.Get("top")
+	if !strings.Contains(top.DisabledReason, "middle") {
+		t.Fatalf("middle 还停着，top 的原因该继续指着它，得到 %q", top.DisabledReason)
+	}
+}
+
+// 启动时依赖已经不在（库里记着启用、目录被删了之类），依赖方停用而不是照常起来。
+func TestStartSuspendsWhenDependencyGone(t *testing.T) {
+	m := testModule(t)
+	ctx := context.Background()
+	installEnabled(t, m,
+		manifestNamed("base", "1.0.0", ""),
+		manifestNamed("app", "1.0.0", "  dependencies:\n"+dep("base", "")))
+
+	// 模拟重启时读到的状态：app 记着启用，base 却不在了
+	m.registry.mu.Lock()
+	delete(m.registry.plugins, "base")
+	m.registry.mu.Unlock()
+
+	app, _ := m.registry.Get("app")
+	m.registry.startOrSuspend(ctx, app)
+	if app, _ = m.registry.Get("app"); app.Enabled || !strings.Contains(app.DisabledReason, "缺少插件 base") {
+		t.Fatalf("依赖不在时该停用并说缺什么，得到 enabled=%v %q", app.Enabled, app.DisabledReason)
+	}
+}

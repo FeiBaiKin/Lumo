@@ -27,13 +27,19 @@ const maxDependencies = 20
 // ErrMissingDeps 表示插件依赖的别的插件没就绪，因而不能启用。
 var ErrMissingDeps = errors.New("依赖的插件没有就绪")
 
-// 连带停用时记下的原因前缀与拼法。
-//
-// 依赖的插件重新启用后，要把这些原因改写成「可以再次启用」，所以拼法得是能认回来的固定形态。
-const dependencyReasonPrefix = "依赖的插件 "
+// 因依赖而停用时记下的原因都以「依赖」开头：依赖的状态变了之后，要靠它认出哪些原因该跟着改写。
+// 其余由系统记下的原因（崩溃、要重新确认、后端加载失败、Lumo 版本不对）都不以它开头。
+const dependencyReasonMark = "依赖"
+
+// reasonDepsReady 是依赖补齐之后改写成的原因；插件仍停着，等站长点。
+const reasonDepsReady = "依赖都已就绪，可以重新启用"
 
 func dependencyStoppedReason(name, verb string) string {
-	return dependencyReasonPrefix + name + " 已" + verb
+	return "依赖的插件 " + name + " 已" + verb
+}
+
+func unmetReason(unmet []string) string {
+	return "依赖没就绪：" + strings.Join(unmet, "；")
 }
 
 // normalizeDependencies 校验 spec.dependencies。
@@ -186,27 +192,42 @@ func (r *Registry) disableDependents(ctx context.Context, name, verb string) {
 	}
 }
 
-// restoreDependentReasons 把「因为 name 停用而跟着停用」的插件的原因改写成可再次启用。
+// recheckDependents 在 name 启用、新装或升级之后，重新核对依赖它的插件。
 //
-// 不改启用状态：依赖回来了不等于站长还想让它跑，那一步仍由站长点。
-func (r *Registry) restoreDependentReasons(ctx context.Context, name string) {
-	prefix := dependencyReasonPrefix + name + " 已"
+// 启用中的，依赖不再满足（比如 name 升到了范围之外）就停用并记下原因；因依赖而停着的，
+// 把原因改写成现状。依赖补齐了也不替站长启用：依赖回来了不等于站长还想让它跑。
+func (r *Registry) recheckDependents(ctx context.Context, name string) {
 	for _, dep := range r.dependentsOf(name, false) {
-		// 只在它还停着、且原因是「被这次停用带的」时改写；已启用的原因本来就是空的。
-		if dep.Enabled || !strings.HasPrefix(dep.DisabledReason, prefix) {
-			continue
+		unmet := r.unmetDeps(dep.Manifest.Spec.Dependencies)
+		r.mu.RLock()
+		enabled, reason := dep.Enabled, dep.DisabledReason
+		r.mu.RUnlock()
+		switch {
+		case enabled && len(unmet) > 0:
+			r.Suspend(ctx, dep.ID(), unmetReason(unmet))
+		case !enabled && strings.HasPrefix(reason, dependencyReasonMark):
+			next := reasonDepsReady
+			if len(unmet) > 0 {
+				next = unmetReason(unmet)
+			}
+			if next != reason {
+				r.setDisabledReason(ctx, dep.ID(), next)
+			}
 		}
-		reason := fmt.Sprintf("%s%s 已重新启用，可以再次启用本插件", dependencyReasonPrefix, name)
-		if err := r.persist(ctx, dep.ID(), State{Reason: reason}); err != nil {
-			r.warn("记录插件停用状态失败", dep.ID(), err)
-			continue
-		}
-		r.mu.Lock()
-		if current, ok := r.plugins[dep.ID()]; ok {
-			current.DisabledReason = reason
-		}
-		r.mu.Unlock()
 	}
+}
+
+// setDisabledReason 改写一个停用中插件的停用原因。
+func (r *Registry) setDisabledReason(ctx context.Context, name, reason string) {
+	if err := r.persist(ctx, name, State{Reason: reason}); err != nil {
+		r.warn("记录插件停用状态失败", name, err)
+		return
+	}
+	r.mu.Lock()
+	if current, ok := r.plugins[name]; ok && !current.Enabled {
+		current.DisabledReason = reason
+	}
+	r.mu.Unlock()
 }
 
 // startOrder 返回启用中插件的启动顺序：依赖先起，用它的后起；同层按标识。

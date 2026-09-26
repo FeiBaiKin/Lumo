@@ -78,8 +78,9 @@ func pkgOptions() pkgzip.Options {
 //
 // 与主题同样的两段式：先解到临时目录、校验通过再改名就位。
 // 半个插件留在 plugins/ 下比装不上更糟——它会被当成一个已安装的插件加载，
-// 而缺少的清单或设置声明要到启用时才暴露。
-func Install(root string, r io.ReaderAt, size int64, overwrite bool) (*Manifest, error) {
+// 而缺少的清单或设置声明要到启用时才暴露。accept 非 nil 时在就位之前再核对一次清单，
+// 不通过就原样返回它的错误，旧版本不受影响。
+func Install(root string, r io.ReaderAt, size int64, overwrite bool, accept func(*Manifest) error) (*Manifest, error) {
 	if err := os.MkdirAll(root, pluginDirPerm); err != nil {
 		return nil, fmt.Errorf("创建插件目录 %s: %w", root, err)
 	}
@@ -113,6 +114,11 @@ func Install(root string, r io.ReaderAt, size int64, overwrite bool) (*Manifest,
 	manifest, err := validateContents(staging)
 	if err != nil {
 		return nil, err
+	}
+	if accept != nil {
+		if err := accept(manifest); err != nil {
+			return nil, err
+		}
 	}
 
 	target := filepath.Join(root, manifest.Metadata.Name)

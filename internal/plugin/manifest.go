@@ -91,11 +91,8 @@ type Spec struct {
 	Repo string `yaml:"repo" json:"repo"`
 	// License 是许可证标识。
 	License string `yaml:"license" json:"license"`
-	// Requires 声明所需的 Lumo 版本范围；留空表示不限制。
-	//
-	// 只做语法校验，不做范围求解：从源码构建的 Lumo 版本号是 0.0.0-dev，真按范围判定的话，
-	// 本地开发与测试时一切声明了 requires 的插件都启用不了。比较版本的那套家伙在 version.go
-	// 已备好（插件依赖正用它），要启用这条只需接上「版本号认得出来才判」。
+	// Requires 声明所需的 Lumo 版本范围，写法同依赖的 version；留空表示不限制。
+	// 不满足时装不上，也启用不了（站点回滚到旧版之后）；源码构建的本站版本不比，见 runningVersion。
 	Requires string `yaml:"requires" json:"requires"`
 	// Dependencies 声明本插件要用到的别的插件与版本范围，如 name: comment-guard、version: ">=1.0.0"。
 	// 依赖没就绪（没装、没启用、版本不够）时插件启用不了；被依赖的插件停用或卸载会连带停用本插件。
@@ -188,6 +185,9 @@ func (m *Manifest) validate(dirName string) error {
 	}
 	if len(m.Spec.Requires) > maxRequiresLength {
 		return fmt.Errorf("%w：spec.requires 超过 %d 个字符", ErrInvalidPackage, maxRequiresLength)
+	}
+	if _, err := parseRange(m.Spec.Requires); err != nil {
+		return fmt.Errorf("%w：spec.requires %q 不是有效的版本范围：%w", ErrInvalidPackage, m.Spec.Requires, err)
 	}
 	for label, value := range map[string]string{
 		"spec.homepage":       m.Spec.Homepage,

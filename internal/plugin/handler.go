@@ -167,11 +167,12 @@ func (h *Handler) Register(console huma.API) {
 	}, h.list)
 
 	huma.Register(console, huma.Operation{
-		OperationID:   "plugin-install",
-		Method:        http.MethodPost,
-		Path:          pathPlugins,
-		Summary:       "安装或升级插件",
-		Description:   "multipart/form-data 上传 zip 包。同名插件已存在时按升级处理，并保持它原来的启用状态。",
+		OperationID: "plugin-install",
+		Method:      http.MethodPost,
+		Path:        pathPlugins,
+		Summary:     "安装或升级插件",
+		Description: "multipart/form-data 上传 zip 包。同名插件已存在时按升级处理，并保持它原来的启用状态。" +
+			"本站的 Lumo 版本不满足插件的 requires 时返回 422，旧版本原样保留。",
 		Tags:          tagPlugins,
 		DefaultStatus: http.StatusCreated,
 		Middlewares:   manage,
@@ -185,7 +186,8 @@ func (h *Handler) Register(console huma.API) {
 		Summary:     "启用或停用插件",
 		Description: "启用后插件的设置分组立即可用，不需要重启。插件声明了能力而站长还没确认过时，" +
 			"启用请求须带 acceptCapabilities: true，否则返回 409；带后端的插件在启用时编译加载，加载失败返回 422。" +
-			"声明了依赖的插件，依赖没装、没启用或版本不够时也返回 409，详情见 dependencies 字段。" +
+			"声明了依赖的插件，依赖没装、没启用或版本不够时也返回 409，详情见 dependencies 字段；" +
+			"本站的 Lumo 版本不满足 requires 时返回 422。" +
 			"停用会连带停用依赖它的插件。",
 		Tags:        tagPlugins,
 		Middlewares: manage,
@@ -432,7 +434,7 @@ func mapError(err error) error {
 		return huma.Error404NotFound(err.Error())
 	case errors.Is(err, ErrAlreadyExists):
 		return huma.Error409Conflict(err.Error())
-	case errors.Is(err, ErrInvalidPackage), errors.Is(err, ErrBackend):
+	case errors.Is(err, ErrInvalidPackage), errors.Is(err, ErrBackend), errors.Is(err, ErrIncompatible):
 		return huma.Error422UnprocessableEntity(err.Error())
 	case errors.Is(err, ErrConsentRequired):
 		return huma.Error409Conflict(err.Error())
