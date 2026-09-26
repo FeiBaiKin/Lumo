@@ -79,7 +79,15 @@ function depNote(dep: PluginDep): string {
   if (!dep.enabled) {
     return "没启用";
   }
-  return `只有 ${dep.installedVersion}`;
+  return `装的是 v${dep.installedVersion}`;
+}
+
+/** 把插件标识换成显示名；没装的插件只有标识可用。 */
+type NameOf = (id: string) => string;
+
+/** 一串插件名，每个加书名号，用顿号隔开：「统计周报」、「反垃圾增强」。 */
+function quoteNames(ids: string[] | null | undefined, nameOf: NameOf): string {
+  return (ids ?? []).map((id) => `「${nameOf(id)}」`).join("、");
 }
 
 export function PluginsPage() {
@@ -106,6 +114,8 @@ export function PluginsPage() {
 
   const plugins = query.data?.items ?? [];
   const retained = query.data?.retained ?? [];
+  const displayNames = new Map(plugins.map((p) => [p.name, p.displayName]));
+  const nameOf: NameOf = (id) => displayNames.get(id) || id;
   const [purging, setPurging] = useState<Retained | null>(null);
   const queryClient = useQueryClient();
   // 插件的资源页入口在侧栏里，启停与卸载之后要让侧栏重取
@@ -210,6 +220,7 @@ export function PluginsPage() {
                   <PluginRow
                     key={plugin.name}
                     plugin={plugin}
+                    nameOf={nameOf}
                     busy={setEnabled.isPending || uninstall.isPending}
                     onToggle={(enabled) => {
                       // 声明了能力而还没确认过的，先让站长看清它要做什么
@@ -305,6 +316,7 @@ export function PluginsPage() {
 
       <UninstallDialog
         plugin={removing}
+        nameOf={nameOf}
         pending={uninstall.isPending}
         onOpenChange={(open) => {
           if (!open) {
@@ -328,9 +340,8 @@ export function PluginsPage() {
         title={`停用「${stopping?.displayName ?? ""}」？`}
         consequence={
           <p>
-            {(stopping?.dependents ?? []).join("、")}{" "}
-            依赖它，会跟着一并停用。之后重新启用它，
-            依赖它的插件也不会自己回来，要在这里各自打开。
+            {`${quoteNames(stopping?.dependents, nameOf)}依赖它，会跟着一并停用。`}
+            {"之后重新启用它，依赖它的插件也不会自己回来，要在这里各自打开。"}
           </p>
         }
         confirmLabel="停用"
@@ -375,12 +386,14 @@ export function PluginsPage() {
 /** 一行插件。 */
 function PluginRow({
   plugin,
+  nameOf,
   busy,
   onToggle,
   onSettings,
   onRemove,
 }: {
   plugin: PluginView;
+  nameOf: NameOf;
   busy: boolean;
   onToggle: (enabled: boolean) => void;
   onSettings: () => void;
@@ -391,72 +404,63 @@ function PluginRow({
   const hasSettings = (plugin.settingGroups?.length ?? 0) > 0;
 
   return (
-    <Entity>
+    // 名字、描述、依赖、停用原因叠在左栏：排成一行时，窄屏上哪一块都放不下
+    <Entity align="start">
       <EntityStart>
-        {/* 名字这一块不参与收缩：描述一长，flex 会把名字挤成一字一行 */}
-        <EntityField className="shrink-0">
-          <span className="flex items-center gap-2">
-            <span className="font-medium text-ink">{plugin.displayName}</span>
+        <EntityField width="max-w-2xl">
+          {/* 名字不让位：窄屏上徽标换到下一行，而不是把名字截成一个字 */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-md font-medium text-ink">
+              {plugin.displayName}
+            </span>
             <Badge tone="neutral">v{plugin.version}</Badge>
             {plugin.runtime === "wasm" ? (
               <Badge tone="outline">带后端</Badge>
             ) : null}
-          </span>
-        </EntityField>
-        {plugin.description ? (
-          // 描述是这一行里唯一肯让位的：宽度不够就省略，其余照原样显示
-          <span className="min-w-0 truncate text-xs text-ink-muted">
-            {plugin.description}
-          </span>
-        ) : null}
-        {(plugin.dependencies?.length ?? 0) > 0 ? (
-          // 依赖没就绪是「启不了」的原因，与下面的停用原因同类，故紧挨着放
-          <EntityMeta>
-            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          </div>
+          {plugin.description ? (
+            <p className="line-clamp-2 text-xs text-ink-muted">
+              {plugin.description}
+            </p>
+          ) : null}
+          {(plugin.dependencies?.length ?? 0) > 0 ? (
+            <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-ink-muted">
               {(plugin.dependencies ?? []).map((dep) => {
                 const note = depNote(dep);
                 return (
-                  <span
-                    key={dep.name}
-                    className={cn(
-                      "inline-flex items-center gap-1",
-                      note ? "text-warn" : "text-ink-muted",
-                    )}
-                  >
+                  <span key={dep.name} className={cn(note && "text-warn")}>
                     {note ? (
                       <AlertTriangle
                         aria-hidden="true"
-                        className="size-3.5 shrink-0"
+                        className="mr-1 inline size-3.5 align-[-2px]"
                       />
                     ) : null}
-                    依赖 {dep.name}
+                    依赖 {nameOf(dep.name)}
                     {dep.version ? (
-                      <span className="font-mono text-xs">{dep.version}</span>
+                      <span className="font-mono"> {dep.version}</span>
                     ) : null}
-                    {note ? <span>（{note}）</span> : null}
+                    {note ? `（${note}）` : null}
                   </span>
                 );
               })}
-            </span>
-          </EntityMeta>
-        ) : null}
-        {!plugin.enabled && plugin.disabledReason ? (
-          <EntityMeta>
-            <span className="flex items-start gap-1.5 text-warn">
+            </p>
+          ) : null}
+          {!plugin.enabled && plugin.disabledReason ? (
+            <p className="flex items-start gap-1.5 text-xs text-warn">
               <AlertTriangle
                 aria-hidden="true"
                 className="mt-0.5 size-3.5 shrink-0"
               />
-              {plugin.disabledReason}
-            </span>
-          </EntityMeta>
-        ) : null}
-        <EntityMeta>
-          {[plugin.author, plugin.license].filter(Boolean).join(" · ")}
-        </EntityMeta>
+              <span>{plugin.disabledReason}</span>
+            </p>
+          ) : null}
+        </EntityField>
       </EntityStart>
 
       <EntityEnd>
+        <EntityMeta hideOnMobile>
+          {[plugin.author, plugin.license].filter(Boolean).join(" · ")}
+        </EntityMeta>
         {broken ? (
           // 原因要说出来，而不是只给一个红点：用户需要知道自己的插件出了什么事。
           <span className="flex items-center gap-1.5 text-xs text-danger">
@@ -465,7 +469,8 @@ function PluginRow({
           </span>
         ) : (
           <>
-            <span className="flex items-center gap-1.5 text-xs text-ink-muted">
+            {/* 与开关说的是同一件事，窄屏上省掉，把宽度让给左栏 */}
+            <span className="hidden items-center gap-1.5 text-xs text-ink-muted sm:flex">
               <StatusDot state={plugin.enabled ? "ok" : "neutral"} />
               {plugin.enabled ? "已启用" : "已停用"}
             </span>
@@ -525,11 +530,13 @@ function dataSummary(counts: DataCounts): string {
  */
 function UninstallDialog({
   plugin,
+  nameOf,
   pending,
   onOpenChange,
   onConfirm,
 }: {
   plugin: PluginView | null;
+  nameOf: NameOf;
   pending: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (keepData: boolean) => void;
@@ -574,8 +581,7 @@ function UninstallDialog({
           {plugin && (plugin.dependents?.length ?? 0) > 0 ? (
             <p>
               <strong className="font-medium text-ink">
-                {(plugin.dependents ?? []).join("、")}{" "}
-                依赖它，卸载后会跟着停用。
+                {`${quoteNames(plugin.dependents, nameOf)}依赖它，卸载后会跟着停用。`}
               </strong>
               这些插件本身不会被卸掉，但要重新装上它才能再启用。
             </p>
